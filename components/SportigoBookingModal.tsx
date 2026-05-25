@@ -46,6 +46,9 @@ type Props = {
   // utilisé pour filtrer les créneaux Reset à afficher (>= cette heure).
   // Si null/undefined, on filtre à partir de l'heure courante.
   existingAccesEnd?: string | null;
+  // Map { "<roomId>_<startIso>" : ["geoffrey","lauriane"] } indiquant les slots
+  // déjà bookés et par qui. Utilisé pour les afficher en violet avec pills G/L.
+  bookedBySlot?: Record<string, SportigoUser[]>;
 };
 
 // On wrappe le contenu dans un composant interne monté uniquement quand open=true,
@@ -63,7 +66,11 @@ function defaultUserChoice(bookedUsers: Set<SportigoUser>): UserChoice {
   return "both";
 }
 
-function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd }: Props) {
+function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, bookedBySlot }: Props) {
+  const slotBookedBy = (slot: PlanningSlot): SportigoUser[] => {
+    if (!bookedBySlot) return [];
+    return bookedBySlot[`${slot.roomId}_${slot.start}`] ?? [];
+  };
   const [planning, setPlanning] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -330,6 +337,8 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd }: Prop
               {planning?.accesLibre.map((slot) => {
                 const isSelected = selectedAccess?.eventId === slot.eventId;
                 const free = Math.max(0, slot.capacity - slot.booked);
+                const bookedBy = slotBookedBy(slot);
+                const isBooked = bookedBy.length > 0;
                 return (
                   <button
                     key={slot.eventId}
@@ -337,15 +346,31 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd }: Prop
                     disabled={slot.full || submitting}
                     onClick={() => setSelectedAccess(slot)}
                     className={`w-full flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-xs transition-colors disabled:opacity-50 ${
-                      isSelected
+                      isBooked
+                        ? "border-[var(--color-brand-purple)]/60 bg-[var(--color-brand-purple)]/10 text-[var(--color-brand-purple)]"
+                        : isSelected
                         ? "border-[var(--color-brand-purple)]/60 bg-[var(--color-brand-purple)]/10 text-[var(--color-brand-purple)]"
                         : slot.full
                         ? "border-[var(--color-border)] dark:border-white/10 text-[var(--color-body)]"
                         : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[var(--color-brand-purple-light)] hover:text-[var(--color-brand-purple)]"
                     }`}
                   >
-                    <span>
+                    <span className="flex items-center gap-1.5">
+                      {isBooked && <span>✓</span>}
                       {formatHour(slot.start)} – {formatHour(slot.end)}
+                      {isBooked && (
+                        <span className="inline-flex items-center gap-0.5">
+                          {bookedBy.map((u) => (
+                            <span
+                              key={u}
+                              className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
+                              title={u}
+                            >
+                              {u === "geoffrey" ? "G" : "L"}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </span>
                     {slot.full ? (
                       <span className="text-[10px] uppercase tracking-wide">Complet</span>
@@ -414,6 +439,8 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd }: Prop
                 const isSelected =
                   resetSelection.mode === "manual" && resetSelection.slot.eventId === slot.eventId;
                 const free = Math.max(0, slot.capacity - slot.booked);
+                const bookedBy = slotBookedBy(slot);
+                const isBooked = bookedBy.length > 0;
                 return (
                   <button
                     key={slot.eventId}
@@ -421,15 +448,31 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd }: Prop
                     disabled={slot.full || submitting}
                     onClick={() => setResetSelection({ mode: "manual", slot })}
                     className={`w-full flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-xs transition-colors disabled:opacity-50 ${
-                      isSelected
+                      isBooked
+                        ? "border-[var(--color-brand-purple)]/60 bg-[var(--color-brand-purple)]/10 text-[var(--color-brand-purple)]"
+                        : isSelected
                         ? "border-[#15be53]/60 bg-[#15be53]/10 text-[#108c3d]"
                         : slot.full
                         ? "border-[var(--color-border)] dark:border-white/10 text-[var(--color-body)]"
                         : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[#15be53]/40 hover:text-[#108c3d]"
                     }`}
                   >
-                    <span>
+                    <span className="flex items-center gap-1.5">
+                      {isBooked && <span>✓</span>}
                       {formatHour(slot.start)} – {formatHour(slot.end)}
+                      {isBooked && (
+                        <span className="inline-flex items-center gap-0.5">
+                          {bookedBy.map((u) => (
+                            <span
+                              key={u}
+                              className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
+                              title={u}
+                            >
+                              {u === "geoffrey" ? "G" : "L"}
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </span>
                     {slot.full ? (
                       <span className="text-[10px] uppercase tracking-wide">Complet</span>

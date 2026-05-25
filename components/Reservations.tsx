@@ -117,6 +117,12 @@ export function Reservations() {
       .map((r) => r.end)
       .sort()
       .at(-1) ?? null;
+  const bookedBySlot: Record<string, SportigoUser[]> = {};
+  for (const r of allReservations) {
+    const key = `${r.roomId}_${r.start}`;
+    if (!bookedBySlot[key]) bookedBySlot[key] = [];
+    if (!bookedBySlot[key].includes(r.user)) bookedBySlot[key].push(r.user);
+  }
 
   return (
     <section
@@ -200,6 +206,7 @@ export function Reservations() {
         onClose={() => setBookOpen(false)}
         bookedUsers={bookedUsers}
         existingAccesEnd={existingAccesEnd}
+        bookedBySlot={bookedBySlot}
         onBooked={() => {
           refresh();
           window.dispatchEvent(new CustomEvent("sportigo:refresh"));

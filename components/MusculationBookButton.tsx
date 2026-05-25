@@ -82,6 +82,14 @@ export function MusculationBookButton() {
       .sort()
       .at(-1) ?? null;
 
+  // Map { "<roomId>_<startIso>" : [users] } pour griser les slots déjà bookés.
+  const bookedBySlot: Record<string, SportigoUser[]> = {};
+  for (const r of allReservations) {
+    const key = `${r.roomId}_${r.start}`;
+    if (!bookedBySlot[key]) bookedBySlot[key] = [];
+    if (!bookedBySlot[key].includes(r.user)) bookedBySlot[key].push(r.user);
+  }
+
   async function handleCancel(r: ActiveReservation) {
     setCancelling((prev) => new Set(prev).add(r.id));
     try {
@@ -150,6 +158,7 @@ export function MusculationBookButton() {
         onClose={() => setMode("closed")}
         bookedUsers={bookedUsers}
         existingAccesEnd={existingAccesEnd}
+        bookedBySlot={bookedBySlot}
         onBooked={() => {
           refresh();
           window.dispatchEvent(new CustomEvent("sportigo:refresh"));
@@ -215,7 +224,7 @@ export function MusculationBookButton() {
               })}
             </ul>
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4">
               <button
                 type="button"
                 onClick={() => {
@@ -225,13 +234,6 @@ export function MusculationBookButton() {
                 className="text-xs text-[var(--color-brand-purple)] hover:underline"
               >
                 + Ajouter une séance
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("closed")}
-                className="text-xs text-[var(--color-body)]"
-              >
-                Fermer
               </button>
             </div>
           </div>
