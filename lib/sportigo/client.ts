@@ -162,9 +162,13 @@ export async function bookEvent(
   appToken: string,
   input: BookEventInput,
 ): Promise<BookEventResult> {
+  // Sportigo attend dateLesson au format "YYYY-MM-DD HH:mm:ss" (espace, pas T).
+  const dateLesson = input.dateLesson.includes("T")
+    ? input.dateLesson.replace("T", " ").slice(0, 19)
+    : input.dateLesson;
   const payload = await callService<unknown>(appToken, "/event", "post", {
     roomId: input.roomId,
-    dateLesson: input.dateLesson,
+    dateLesson,
     eventID: input.eventID,
   });
   // La réponse contient l'id de la réservation. On essaie plusieurs clés possibles.

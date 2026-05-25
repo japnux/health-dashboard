@@ -144,6 +144,27 @@ export function AiAnalysis() {
   const isLoading = analysisLoading != null;
   const hasContent = analysisResult != null || chat.length > 0;
 
+  // Cache la bulle flottante quand une autre modal plein écran est ouverte
+  // (toutes les modals du dashboard utilisent `fixed inset-0 z-50`).
+  const [modalOpen, setModalOpen] = useState(false);
+  useEffect(() => {
+    function check() {
+      const overlays = document.querySelectorAll(".fixed.inset-0.z-50");
+      setModalOpen(overlays.length > 0);
+    }
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  // Quand une modal s'ouvre, on referme aussi le panel chat s'il était ouvert.
+  useEffect(() => {
+    if (modalOpen && open) setOpen(false);
+  }, [modalOpen, open]);
+
+  if (modalOpen && !open) return null;
+
   return (
     <>
       {/* Bulle flottante */}

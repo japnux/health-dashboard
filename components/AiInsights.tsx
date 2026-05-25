@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MusculationBookButton } from "./MusculationBookButton";
 
 type AiTrend = {
   title: string;
@@ -431,9 +432,14 @@ function WorkoutItem({
                 {suggestion.intensity}
               </span>
             </div>
-            <p className="text-xs text-[var(--color-body)] mt-1">
-              {/^\d+$/.test(suggestion.duration) ? `${suggestion.duration} min` : suggestion.duration}
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-xs text-[var(--color-body)]">
+                {/^\d+$/.test(suggestion.duration) ? `${suggestion.duration} min` : suggestion.duration}
+              </p>
+              {displayWorkoutType(suggestion.type) === "Musculation" && (
+                <MusculationBookButton />
+              )}
+            </div>
           </div>
         </div>
 
