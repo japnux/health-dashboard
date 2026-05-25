@@ -149,22 +149,33 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
     return [userChoice];
   }, [userChoice]);
 
-  // Conflit possible uniquement sur l'Accès libre (les users déjà bookés sur ce slot
-  // recevraient "Cet adhérent est déjà inscrit"). Pour un booking Reset seul on n'exclut personne.
+  // Conflit par slot précis : on ne filtre un user que s'il a déjà booké
+  // exactement le créneau sélectionné (Accès libre ET/OU Reset).
+  const usersAlreadyOnSelected = useMemo<Set<SportigoUser>>(() => {
+    const s = new Set<SportigoUser>();
+    if (!bookedBySlot) return s;
+    if (selectedAccess) {
+      const key = `${selectedAccess.roomId}_${selectedAccess.start}`;
+      for (const u of bookedBySlot[key] ?? []) s.add(u);
+    }
+    if (effectiveReset) {
+      const key = `${effectiveReset.roomId}_${effectiveReset.start}`;
+      for (const u of bookedBySlot[key] ?? []) s.add(u);
+    }
+    return s;
+  }, [bookedBySlot, selectedAccess, effectiveReset]);
+
   const usersAfterFilter = useMemo(
-    () =>
-      selectedAccess
-        ? usersFromChoice.filter((u) => !bookedUsers.has(u))
-        : usersFromChoice,
-    [usersFromChoice, bookedUsers, selectedAccess],
+    () => usersFromChoice.filter((u) => !usersAlreadyOnSelected.has(u)),
+    [usersFromChoice, usersAlreadyOnSelected],
   );
 
   const conflict =
-    selectedAccess != null &&
+    (selectedAccess != null || effectiveReset != null) &&
     usersFromChoice.length > 0 &&
     usersAfterFilter.length === 0;
   const partialConflict =
-    selectedAccess != null &&
+    (selectedAccess != null || effectiveReset != null) &&
     usersFromChoice.length > usersAfterFilter.length &&
     usersAfterFilter.length > 0;
 
@@ -303,7 +314,7 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
         {conflict && (
           <p className="mt-2 text-xs text-[#ea2261]">
             Déjà réservé pour {usersFromChoice.map((u) => USER_LABELS[u]).join(" et ")}{" "}
-            aujourd&apos;hui.
+            sur ce créneau.
           </p>
         )}
         {partialConflict && !conflict && (
