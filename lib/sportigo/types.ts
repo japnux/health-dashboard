@@ -16,8 +16,10 @@ export type PlanningSlot = {
   capacity: number;
   booked: number;
   full: boolean;
-  // roomType Sportigo (ex: "cours-co", "coaching") — utilisé comme `activity` au booking.
+  // roomType Sportigo (ex: "cours-co", "coaching") — sert à router vers le bon endpoint.
   activity?: string;
+  // disciplineId Sportigo, requis pour booker un slot coaching (The Reset).
+  disciplineId?: number;
 };
 
 export type PlanningResponse = {
@@ -44,22 +46,32 @@ export type ReservationsResponse = {
   lauriane: ActiveReservation[];
 };
 
-export type BookRequest = {
-  users: SportigoUser[];
+export type BookSlotInput = {
+  // Identifie le créneau côté UI ("accesLibre" | "reset" ou autre clé libre)
+  // pour permettre de mapper les résultats par slot dans la réponse.
+  kind: string;
   eventId: string;
   roomId: number;
-  dateLesson: string; // ISO transmis tel quel à Sportigo
-  alsoBookReset?: {
-    eventId: string;
-    roomId: number;
-    dateLesson: string;
-  };
+  dateLesson: string;
+  activity?: string;
+  discipline?: string;
+};
+
+export type BookRequest = {
+  users: SportigoUser[];
+  slots: BookSlotInput[];
+};
+
+export type BookSlotResult = {
+  kind: string;
+  ok: boolean;
+  reservationId?: string;
+  error?: string;
 };
 
 export type BookUserResult = {
   user: SportigoUser;
-  accesLibre: { ok: boolean; reservationId?: string; error?: string };
-  reset?: { ok: boolean; reservationId?: string; error?: string };
+  slots: BookSlotResult[];
 };
 
 export type BookResponse = {

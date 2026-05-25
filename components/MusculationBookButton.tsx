@@ -26,6 +26,19 @@ function formatRange(startIso: string, endIso: string): string {
   return `${hm(startIso)}–${hm(endIso)}`;
 }
 
+// Format compact pour la pill du bloc Workout : "16-17h" ou "17h-17h30".
+function formatCompactRange(startIso: string, endIso: string): string {
+  const s = new Date(startIso);
+  const e = new Date(endIso);
+  const sh = s.getHours();
+  const sm = s.getMinutes();
+  const eh = e.getHours();
+  const em = e.getMinutes();
+  const fmt = (h: number, m: number) =>
+    m === 0 ? `${h}h` : `${h}h${m.toString().padStart(2, "0")}`;
+  return `${fmt(sh, sm)}-${fmt(eh, em)}`;
+}
+
 export function MusculationBookButton() {
   const [data, setData] = useState<ReservationsResponse | null>(null);
   const [mode, setMode] = useState<Mode>("closed");
@@ -87,16 +100,33 @@ export function MusculationBookButton() {
     setMode("manage");
   }
 
+  // Dédoublonne les réservations par créneau (un même slot booké pour G+L → 1 pill).
+  const uniqueSlots = new Map<string, ActiveReservation>();
+  for (const r of allReservations) {
+    const key = `${r.roomId}_${r.start}`;
+    if (!uniqueSlots.has(key)) uniqueSlots.set(key, r);
+  }
+  const slotPills = Array.from(uniqueSlots.values()).sort((a, b) =>
+    a.start.localeCompare(b.start),
+  );
+
   return (
     <>
       {hasAnyBooking ? (
-        <button
-          type="button"
-          onClick={openManage}
-          className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[#15be53]/40 bg-[#15be53]/10 px-2 py-0.5 text-[11px] text-[#108c3d] hover:bg-[#15be53]/15 transition-colors"
-        >
-          ✓ Booked
-        </button>
+        <div className="inline-flex items-center gap-1 flex-wrap">
+          {slotPills.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={openManage}
+              className="inline-flex items-center gap-1 rounded-[var(--radius-sm)] border border-[#15be53]/40 bg-[#15be53]/10 px-2 py-0.5 text-[11px] text-[#108c3d] hover:bg-[#15be53]/15 transition-colors"
+              title="Voir / annuler"
+            >
+              ✔️{s.roomId === ROOM_ACCES_LIBRE ? "🏋️" : "🥵"}{" "}
+              {formatCompactRange(s.start, s.end)}
+            </button>
+          ))}
+        </div>
       ) : (
         <button
           type="button"

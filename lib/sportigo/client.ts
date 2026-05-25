@@ -156,20 +156,22 @@ export type BookEventInput = {
   dateLesson: string;
   eventID: string;
   memberId?: string;
-  // roomType : "cours-co" pour Accès libre (room 3394), "coaching" pour The Reset (room 3539).
-  // Le champ s'appelle `activity` dans l'API.
+  // roomType : "cours-co" pour Accès libre, "coaching" pour The Reset.
+  // Sert à router vers le bon endpoint de booking côté Sportigo.
   activity?: string;
+  // disciplineId requis pour booker un slot "coaching" (via /appointment/reserve).
+  disciplineId?: number;
 };
 
 export type BookEventResult = {
   reservationId: string;
 };
 
-// Endpoint reverse-engineered depuis le JS Sportigo :
-//   POST /reservation { eventId, date, members:[memberId], activity, nbFriends }
-// La réponse de succès est { status: "success", member: { ..., reservations: [...] } }
-// où reservations[].eventId contient l'ID du créneau qu'on vient de booker
-// et reservations[].reservationId est l'ID numérique utilisé pour annuler.
+// 2 endpoints distincts côté Sportigo selon le type de salle :
+//   - cours-co (Accès libre)  : POST /reservation        { eventId, date, members, activity, nbFriends }
+//   - coaching (The Reset)    : POST /appointment/reserve { eventId, date, disciplineId, nbPlace }
+// Dans les deux cas la réponse de succès est { status:"success", member:{...,reservations:[...]} }
+// dont on extrait reservationId par match sur startDate.
 export async function bookEvent(
   appToken: string,
   input: BookEventInput,
@@ -177,33 +179,56 @@ export async function bookEvent(
   if (!input.memberId) {
     throw new SportigoApiError("memberId manquant — le login ne l'a pas fourni");
   }
-  // Sportigo attend date au format "YYYY-MM-DD HH:mm:ss".
   const date = input.dateLesson.includes("T")
     ? input.dateLesson.replace("T", " ").slice(0, 19)
     : input.dateLesson;
-  const body = {
-    eventId: input.eventID,
-    date,
-    members: [Number(input.memberId)],
-    // 'activity' = roomType de l'event (cours-co / coaching). Fallback raisonnable
-    // sur le roomType correspondant aux rooms connues.
-    activity:
-      input.activity ??
-      (input.roomId === 3539 ? "coaching" : "cours-co"),
-    nbFriends: 0,
-  };
-  const payload = await callService<unknown>(appToken, "/reservation", "post", body);
-  // Extraction : on cherche dans member.reservations[] la résa la plus récente
-  // matchant le startDate ou le eventId d'origine.
+  const activity =
+    input.activity ?? (input.roomId === 3539 ? "coaching" : "cours-co");
+  const isCoaching = activity === "coaching" || input.roomId === 3539;
+
+  let payload: unknown;
+  if (isCoaching) {
+    if (!input.disciplineId) {
+      throw new SportigoApiError(
+        "disciplineId manquant pour booker un créneau coaching",
+      );
+    }
+    const eventIdNum = Number(String(input.eventID).split("_")[0]);
+    const body = {
+      eventId: eventIdNum,
+      date,
+      disciplineId: input.disciplineId,
+      nbPlace: 1,
+    };
+    payload = await callService<unknown>(
+      appToken,
+      "/appointment/reserve",
+      "post",
+      body,
+    );
+  } else {
+    const body = {
+      eventId: input.eventID,
+      date,
+      members: [Number(input.memberId)],
+      activity,
+      nbFriends: 0,
+    };
+    payload = await callService<unknown>(appToken, "/reservation", "post", body);
+  }
+
+  // Extraction : on cherche dans member.reservations[] la résa correspondante
+  // (match sur startDate + room).
   const obj = payload as Record<string, unknown> | null;
   const member = obj?.member as Record<string, unknown> | undefined;
   const reservations =
     (member?.reservations as Array<Record<string, unknown>> | undefined) ?? [];
-  // On match sur startDate exact (l'eventId Sportigo dans les reservations a un format
-  // différent : "ID_YYYY-MM-DD HH:mm_disciplineId").
-  const targetStart = date;
   const found = reservations
-    .filter((r) => (r.startDate as string | undefined) === targetStart)
+    .filter(
+      (r) =>
+        (r.startDate as string | undefined) === date &&
+        Number(r.room) === input.roomId,
+    )
     .sort(
       (a, b) =>
         Number(b.reservationId ?? 0) - Number(a.reservationId ?? 0),

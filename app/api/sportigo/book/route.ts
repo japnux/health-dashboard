@@ -6,29 +6,27 @@ import { bookEvent, SportigoNotConfiguredError } from "@/lib/sportigo/client";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
 import type {
   BookResponse,
+  BookSlotResult,
   BookUserResult,
   SportigoUser,
 } from "@/lib/sportigo/types";
 
-const subSlotSchema = z.object({
+const slotSchema = z.object({
+  kind: z.string().min(1),
   eventId: z.string().min(1),
   roomId: z.number().int(),
   dateLesson: z.string().min(1),
   activity: z.string().optional(),
+  discipline: z.string().optional(),
+  disciplineId: z.number().int().optional(),
 });
 
 const bookSchema = z.object({
   users: z.array(z.enum(["geoffrey", "lauriane"])).min(1),
-  eventId: z.string().min(1),
-  roomId: z.number().int(),
-  dateLesson: z.string().min(1),
-  discipline: z.string().optional(),
-  activity: z.string().optional(),
-  alsoBookReset: subSlotSchema.optional(),
-  resetDiscipline: z.string().optional(),
+  slots: z.array(slotSchema).min(1),
 });
 
-type Slot = z.infer<typeof subSlotSchema>;
+type Slot = z.infer<typeof slotSchema>;
 
 async function bookOne(
   user: SportigoUser,
@@ -42,6 +40,7 @@ async function bookOne(
         eventID: slot.eventId,
         memberId: session.memberId,
         activity: slot.activity,
+        disciplineId: slot.disciplineId,
       }),
     );
     return { ok: true, reservationId };
@@ -65,65 +64,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }
 
-  const {
-    users,
-    eventId,
-    roomId,
-    dateLesson,
-    discipline,
-    activity,
-    alsoBookReset,
-    resetDiscipline,
-  } = parsed.data;
-
+  const { users, slots } = parsed.data;
   const supabase = createServiceClient();
-  const dateOnly = dateLesson.slice(0, 10); // YYYY-MM-DD
 
-  // Réservation parallèle entre users, mais séquentiel par user (accès libre puis reset).
+  // Réservation parallèle entre users, séquentielle par slot pour chaque user.
   const perUser = await Promise.all(
     users.map(async (user): Promise<BookUserResult> => {
-      const accesRes = await bookOne(user, { eventId, roomId, dateLesson, activity });
-      const result: BookUserResult = { user, accesLibre: accesRes };
-
-      if (accesRes.ok) {
-        await supabase
-          .from("sportigo_reservations")
-          .insert({
-            user_key: user,
-            reservation_id: accesRes.reservationId,
-            event_id: eventId,
-            room_id: roomId,
-            discipline: discipline ?? "Accès libre",
-            date: dateOnly,
-            starts_at: dateLesson,
-          })
-          .then(({ error }) => {
-            if (error) console.error("[sportigo/book] insert acces:", error.message);
-          });
-      }
-
-      if (alsoBookReset) {
-        const resetRes = await bookOne(user, alsoBookReset);
-        result.reset = resetRes;
-        if (resetRes.ok) {
+      const slotResults: BookSlotResult[] = [];
+      for (const slot of slots) {
+        const r = await bookOne(user, slot);
+        if (r.ok) {
+          slotResults.push({ kind: slot.kind, ok: true, reservationId: r.reservationId });
           await supabase
             .from("sportigo_reservations")
             .insert({
               user_key: user,
-              reservation_id: resetRes.reservationId,
-              event_id: alsoBookReset.eventId,
-              room_id: alsoBookReset.roomId,
-              discipline: resetDiscipline ?? "The Reset",
-              date: alsoBookReset.dateLesson.slice(0, 10),
-              starts_at: alsoBookReset.dateLesson,
+              reservation_id: r.reservationId,
+              event_id: slot.eventId,
+              room_id: slot.roomId,
+              discipline: slot.discipline ?? slot.kind,
+              date: slot.dateLesson.slice(0, 10),
+              starts_at: slot.dateLesson,
             })
             .then(({ error }) => {
-              if (error) console.error("[sportigo/book] insert reset:", error.message);
+              if (error) console.error("[sportigo/book] insert:", error.message);
             });
+        } else {
+          slotResults.push({ kind: slot.kind, ok: false, error: r.error });
         }
       }
-
-      return result;
+      return { user, slots: slotResults };
     }),
   );
 
