@@ -74,6 +74,14 @@ export function MusculationBookButton() {
 
   const hasAnyBooking = allReservations.length > 0;
 
+  // Heure de fin de la dernière résa Accès libre du jour (pour filtrer les Reset).
+  const existingAccesEnd =
+    allReservations
+      .filter((r) => r.roomId === ROOM_ACCES_LIBRE)
+      .map((r) => r.end)
+      .sort()
+      .at(-1) ?? null;
+
   async function handleCancel(r: ActiveReservation) {
     setCancelling((prev) => new Set(prev).add(r.id));
     try {
@@ -141,6 +149,7 @@ export function MusculationBookButton() {
         open={mode === "book"}
         onClose={() => setMode("closed")}
         bookedUsers={bookedUsers}
+        existingAccesEnd={existingAccesEnd}
         onBooked={() => {
           refresh();
           window.dispatchEvent(new CustomEvent("sportigo:refresh"));

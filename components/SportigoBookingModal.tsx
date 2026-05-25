@@ -42,6 +42,10 @@ type Props = {
   onClose: () => void;
   bookedUsers: Set<SportigoUser>;
   onBooked: () => void;
+  // ISO end-time de la dernière résa Accès libre du jour (tous users confondus),
+  // utilisé pour filtrer les créneaux Reset à afficher (>= cette heure).
+  // Si null/undefined, on filtre à partir de l'heure courante.
+  existingAccesEnd?: string | null;
 };
 
 // On wrappe le contenu dans un composant interne monté uniquement quand open=true,
@@ -59,7 +63,7 @@ function defaultUserChoice(bookedUsers: Set<SportigoUser>): UserChoice {
   return "both";
 }
 
-function ModalContent({ onClose, bookedUsers, onBooked }: Props) {
+function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd }: Props) {
   const [planning, setPlanning] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -98,15 +102,33 @@ function ModalContent({ onClose, bookedUsers, onBooked }: Props) {
     };
   }, []);
 
-  // Créneau Reset proposé automatiquement (premier dispo à >= fin de l'Accès libre choisi).
+  // Heure de référence pour filtrer les Reset affichés :
+  //   1. fin du créneau Accès libre choisi dans la modal, sinon
+  //   2. fin de la résa Accès libre existante (passée en prop), sinon
+  //   3. heure courante.
+  const referenceTime = useMemo(() => {
+    if (selectedAccess) return new Date(selectedAccess.end).getTime();
+    if (existingAccesEnd) return new Date(existingAccesEnd).getTime();
+    return Date.now();
+  }, [selectedAccess, existingAccesEnd]);
+
+  // Liste des Reset filtrés à afficher (>= referenceTime).
+  const visibleResetSlots = useMemo(() => {
+    if (!planning) return [];
+    return planning.reset.filter(
+      (r) => new Date(r.start).getTime() >= referenceTime,
+    );
+  }, [planning, referenceTime]);
+
+  // Créneau Reset proposé automatiquement (premier dispo à >= referenceTime).
   const autoReset = useMemo(() => {
-    if (!selectedAccess || !planning) return null;
+    if (!selectedAccess) return null;
     return (
-      planning.reset
-        .filter((r) => !r.full && new Date(r.start).getTime() >= new Date(selectedAccess.end).getTime())
+      visibleResetSlots
+        .filter((r) => !r.full)
         .sort((a, b) => a.start.localeCompare(b.start))[0] ?? null
     );
-  }, [selectedAccess, planning]);
+  }, [selectedAccess, visibleResetSlots]);
 
   // Slot Reset effectivement sélectionné.
   const effectiveReset: PlanningSlot | null = useMemo(() => {
@@ -346,8 +368,12 @@ function ModalContent({ onClose, bookedUsers, onBooked }: Props) {
             <p className="text-[10px] uppercase tracking-wide text-[var(--color-body)] mb-2">
               🥵 The Reset · optionnel
             </p>
-            {!loading && !loadError && planning && planning.reset.length === 0 && (
-              <p className="text-xs text-[var(--color-body)]">Aucun Reset aujourd&apos;hui.</p>
+            {!loading && !loadError && planning && visibleResetSlots.length === 0 && (
+              <p className="text-xs text-[var(--color-body)]">
+                {selectedAccess || existingAccesEnd
+                  ? "Aucun Reset après ton Accès libre."
+                  : "Aucun Reset à venir aujourd'hui."}
+              </p>
             )}
             <div className="space-y-1">
               {/* Option "Auto +1h" — visible uniquement si un Accès libre est choisi */}
@@ -383,8 +409,8 @@ function ModalContent({ onClose, bookedUsers, onBooked }: Props) {
               >
                 <span>Sans Reset</span>
               </button>
-              {/* Liste des Reset du jour, cliquables */}
-              {planning?.reset.map((slot) => {
+              {/* Liste des Reset visibles (filtrés par heure de référence), cliquables */}
+              {visibleResetSlots.map((slot) => {
                 const isSelected =
                   resetSelection.mode === "manual" && resetSelection.slot.eventId === slot.eventId;
                 const free = Math.max(0, slot.capacity - slot.booked);

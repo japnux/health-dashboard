@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SportigoBookingModal } from "./SportigoBookingModal";
 import type {
   ActiveReservation,
   ReservationsResponse,
@@ -52,6 +53,7 @@ type State =
 export function Reservations() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
+  const [bookOpen, setBookOpen] = useState(false);
 
   const refresh = useCallback(() => {
     fetch("/api/sportigo/reservations")
@@ -97,6 +99,25 @@ export function Reservations() {
     }
   }
 
+  const allReservations: ActiveReservation[] =
+    state.status === "ready"
+      ? [...state.data.geoffrey, ...state.data.lauriane].sort((a, b) =>
+          a.start.localeCompare(b.start),
+        )
+      : [];
+
+  const bookedUsers = new Set<SportigoUser>();
+  if (state.status === "ready") {
+    if (state.data.geoffrey.some((r) => r.roomId === ROOM_ACCES_LIBRE)) bookedUsers.add("geoffrey");
+    if (state.data.lauriane.some((r) => r.roomId === ROOM_ACCES_LIBRE)) bookedUsers.add("lauriane");
+  }
+  const existingAccesEnd =
+    allReservations
+      .filter((r) => r.roomId === ROOM_ACCES_LIBRE)
+      .map((r) => r.end)
+      .sort()
+      .at(-1) ?? null;
+
   return (
     <section
       className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
@@ -117,56 +138,73 @@ export function Reservations() {
         <p className="text-sm text-[#ea2261]">{state.message}</p>
       )}
 
-      {state.status === "ready" && (() => {
-        const all = [...state.data.geoffrey, ...state.data.lauriane].sort((a, b) =>
-          a.start.localeCompare(b.start),
-        );
-        if (all.length === 0) {
-          return (
-            <p className="text-sm text-[var(--color-body)]">Aucune séance réservée</p>
-          );
-        }
-        return (
-          <ul className="space-y-1.5">
-            {all.map((r) => {
-              const badge = USER_BADGE[r.user];
-              const isCancelling = cancelling.has(r.id);
-              return (
-                <li
-                  key={r.id}
-                  className={`flex items-center gap-2 text-sm transition-opacity ${
-                    isCancelling ? "opacity-30" : "opacity-100"
-                  }`}
+      {state.status === "ready" && allReservations.length === 0 && (
+        <p className="text-sm text-[var(--color-body)] mb-3">Aucune séance réservée</p>
+      )}
+
+      {state.status === "ready" && allReservations.length > 0 && (
+        <ul className="space-y-1.5">
+          {allReservations.map((r) => {
+            const badge = USER_BADGE[r.user];
+            const isCancelling = cancelling.has(r.id);
+            return (
+              <li
+                key={r.id}
+                className={`flex items-center gap-2 text-sm transition-opacity ${
+                  isCancelling ? "opacity-30" : "opacity-100"
+                }`}
+              >
+                <span className="text-base leading-none">
+                  {disciplineEmoji(r.roomId, r.discipline)}
+                </span>
+                <span className="text-[var(--color-heading)] flex-shrink-0">
+                  {r.discipline}
+                </span>
+                <span className="text-[var(--color-body)] text-xs capitalize">
+                  {formatShort(r.start)} · {formatRange(r.start, r.end)}
+                </span>
+                <span
+                  className={`text-[10px] font-medium rounded-full w-4 h-4 flex items-center justify-center ${badge.bg} ${badge.text}`}
+                  title={r.user}
                 >
-                  <span className="text-base leading-none">
-                    {disciplineEmoji(r.roomId, r.discipline)}
-                  </span>
-                  <span className="text-[var(--color-heading)] flex-shrink-0">
-                    {r.discipline}
-                  </span>
-                  <span className="text-[var(--color-body)] text-xs capitalize">
-                    {formatShort(r.start)} · {formatRange(r.start, r.end)}
-                  </span>
-                  <span
-                    className={`text-[10px] font-medium rounded-full w-4 h-4 flex items-center justify-center ${badge.bg} ${badge.text}`}
-                    title={r.user}
-                  >
-                    {badge.label}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={isCancelling}
-                    onClick={() => handleCancel(r)}
-                    className="ml-auto text-xs text-[#ea2261] hover:underline disabled:opacity-50"
-                  >
-                    Annuler
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        );
-      })()}
+                  {badge.label}
+                </span>
+                <button
+                  type="button"
+                  disabled={isCancelling}
+                  onClick={() => handleCancel(r)}
+                  className="ml-auto text-xs text-[#ea2261] hover:underline disabled:opacity-50"
+                >
+                  Annuler
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {state.status === "ready" && (
+        <button
+          type="button"
+          onClick={() => setBookOpen(true)}
+          className={`text-xs text-[var(--color-brand-purple)] hover:underline ${
+            allReservations.length > 0 ? "mt-3" : ""
+          }`}
+        >
+          + Ajouter une séance
+        </button>
+      )}
+
+      <SportigoBookingModal
+        open={bookOpen}
+        onClose={() => setBookOpen(false)}
+        bookedUsers={bookedUsers}
+        existingAccesEnd={existingAccesEnd}
+        onBooked={() => {
+          refresh();
+          window.dispatchEvent(new CustomEvent("sportigo:refresh"));
+        }}
+      />
     </section>
   );
 }

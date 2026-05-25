@@ -67,6 +67,29 @@ export async function POST(request: Request) {
   const { users, slots } = parsed.data;
   const supabase = createServiceClient();
 
+  // Auto-coche "Musculation" dans planned_activities si on book un Accès libre
+  // (room 3394) et qu'elle n'est pas déjà cochée. Une seule fois pour la date du slot.
+  async function ensurePlannedMusculation(date: string) {
+    const { data } = await supabase
+      .from("planned_activities")
+      .select("count")
+      .eq("date", date)
+      .eq("type", "Musculation")
+      .maybeSingle();
+    const currentCount = data?.count ?? 0;
+    if (currentCount < 1) {
+      await supabase
+        .from("planned_activities")
+        .upsert(
+          { date, type: "Musculation", count: 1 },
+          { onConflict: "date,type" },
+        )
+        .then(({ error }) => {
+          if (error) console.error("[sportigo/book] auto-plan Musculation:", error.message);
+        });
+    }
+  }
+
   // Réservation parallèle entre users, séquentielle par slot pour chaque user.
   const perUser = await Promise.all(
     users.map(async (user): Promise<BookUserResult> => {
@@ -89,6 +112,10 @@ export async function POST(request: Request) {
             .then(({ error }) => {
               if (error) console.error("[sportigo/book] insert:", error.message);
             });
+          // Auto-coche Musculation pour ce jour si on vient de booker un Accès libre.
+          if (slot.roomId === 3394) {
+            await ensurePlannedMusculation(slot.dateLesson.slice(0, 10));
+          }
         } else {
           slotResults.push({ kind: slot.kind, ok: false, error: r.error });
         }
