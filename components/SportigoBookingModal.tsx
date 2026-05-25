@@ -445,16 +445,20 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
               >
                 <span>Sans Reset</span>
               </button>
-              {/* Liste des Reset visibles (filtrés par heure de référence), cliquables */}
+              {/* Liste des Reset visibles (filtrés par heure de référence), cliquables.
+                  Tous les slots Reset partagent le même eventId numérique côté Sportigo
+                  (différenciés uniquement par startDate) → on compare aussi sur slot.start. */}
               {visibleResetSlots.map((slot) => {
                 const isSelected =
-                  resetSelection.mode === "manual" && resetSelection.slot.eventId === slot.eventId;
+                  resetSelection.mode === "manual" &&
+                  resetSelection.slot.eventId === slot.eventId &&
+                  resetSelection.slot.start === slot.start;
                 const free = Math.max(0, slot.capacity - slot.booked);
                 const bookedBy = slotBookedBy(slot);
                 const isBooked = bookedBy.length > 0;
                 return (
                   <button
-                    key={slot.eventId}
+                    key={`${slot.eventId}_${slot.start}`}
                     type="button"
                     disabled={slot.full || submitting}
                     onClick={() => setResetSelection({ mode: "manual", slot })}
