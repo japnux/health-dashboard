@@ -4,6 +4,7 @@ import { recoveryColor } from "@/lib/recovery-score";
 import { NutritionTracker } from "@/components/NutritionTracker";
 import { MissingDataNotice, StaleScaleNotice } from "@/components/Notices";
 import { JournalDashboard } from "@/components/JournalDashboard";
+import { Reservations } from "@/components/Reservations";
 import { AiAnalysis } from "@/components/AiAnalysis";
 import { AiTrends, AiWorkoutSuggestion } from "@/components/AiInsights";
 import { PlannedActivities } from "@/components/PlannedActivities";
@@ -340,6 +341,9 @@ export default async function Home() {
 
       {/* ── Journal ── */}
       <JournalDashboard date={snap.date} impact={snap.journalImpact} />
+
+      {/* ── Réservations Sportigo ── */}
+      <Reservations />
 
       <div className="pb-8" />
 

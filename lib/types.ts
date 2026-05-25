@@ -334,6 +334,32 @@ export type Database = {
         Update: Partial<Database["public"]["Tables"]["food_library"]["Insert"]>;
         Relationships: [];
       };
+      sportigo_reservations: {
+        Row: {
+          id: string;
+          user_key: "geoffrey" | "lauriane";
+          reservation_id: string;
+          event_id: string;
+          room_id: number;
+          discipline: string;
+          date: string;
+          starts_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_key: "geoffrey" | "lauriane";
+          reservation_id: string;
+          event_id: string;
+          room_id: number;
+          discipline: string;
+          date: string;
+          starts_at: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["sportigo_reservations"]["Insert"]>;
+        Relationships: [];
+      };
       api_usage_logs: {
         Row: {
           id: string;
