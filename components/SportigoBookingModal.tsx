@@ -144,8 +144,14 @@ function ModalContent({ onClose, bookedUsers, onBooked }: Props) {
           roomId: selectedAccess.roomId,
           dateLesson: selectedAccess.start,
           discipline: selectedAccess.discipline || "Accès libre",
+          activity: selectedAccess.activity,
           alsoBookReset: reset
-            ? { eventId: reset.eventId, roomId: reset.roomId, dateLesson: reset.start }
+            ? {
+                eventId: reset.eventId,
+                roomId: reset.roomId,
+                dateLesson: reset.start,
+                activity: reset.activity,
+              }
             : undefined,
           resetDiscipline: reset?.discipline,
         }),

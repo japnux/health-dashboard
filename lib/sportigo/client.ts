@@ -58,7 +58,11 @@ export async function loginSportigo(user: SportigoUser): Promise<{ appToken: str
   if (!appToken) {
     throw new SportigoAuthError("Réponse de login Sportigo sans appToken");
   }
-  const memberId = (member?._id ?? member?.id ?? undefined) as string | undefined;
+  const rawId = (member?.id ?? member?._id ?? member?.memberId) as
+    | string
+    | number
+    | undefined;
+  const memberId = rawId != null ? String(rawId) : undefined;
   return { appToken, memberId };
 }
 
@@ -151,42 +155,68 @@ export type BookEventInput = {
   roomId: number;
   dateLesson: string;
   eventID: string;
+  memberId?: string;
+  // roomType : "cours-co" pour Accès libre (room 3394), "coaching" pour The Reset (room 3539).
+  // Le champ s'appelle `activity` dans l'API.
+  activity?: string;
 };
 
 export type BookEventResult = {
   reservationId: string;
-  raw: unknown;
 };
 
+// Endpoint reverse-engineered depuis le JS Sportigo :
+//   POST /reservation { eventId, date, members:[memberId], activity, nbFriends }
+// La réponse de succès est { status: "success", member: { ..., reservations: [...] } }
+// où reservations[].eventId contient l'ID du créneau qu'on vient de booker
+// et reservations[].reservationId est l'ID numérique utilisé pour annuler.
 export async function bookEvent(
   appToken: string,
   input: BookEventInput,
 ): Promise<BookEventResult> {
-  // Sportigo attend dateLesson au format "YYYY-MM-DD HH:mm:ss" (espace, pas T).
-  const dateLesson = input.dateLesson.includes("T")
+  if (!input.memberId) {
+    throw new SportigoApiError("memberId manquant — le login ne l'a pas fourni");
+  }
+  // Sportigo attend date au format "YYYY-MM-DD HH:mm:ss".
+  const date = input.dateLesson.includes("T")
     ? input.dateLesson.replace("T", " ").slice(0, 19)
     : input.dateLesson;
-  const payload = await callService<unknown>(appToken, "/event", "post", {
-    roomId: input.roomId,
-    dateLesson,
-    eventID: input.eventID,
-  });
-  // La réponse contient l'id de la réservation. On essaie plusieurs clés possibles.
-  let reservationId: string | undefined;
-  if (payload && typeof payload === "object") {
-    const obj = payload as Record<string, unknown>;
-    reservationId =
-      (obj.reservationId as string | undefined) ??
-      (obj.reservation_id as string | undefined) ??
-      (obj._id as string | undefined) ??
-      (obj.id as string | undefined) ??
-      ((obj.reservation as Record<string, unknown> | undefined)?._id as string | undefined) ??
-      ((obj.reservation as Record<string, unknown> | undefined)?.id as string | undefined);
-  }
+  const body = {
+    eventId: input.eventID,
+    date,
+    members: [Number(input.memberId)],
+    // 'activity' = roomType de l'event (cours-co / coaching). Fallback raisonnable
+    // sur le roomType correspondant aux rooms connues.
+    activity:
+      input.activity ??
+      (input.roomId === 3539 ? "coaching" : "cours-co"),
+    nbFriends: 0,
+  };
+  const payload = await callService<unknown>(appToken, "/reservation", "post", body);
+  // Extraction : on cherche dans member.reservations[] la résa la plus récente
+  // matchant le startDate ou le eventId d'origine.
+  const obj = payload as Record<string, unknown> | null;
+  const member = obj?.member as Record<string, unknown> | undefined;
+  const reservations =
+    (member?.reservations as Array<Record<string, unknown>> | undefined) ?? [];
+  // On match sur startDate exact (l'eventId Sportigo dans les reservations a un format
+  // différent : "ID_YYYY-MM-DD HH:mm_disciplineId").
+  const targetStart = date;
+  const found = reservations
+    .filter((r) => (r.startDate as string | undefined) === targetStart)
+    .sort(
+      (a, b) =>
+        Number(b.reservationId ?? 0) - Number(a.reservationId ?? 0),
+    )[0];
+  const reservationId = found?.reservationId;
   if (!reservationId) {
-    throw new SportigoApiError("Réponse de booking sans reservationId", undefined, payload);
+    throw new SportigoApiError(
+      "Réservation créée mais reservationId introuvable dans la réponse",
+      undefined,
+      payload,
+    );
   }
-  return { reservationId, raw: payload };
+  return { reservationId: String(reservationId) };
 }
 
 export async function cancelReservation(

@@ -16,6 +16,8 @@ export type PlanningSlot = {
   capacity: number;
   booked: number;
   full: boolean;
+  // roomType Sportigo (ex: "cours-co", "coaching") — utilisé comme `activity` au booking.
+  activity?: string;
 };
 
 export type PlanningResponse = {

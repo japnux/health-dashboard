@@ -84,6 +84,8 @@ export function normalizeEvent(ev: RawPlanningEvent): PlanningSlot | null {
     ) ?? 0;
   const full = ev.isFull === true || (capacity > 0 && booked >= capacity);
 
+  const activity = pickString((ev as Record<string, unknown>).roomType);
+
   return {
     eventId,
     roomId,
@@ -93,6 +95,7 @@ export function normalizeEvent(ev: RawPlanningEvent): PlanningSlot | null {
     capacity,
     booked,
     full,
+    activity,
   };
 }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/service";
-import { withAppToken } from "@/lib/sportigo/auth";
+import { withSession } from "@/lib/sportigo/auth";
 import { bookEvent, SportigoNotConfiguredError } from "@/lib/sportigo/client";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
 import type {
@@ -14,6 +14,7 @@ const subSlotSchema = z.object({
   eventId: z.string().min(1),
   roomId: z.number().int(),
   dateLesson: z.string().min(1),
+  activity: z.string().optional(),
 });
 
 const bookSchema = z.object({
@@ -22,6 +23,7 @@ const bookSchema = z.object({
   roomId: z.number().int(),
   dateLesson: z.string().min(1),
   discipline: z.string().optional(),
+  activity: z.string().optional(),
   alsoBookReset: subSlotSchema.optional(),
   resetDiscipline: z.string().optional(),
 });
@@ -33,11 +35,13 @@ async function bookOne(
   slot: Slot,
 ): Promise<{ ok: true; reservationId: string } | { ok: false; error: string }> {
   try {
-    const { reservationId } = await withAppToken(user, (token) =>
-      bookEvent(token, {
+    const { reservationId } = await withSession(user, (session) =>
+      bookEvent(session.appToken, {
         roomId: slot.roomId,
         dateLesson: slot.dateLesson,
         eventID: slot.eventId,
+        memberId: session.memberId,
+        activity: slot.activity,
       }),
     );
     return { ok: true, reservationId };
@@ -67,6 +71,7 @@ export async function POST(request: Request) {
     roomId,
     dateLesson,
     discipline,
+    activity,
     alsoBookReset,
     resetDiscipline,
   } = parsed.data;
@@ -77,7 +82,7 @@ export async function POST(request: Request) {
   // Réservation parallèle entre users, mais séquentiel par user (accès libre puis reset).
   const perUser = await Promise.all(
     users.map(async (user): Promise<BookUserResult> => {
-      const accesRes = await bookOne(user, { eventId, roomId, dateLesson });
+      const accesRes = await bookOne(user, { eventId, roomId, dateLesson, activity });
       const result: BookUserResult = { user, accesLibre: accesRes };
 
       if (accesRes.ok) {
