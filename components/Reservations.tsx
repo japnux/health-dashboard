@@ -53,9 +53,12 @@ type State =
 export function Reservations() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [bookOpen, setBookOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(() => {
+    setRefreshing(true);
     fetch("/api/sportigo/reservations")
       .then(async (r) => {
         if (!r.ok) {
@@ -65,7 +68,8 @@ export function Reservations() {
         return r.json() as Promise<ReservationsResponse>;
       })
       .then((data) => setState({ status: "ready", data }))
-      .catch((err) => setState({ status: "error", message: err.message }));
+      .catch((err) => setState({ status: "error", message: err.message }))
+      .finally(() => setRefreshing(false));
   }, []);
 
   useEffect(() => {
@@ -78,19 +82,23 @@ export function Reservations() {
   }, [refresh]);
 
   async function handleCancel(reservation: ActiveReservation) {
+    setCancelError(null);
     setCancelling((prev) => new Set(prev).add(reservation.id));
     try {
       const resp = await fetch(`/api/sportigo/reservations/${reservation.id}`, {
         method: "DELETE",
       });
       if (!resp.ok && resp.status !== 204) {
-        throw new Error(`HTTP ${resp.status}`);
+        const body = await resp.json().catch(() => ({}));
+        throw new Error(body.error || `Erreur ${resp.status}`);
       }
       refresh();
       // Notifier les autres composants (PlannedActivities).
       window.dispatchEvent(new CustomEvent("sportigo:refresh"));
     } catch (err) {
-      console.error("[Reservations] annulation:", err);
+      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+      console.error("[Reservations] annulation:", msg);
+      setCancelError(msg);
       setCancelling((prev) => {
         const next = new Set(prev);
         next.delete(reservation.id);
@@ -129,9 +137,24 @@ export function Reservations() {
       className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
       style={{ boxShadow: "var(--shadow-ambient)" }}
     >
-      <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal mb-3">
-        Réservations
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
+          Réservations
+        </h2>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={refreshing}
+          title="Rafraîchir depuis Sportigo"
+          className="text-[var(--color-body)] hover:text-[var(--color-heading)] transition-colors disabled:opacity-50"
+        >
+          <span
+            className={`inline-block text-base leading-none ${refreshing ? "animate-spin" : ""}`}
+          >
+            ↻
+          </span>
+        </button>
+      </div>
 
       {state.status === "loading" && (
         <div className="space-y-2">
@@ -146,6 +169,10 @@ export function Reservations() {
 
       {state.status === "ready" && allReservations.length === 0 && (
         <p className="text-sm text-[var(--color-body)] mb-3">Aucune séance réservée</p>
+      )}
+
+      {cancelError && (
+        <p className="text-xs text-[#ea2261] mb-2">{cancelError}</p>
       )}
 
       {state.status === "ready" && allReservations.length > 0 && (

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { withAppToken } from "@/lib/sportigo/auth";
-import { fetchPlanning, SportigoNotConfiguredError } from "@/lib/sportigo/client";
+import {
+  fetchMyReservations,
+  fetchPlanning,
+  SportigoNotConfiguredError,
+} from "@/lib/sportigo/client";
 import { normalizeEvent } from "@/lib/sportigo/normalize";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
 import type {
@@ -45,6 +49,57 @@ export async function GET() {
   const empty: ReservationsResponse = { date, geoffrey: [], lauriane: [] };
   if (!rows || rows.length === 0) return NextResponse.json(empty);
 
+  // Réconciliation : source de vérité = Sportigo. On compare les reservation_id
+  // Supabase aux résa actuelles côté Sportigo et on supprime les orphelines
+  // (annulées par le propriétaire de la salle hors de notre app).
+  const usersWithRows = Array.from(
+    new Set(rows.map((r) => r.user_key as SportigoUser)),
+  );
+  const liveByUser: Record<string, Set<string>> = {};
+  for (const user of usersWithRows) {
+    try {
+      const live = await fetchMyReservations(user);
+      liveByUser[user] = new Set(live.map((r) => r.reservationId));
+    } catch (err) {
+      if (err instanceof SportigoNotConfiguredError) {
+        console.warn("[sportigo/reservations] sync skip user (no creds):", user);
+      } else {
+        console.warn("[sportigo/reservations] sync échec pour", user, err);
+      }
+      // Si on n'arrive pas à vérifier, on garde les rows en DB pour ne pas perdre d'info.
+      liveByUser[user] = new Set(
+        rows.filter((r) => r.user_key === user).map((r) => r.reservation_id),
+      );
+    }
+  }
+
+  // Sépare rows valides (toujours côté Sportigo) et orphelines.
+  const validRows: typeof rows = [];
+  const orphanIds: string[] = [];
+  for (const row of rows) {
+    const userLive = liveByUser[row.user_key];
+    if (userLive && userLive.has(row.reservation_id)) {
+      validRows.push(row);
+    } else {
+      orphanIds.push(row.id);
+    }
+  }
+  if (orphanIds.length > 0) {
+    const { error: delErr } = await supabase
+      .from("sportigo_reservations")
+      .delete()
+      .in("id", orphanIds);
+    if (delErr) {
+      console.error("[sportigo/reservations] purge orphelines:", delErr.message);
+    } else {
+      console.log(
+        `[sportigo/reservations] purge ${orphanIds.length} résa(s) annulée(s) côté salle`,
+      );
+    }
+  }
+
+  if (validRows.length === 0) return NextResponse.json(empty);
+
   // Récupération du planning pour enrichir les détails à jour (heures, etc.).
   let planningById = new Map<string, ReturnType<typeof normalizeEvent>>();
   try {
@@ -64,7 +119,7 @@ export async function GET() {
   }
 
   const groups: ReservationsResponse = { date, geoffrey: [], lauriane: [] };
-  for (const row of rows) {
+  for (const row of validRows) {
     const user = row.user_key as SportigoUser;
     if (user !== "geoffrey" && user !== "lauriane") continue;
 

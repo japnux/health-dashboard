@@ -42,6 +42,24 @@ function readCredentials(user: SportigoUser): Credentials {
 }
 
 export async function loginSportigo(user: SportigoUser): Promise<{ appToken: string; memberId?: string }> {
+  const { member } = await loginFull(user);
+  const appToken = (member?.appToken ?? undefined) as string | undefined;
+  if (!appToken) {
+    throw new SportigoAuthError("Réponse de login Sportigo sans appToken");
+  }
+  const rawId = (member?.id ?? member?._id ?? member?.memberId) as
+    | string
+    | number
+    | undefined;
+  const memberId = rawId != null ? String(rawId) : undefined;
+  return { appToken, memberId };
+}
+
+// Login complet : retourne l'objet member entier (avec reservations[]).
+// Utilisé pour la réconciliation des réservations.
+export async function loginFull(
+  user: SportigoUser,
+): Promise<{ member: Record<string, unknown> }> {
   const { email, password } = readCredentials(user);
   const resp = await fetch(LOGIN_URL, {
     method: "POST",
@@ -54,16 +72,22 @@ export async function loginSportigo(user: SportigoUser): Promise<{ appToken: str
   }
   const json = (await resp.json()) as Record<string, unknown>;
   const member = (json.member ?? json.data ?? json) as Record<string, unknown>;
-  const appToken = (member?.appToken ?? json.appToken) as string | undefined;
-  if (!appToken) {
-    throw new SportigoAuthError("Réponse de login Sportigo sans appToken");
-  }
-  const rawId = (member?.id ?? member?._id ?? member?.memberId) as
-    | string
-    | number
-    | undefined;
-  const memberId = rawId != null ? String(rawId) : undefined;
-  return { appToken, memberId };
+  return { member };
+}
+
+// Récupère la liste des réservations actuelles d'un user (source de vérité Sportigo).
+// Appelle le login (pas de cache) pour avoir l'état frais.
+export async function fetchMyReservations(
+  user: SportigoUser,
+): Promise<Array<{ reservationId: string; startDate?: string; discipline?: string; room?: number }>> {
+  const { member } = await loginFull(user);
+  const arr = (member.reservations as Array<Record<string, unknown>> | undefined) ?? [];
+  return arr.map((r) => ({
+    reservationId: String(r.reservationId ?? r.id ?? ""),
+    startDate: r.startDate as string | undefined,
+    discipline: r.discipline as string | undefined,
+    room: typeof r.room === "number" ? (r.room as number) : undefined,
+  }));
 }
 
 // Appel générique au proxy Sportigo.
@@ -247,6 +271,28 @@ export async function bookEvent(
 export async function cancelReservation(
   appToken: string,
   reservationId: string,
+  memberId?: string,
 ): Promise<void> {
-  await callService<unknown>(appToken, `/reservation/${reservationId}`, "delete");
+  // Le proxy Sportigo ne supporte pas forcement method: "delete".
+  // On tente d'abord DELETE, puis POST /cancelBooking en fallback.
+  const data: Record<string, unknown> = { reservationId: Number(reservationId) };
+  if (memberId) data.members = [Number(memberId)];
+
+  try {
+    await callService<unknown>(
+      appToken,
+      `/reservation/${reservationId}`,
+      "delete",
+      data,
+    );
+    return;
+  } catch (deleteErr) {
+    console.warn(
+      `[cancelReservation] DELETE /reservation/${reservationId} echoue, fallback POST /cancelBooking`,
+      deleteErr instanceof Error ? deleteErr.message : deleteErr,
+    );
+  }
+
+  // Fallback : POST /cancelBooking (pattern courant des APIs Sportigo).
+  await callService<unknown>(appToken, "/cancelBooking", "post", data);
 }
