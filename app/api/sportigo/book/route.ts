@@ -4,12 +4,52 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { withSession } from "@/lib/sportigo/auth";
 import { bookEvent, SportigoNotConfiguredError } from "@/lib/sportigo/client";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
+import {
+  createCalendarEvent,
+  GoogleCalendarNotConfiguredError,
+} from "@/lib/google-calendar";
 import type {
   BookResponse,
   BookSlotResult,
   BookUserResult,
   SportigoUser,
 } from "@/lib/sportigo/types";
+
+const LAURIANE_EMAIL =
+  process.env.LAURIANE_EMAIL ?? "laurianenagel@gmail.com";
+
+// Durée d'un slot selon la room (Sportigo ne renvoie pas la fin dans `dateLesson`).
+function slotDurationMinutes(roomId: number): number {
+  if (roomId === 3539) return 30; // The Reset
+  return 60; // Accès libre (room 3394) + fallback
+}
+
+function addMinutesToIsoLocal(isoLocal: string, mins: number): string {
+  // isoLocal au format "YYYY-MM-DDTHH:mm:ss" (heure locale Paris).
+  // On manipule via composants pour éviter les pièges de fuseau.
+  const m = isoLocal.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return isoLocal;
+  const [, y, mo, d, h, mi, s] = m;
+  const date = new Date(
+    Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)),
+  );
+  date.setUTCMinutes(date.getUTCMinutes() + mins);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+}
+
+function slotSummary(slot: Slot, users: SportigoUser[]): string {
+  const isReset = slot.roomId === 3539;
+  const emoji = isReset ? "🥵" : "🏋️";
+  const name = isReset ? "The Reset" : "Muscu (Accès libre)";
+  const who =
+    users.length === 2
+      ? " · G+L"
+      : users[0] === "lauriane"
+        ? " · L"
+        : "";
+  return `${emoji} ${name}${who} — Novarc`;
+}
 
 const slotSchema = z.object({
   kind: z.string().min(1),
@@ -90,6 +130,9 @@ export async function POST(request: Request) {
     }
   }
 
+  // Pour la création d'event Google Calendar à la fin : on track qui a réussi par slot.
+  const successByEventId: Record<string, SportigoUser[]> = {};
+
   // Réservation parallèle entre users, séquentielle par slot pour chaque user.
   const perUser = await Promise.all(
     users.map(async (user): Promise<BookUserResult> => {
@@ -116,6 +159,10 @@ export async function POST(request: Request) {
           if (slot.roomId === 3394) {
             await ensurePlannedMusculation(slot.dateLesson.slice(0, 10));
           }
+          successByEventId[slot.eventId] ??= [];
+          if (!successByEventId[slot.eventId].includes(user)) {
+            successByEventId[slot.eventId].push(user);
+          }
         } else {
           slotResults.push({ kind: slot.kind, ok: false, error: r.error });
         }
@@ -123,6 +170,40 @@ export async function POST(request: Request) {
       return { user, slots: slotResults };
     }),
   );
+
+  // Création des événements Google Calendar (1 par slot effectivement booké).
+  // Tous les events vont sur l'agenda principal de Geoffrey (refresh token).
+  // Lauriane est invitée si elle fait partie des users bookés sur ce slot.
+  for (const slot of slots) {
+    const successUsers = successByEventId[slot.eventId];
+    if (!successUsers || successUsers.length === 0) continue;
+    try {
+      const startLocal = slot.dateLesson.includes("T")
+        ? slot.dateLesson.slice(0, 19)
+        : slot.dateLesson.replace(" ", "T");
+      const endLocal = addMinutesToIsoLocal(
+        startLocal,
+        slotDurationMinutes(slot.roomId),
+      );
+      await createCalendarEvent({
+        summary: slotSummary(slot, successUsers),
+        startIsoLocal: startLocal,
+        endIsoLocal: endLocal,
+        location: "Novarc",
+        description: `Réservation Sportigo · ${successUsers
+          .map((u) => (u === "geoffrey" ? "Geoffrey" : "Lauriane"))
+          .join(" + ")}`,
+        attendees: successUsers.includes("lauriane") ? [LAURIANE_EMAIL] : [],
+      });
+    } catch (err) {
+      if (err instanceof GoogleCalendarNotConfiguredError) {
+        // Pas grave : booking réussi côté Sportigo, le calendar est optionnel.
+        console.warn("[sportigo/book] Google Calendar non configuré, on saute");
+      } else {
+        console.error("[sportigo/book] createCalendarEvent:", err);
+      }
+    }
+  }
 
   const responseBody: BookResponse = { results: perUser };
   return NextResponse.json(responseBody);
