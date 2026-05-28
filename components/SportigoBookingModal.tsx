@@ -326,10 +326,10 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
 
         {/* Corps */}
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Colonne gauche : Accès libre */}
+          {/* Colonne gauche : Espace Sport (Accès libre + cours collectifs) */}
           <div>
             <p className="text-[10px] uppercase tracking-wide text-[var(--color-body)] mb-2">
-              🏋️ Accès libre · choisis ton créneau
+              🏋️ Espace Sport · choisis ton créneau
             </p>
             {loading && (
               <div className="space-y-2">
@@ -366,27 +366,36 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                         : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[var(--color-brand-purple-light)] hover:text-[var(--color-brand-purple)]"
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">
-                      {isBooked && <span>✓</span>}
-                      {formatHour(slot.start)} – {formatHour(slot.end)}
-                      {isBooked && (
-                        <span className="inline-flex items-center gap-0.5">
-                          {bookedBy.map((u) => (
-                            <span
-                              key={u}
-                              className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
-                              title={u}
-                            >
-                              {u === "geoffrey" ? "G" : "L"}
-                            </span>
-                          ))}
+                    <span className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        {isBooked && <span>✓</span>}
+                        <span>
+                          {formatHour(slot.start)} – {formatHour(slot.end)}
+                        </span>
+                        {isBooked && (
+                          <span className="inline-flex items-center gap-0.5">
+                            {bookedBy.map((u) => (
+                              <span
+                                key={u}
+                                className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
+                                title={u}
+                              >
+                                {u === "geoffrey" ? "G" : "L"}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                      {slot.discipline && (
+                        <span className="text-[10px] text-[var(--color-body)] truncate max-w-full">
+                          {slot.discipline}
                         </span>
                       )}
                     </span>
                     {slot.full ? (
-                      <span className="text-[10px] uppercase tracking-wide">Complet</span>
+                      <span className="text-[10px] uppercase tracking-wide flex-shrink-0">Complet</span>
                     ) : (
-                      <span className="text-[10px]">
+                      <span className="text-[10px] flex-shrink-0">
                         {slot.booked}/{slot.capacity}
                         {free > 0 && (
                           <span className="ml-1 text-[var(--color-body)]">· {free} libre{free > 1 ? "s" : ""}</span>
@@ -472,27 +481,36 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                         : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[#15be53]/40 hover:text-[#108c3d]"
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">
-                      {isBooked && <span>✓</span>}
-                      {formatHour(slot.start)} – {formatHour(slot.end)}
-                      {isBooked && (
-                        <span className="inline-flex items-center gap-0.5">
-                          {bookedBy.map((u) => (
-                            <span
-                              key={u}
-                              className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
-                              title={u}
-                            >
-                              {u === "geoffrey" ? "G" : "L"}
-                            </span>
-                          ))}
+                    <span className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        {isBooked && <span>✓</span>}
+                        <span>
+                          {formatHour(slot.start)} – {formatHour(slot.end)}
+                        </span>
+                        {isBooked && (
+                          <span className="inline-flex items-center gap-0.5">
+                            {bookedBy.map((u) => (
+                              <span
+                                key={u}
+                                className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
+                                title={u}
+                              >
+                                {u === "geoffrey" ? "G" : "L"}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                      {slot.discipline && (
+                        <span className="text-[10px] text-[var(--color-body)] truncate max-w-full">
+                          {slot.discipline}
                         </span>
                       )}
                     </span>
                     {slot.full ? (
-                      <span className="text-[10px] uppercase tracking-wide">Complet</span>
+                      <span className="text-[10px] uppercase tracking-wide flex-shrink-0">Complet</span>
                     ) : (
-                      <span className="text-[10px]">
+                      <span className="text-[10px] flex-shrink-0">
                         {slot.booked}/{slot.capacity}
                         {free > 0 && (
                           <span className="ml-1 text-[var(--color-body)]">
