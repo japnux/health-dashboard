@@ -4,7 +4,11 @@ import { withAppToken } from "@/lib/sportigo/auth";
 import { fetchPlanning, SportigoNotConfiguredError } from "@/lib/sportigo/client";
 import { splitByRoom } from "@/lib/sportigo/normalize";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
-import type { PlanningResponse } from "@/lib/sportigo/types";
+import {
+  ROOM_ACCES_LIBRE,
+  ROOM_THE_RESET,
+  type PlanningResponse,
+} from "@/lib/sportigo/types";
 
 const querySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -24,9 +28,16 @@ export async function GET(request: Request) {
   const { date } = parsed.data;
 
   try {
-    // Le planning est une vue salle, indépendante du user — on appelle avec Geoffrey par défaut.
-    const events = await withAppToken("geoffrey", (token) => fetchPlanning(token, date, date));
-    const { accesLibre, reset } = splitByRoom(events);
+    // L'API /planningdx ne renvoie qu'une seule room par défaut. On fetch les 2 en parallèle :
+    //   - room 3394 = Espace Sport (Accès libre)
+    //   - room 3539 = Espace Wellness (The Reset + autres)
+    const [sportEvents, wellnessEvents] = await withAppToken("geoffrey", async (token) => {
+      return Promise.all([
+        fetchPlanning(token, date, date, ROOM_ACCES_LIBRE),
+        fetchPlanning(token, date, date, ROOM_THE_RESET),
+      ]);
+    });
+    const { accesLibre, reset } = splitByRoom([...sportEvents, ...wellnessEvents]);
     const body: PlanningResponse = { date, accesLibre, reset };
     return NextResponse.json(body);
   } catch (err) {

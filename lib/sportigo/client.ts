@@ -157,13 +157,14 @@ export async function fetchPlanning(
   appToken: string,
   dateStart: string,
   dateEnd: string,
+  room?: number,
 ): Promise<RawPlanningEvent[]> {
-  // L'API attend des dates au format Sportigo. On laisse passer la string telle quelle
-  // (YYYY-MM-DD ou ISO complet) — Sportigo accepte les deux.
-  const payload = await callService<unknown>(appToken, "/planningdx", "post", {
-    dateStart,
-    dateEnd,
-  });
+  // L'API /planningdx retourne par défaut les events d'une seule room (Espace Sport).
+  // Pour récupérer les events d'une autre room (ex Espace Wellness = 3539), il faut
+  // passer le param `room` explicitement.
+  const data: Record<string, unknown> = { dateStart, dateEnd };
+  if (room != null) data.room = room;
+  const payload = await callService<unknown>(appToken, "/planningdx", "post", data);
   // La forme réelle est typiquement { events: [...] } ou directement un array.
   if (Array.isArray(payload)) return payload as RawPlanningEvent[];
   if (payload && typeof payload === "object") {

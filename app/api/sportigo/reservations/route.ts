@@ -8,10 +8,12 @@ import {
 } from "@/lib/sportigo/client";
 import { normalizeEvent } from "@/lib/sportigo/normalize";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
-import type {
-  ActiveReservation,
-  ReservationsResponse,
-  SportigoUser,
+import {
+  ROOM_ACCES_LIBRE,
+  ROOM_THE_RESET,
+  type ActiveReservation,
+  type ReservationsResponse,
+  type SportigoUser,
 } from "@/lib/sportigo/types";
 
 function todayParisDate(): string {
@@ -100,11 +102,16 @@ export async function GET() {
 
   if (validRows.length === 0) return NextResponse.json(empty);
 
-  // Récupération du planning pour enrichir les détails à jour (heures, etc.).
+  // Récupération du planning (2 rooms) pour enrichir les détails à jour (heures, etc.).
   let planningById = new Map<string, ReturnType<typeof normalizeEvent>>();
   try {
-    const events = await withAppToken("geoffrey", (token) => fetchPlanning(token, date, date));
-    for (const raw of events) {
+    const [sportEvents, wellnessEvents] = await withAppToken("geoffrey", async (token) =>
+      Promise.all([
+        fetchPlanning(token, date, date, ROOM_ACCES_LIBRE),
+        fetchPlanning(token, date, date, ROOM_THE_RESET),
+      ]),
+    );
+    for (const raw of [...sportEvents, ...wellnessEvents]) {
       const slot = normalizeEvent(raw);
       if (slot) planningById.set(slot.eventId, slot);
     }
