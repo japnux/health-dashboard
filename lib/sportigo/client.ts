@@ -75,17 +75,31 @@ export async function loginFull(
   return { member };
 }
 
+export type LiveReservation = {
+  reservationId: string;
+  eventId?: string;
+  startDate?: string;
+  endDate?: string;
+  discipline?: string;
+  disciplineId?: number;
+  room?: number;
+};
+
 // Récupère la liste des réservations actuelles d'un user (source de vérité Sportigo).
 // Appelle le login (pas de cache) pour avoir l'état frais.
 export async function fetchMyReservations(
   user: SportigoUser,
-): Promise<Array<{ reservationId: string; startDate?: string; discipline?: string; room?: number }>> {
+): Promise<LiveReservation[]> {
   const { member } = await loginFull(user);
   const arr = (member.reservations as Array<Record<string, unknown>> | undefined) ?? [];
   return arr.map((r) => ({
     reservationId: String(r.reservationId ?? r.id ?? ""),
+    eventId: (r.id as string | undefined) ?? (r.eventId as string | undefined),
     startDate: r.startDate as string | undefined,
+    endDate: r.endDate as string | undefined,
     discipline: r.discipline as string | undefined,
+    disciplineId:
+      typeof r.disciplineId === "number" ? (r.disciplineId as number) : undefined,
     room: typeof r.room === "number" ? (r.room as number) : undefined,
   }));
 }
