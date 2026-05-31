@@ -22,19 +22,34 @@ function formatHour(iso: string): string {
   return `${h}h${m}`;
 }
 
-function todayLong(): string {
-  return new Date().toLocaleDateString("fr-FR", {
+function dateLong(d: Date): string {
+  return d.toLocaleDateString("fr-FR", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
 }
 
-function todayISO(): string {
-  const now = new Date();
-  const tzOffset = now.getTimezoneOffset() * 60_000;
-  const local = new Date(now.getTime() - tzOffset);
+function toLocalISODate(d: Date): string {
+  const tzOffset = d.getTimezoneOffset() * 60_000;
+  const local = new Date(d.getTime() - tzOffset);
   return local.toISOString().slice(0, 10);
+}
+
+function todayISO(): string {
+  return toLocalISODate(new Date());
+}
+
+function tomorrowISO(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return toLocalISODate(d);
+}
+
+function tomorrowDate(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return d;
 }
 
 type Props = {
@@ -66,10 +81,19 @@ function defaultUserChoice(bookedUsers: Set<SportigoUser>): UserChoice {
   return "both";
 }
 
+type DayChoice = "today" | "tomorrow";
+
 function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, bookedBySlot }: Props) {
+  const [dayChoice, setDayChoice] = useState<DayChoice>("today");
+  // Les props bookedUsers / existingAccesEnd / bookedBySlot reflètent les résa
+  // d'aujourd'hui uniquement — on ne les applique que si l'utilisateur reste sur "today".
+  const effectiveBookedBySlot = dayChoice === "today" ? bookedBySlot : undefined;
+  const effectiveExistingAccesEnd = dayChoice === "today" ? existingAccesEnd : null;
+  const effectiveBookedUsers = dayChoice === "today" ? bookedUsers : new Set<SportigoUser>();
+
   const slotBookedBy = (slot: PlanningSlot): SportigoUser[] => {
-    if (!bookedBySlot) return [];
-    return bookedBySlot[`${slot.roomId}_${slot.start}`] ?? [];
+    if (!effectiveBookedBySlot) return [];
+    return effectiveBookedBySlot[`${slot.roomId}_${slot.start}`] ?? [];
   };
   const [planning, setPlanning] = useState<PlanningResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,10 +108,19 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
   const [toast, setToast] = useState<string | null>(null);
   const [partial, setPartial] = useState<BookResponse | null>(null);
 
-  // Fetch planning au mount (le composant n'est monté que quand la modal s'ouvre).
+  const dateISO = dayChoice === "today" ? todayISO() : tomorrowISO();
+  const dateLabel = dayChoice === "today" ? dateLong(new Date()) : dateLong(tomorrowDate());
+
+  // Fetch planning à chaque changement de date (au mount aussi).
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/sportigo/planning?date=${todayISO()}`)
+    setLoading(true);
+    setLoadError(null);
+    setPlanning(null);
+    // Reset des sélections quand on change de date.
+    setSelectedAccess(null);
+    setResetSelection({ mode: "auto" });
+    fetch(`/api/sportigo/planning?date=${dateISO}`)
       .then(async (r) => {
         if (!r.ok) {
           const body = await r.json().catch(() => ({}));
@@ -107,17 +140,19 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dateISO]);
 
   // Heure de référence pour filtrer les Reset affichés :
   //   1. fin du créneau Accès libre choisi dans la modal, sinon
-  //   2. fin de la résa Accès libre existante (passée en prop), sinon
-  //   3. heure courante.
+  //   2. fin de la résa Accès libre existante d'aujourd'hui, sinon
+  //   3. heure courante (uniquement pour "today"), sinon début de journée pour "tomorrow".
   const referenceTime = useMemo(() => {
     if (selectedAccess) return new Date(selectedAccess.end).getTime();
-    if (existingAccesEnd) return new Date(existingAccesEnd).getTime();
-    return Date.now();
-  }, [selectedAccess, existingAccesEnd]);
+    if (effectiveExistingAccesEnd) return new Date(effectiveExistingAccesEnd).getTime();
+    if (dayChoice === "today") return Date.now();
+    // "tomorrow" sans contexte : afficher tous les Reset (référence = début de journée).
+    return new Date(`${dateISO}T00:00:00`).getTime();
+  }, [selectedAccess, effectiveExistingAccesEnd, dayChoice, dateISO]);
 
   // Liste des Reset filtrés à afficher (>= referenceTime).
   const visibleResetSlots = useMemo(() => {
@@ -151,19 +186,20 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
 
   // Conflit par slot précis : on ne filtre un user que s'il a déjà booké
   // exactement le créneau sélectionné (Accès libre ET/OU Reset).
+  // Note : effectiveBookedBySlot est null si on est sur "demain" → pas de conflit possible.
   const usersAlreadyOnSelected = useMemo<Set<SportigoUser>>(() => {
     const s = new Set<SportigoUser>();
-    if (!bookedBySlot) return s;
+    if (!effectiveBookedBySlot) return s;
     if (selectedAccess) {
       const key = `${selectedAccess.roomId}_${selectedAccess.start}`;
-      for (const u of bookedBySlot[key] ?? []) s.add(u);
+      for (const u of effectiveBookedBySlot[key] ?? []) s.add(u);
     }
     if (effectiveReset) {
       const key = `${effectiveReset.roomId}_${effectiveReset.start}`;
-      for (const u of bookedBySlot[key] ?? []) s.add(u);
+      for (const u of effectiveBookedBySlot[key] ?? []) s.add(u);
     }
     return s;
-  }, [bookedBySlot, selectedAccess, effectiveReset]);
+  }, [effectiveBookedBySlot, selectedAccess, effectiveReset]);
 
   const usersAfterFilter = useMemo(
     () => usersFromChoice.filter((u) => !usersAlreadyOnSelected.has(u)),
@@ -284,11 +320,34 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
           Réserver — Musculation
         </h2>
         <p className="text-xs text-[var(--color-body)] mt-0.5 capitalize">
-          Aujourd&apos;hui · {todayLong()}
+          {dayChoice === "today" ? "Aujourd'hui" : "Demain"} · {dateLabel}
         </p>
 
-        {/* Sélecteur user */}
+        {/* Sélecteur jour */}
         <div className="mt-4 flex flex-wrap gap-1.5">
+          {(["today", "tomorrow"] as DayChoice[]).map((opt) => {
+            const active = dayChoice === opt;
+            const label = opt === "today" ? "Aujourd'hui" : "Demain";
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setDayChoice(opt)}
+                disabled={submitting}
+                className={`inline-flex items-center gap-1 rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
+                  active
+                    ? "border-[var(--color-brand-purple)]/40 bg-[var(--color-brand-purple)]/5 text-[var(--color-brand-purple)]"
+                    : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[var(--color-brand-purple-light)] hover:text-[var(--color-brand-purple)]"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sélecteur user */}
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {(["geoffrey", "lauriane", "both"] as UserChoice[]).map((opt) => {
             const active = userChoice === opt;
             const label =
@@ -342,7 +401,9 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
               <p className="text-xs text-[#ea2261]">{loadError}</p>
             )}
             {!loading && !loadError && planning && planning.accesLibre.length === 0 && (
-              <p className="text-xs text-[var(--color-body)]">Aucun créneau aujourd&apos;hui.</p>
+              <p className="text-xs text-[var(--color-body)]">
+                Aucun créneau {dayChoice === "today" ? "aujourd'hui" : "demain"}.
+              </p>
             )}
             <div className="space-y-1">
               {planning?.accesLibre.map((slot) => {
@@ -415,9 +476,9 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
             </p>
             {!loading && !loadError && planning && visibleResetSlots.length === 0 && (
               <p className="text-xs text-[var(--color-body)]">
-                {selectedAccess || existingAccesEnd
+                {selectedAccess || effectiveExistingAccesEnd
                   ? "Aucun Reset après ton Accès libre."
-                  : "Aucun Reset à venir aujourd'hui."}
+                  : `Aucun Reset à venir ${dayChoice === "today" ? "aujourd'hui" : "demain"}.`}
               </p>
             )}
             <div className="space-y-1">
