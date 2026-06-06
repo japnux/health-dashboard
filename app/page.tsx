@@ -329,12 +329,18 @@ export default async function Home() {
         snap.bodyCompositionAgeDays != null &&
         snap.bodyCompositionAgeDays <= 14 && (
           <Card>
-            <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] mb-3 font-normal">
-              Composition corporelle
-            </h2>
+            <div className="flex items-baseline justify-between mb-3">
+              <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
+                Composition corporelle
+              </h2>
+              <span className="text-[10px] text-[var(--color-body)]/60 tabular-nums capitalize">
+                {new Date(snap.lastBodyComposition.measured_at).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
+              </span>
+            </div>
             <BodyCompositionCard
               current={snap.lastBodyComposition}
               previous={snap.prevBodyComposition}
+              trends={snap.bodyTrends}
             />
           </Card>
         )}
@@ -518,25 +524,6 @@ type BodyCompRow = {
   lean_mass_kg: number | null;
 };
 
-function bodyDelta(
-  current: number,
-  previous: number,
-  kind: "weight" | "fat" | "lean" = "weight",
-): { text: string; color: string } {
-  const diff = Math.round((current - previous) * 10) / 10;
-  const sign = diff > 0 ? "+" : "";
-  let color = "text-[var(--color-body)]";
-  if (Math.abs(diff) >= 0.2) {
-    if (kind === "fat") {
-      color = diff < 0 ? "text-[#108c3d]" : "text-[#ea2261]";
-    } else if (kind === "lean") {
-      color = diff > 0 ? "text-[#108c3d]" : "text-[#ea2261]";
-    }
-    // weight : neutre — dépend du contexte
-  }
-  return { text: `${sign}${diff}`, color };
-}
-
 function bodyAnalysis(current: BodyCompRow, previous: BodyCompRow): string | null {
   const weightDiff = +(current.weight_kg - previous.weight_kg).toFixed(1);
   const hasFat = current.body_fat_pct != null && previous.body_fat_pct != null;
@@ -563,78 +550,114 @@ function bodyAnalysis(current: BodyCompRow, previous: BodyCompRow): string | nul
   return "Évolution modérée — à surveiller sur la tendance.";
 }
 
+// Couleur d'une tendance selon l'objectif "recomp + prise de masse maigre" :
+//   - poids : flat/légère hausse OK (gain de muscle), grosse hausse orange, baisse OK aussi
+//   - fat   : baisse = vert, flat = neutre, hausse = rouge
+//   - lean  : hausse = vert, flat = neutre, baisse = rouge
+type TrendKind = "weight" | "fat" | "lean";
+function trendColor(kind: TrendKind, slope: number): string {
+  const abs = Math.abs(slope);
+  if (abs < 0.05) return "text-[var(--color-body)]"; // flat
+  if (kind === "fat") return slope < 0 ? "text-[#108c3d]" : "text-[#ea2261]";
+  if (kind === "lean") return slope > 0 ? "text-[#108c3d]" : "text-[#ea2261]";
+  // weight pour recomp : baisse douce ou hausse douce = vert ; >0.3 kg/sem hausse = orange
+  if (slope < 0) return "text-[#108c3d]";
+  if (slope > 0.3) return "text-[#c97a1a]";
+  return "text-[#108c3d]";
+}
+
+function trendArrow(direction: "down" | "up" | "flat"): string {
+  if (direction === "down") return "↘";
+  if (direction === "up") return "↗";
+  return "→";
+}
+
+function formatSlope(slope: number, unit: string): string {
+  // 2 décimales pour kg, 1 décimale pour %.
+  const dec = unit === "%" ? 1 : 2;
+  const sign = slope > 0 ? "+" : slope < 0 ? "" : "";
+  return `${sign}${slope.toFixed(dec)}${unit}/sem`;
+}
+
+function TrendLine({
+  kind,
+  unit,
+  trend,
+}: {
+  kind: TrendKind;
+  unit: string;
+  trend: import("@/lib/body-trend").BodyTrend | null;
+}) {
+  if (!trend) {
+    return (
+      <div className="text-[10px] text-[var(--color-body)]/60 mt-0.5">—</div>
+    );
+  }
+  return (
+    <div
+      className={`text-[10px] tabular-nums font-normal mt-0.5 ${trendColor(kind, trend.slopePerWeek)}`}
+      title={`${trend.samples} mesures · R² ${trend.r2.toFixed(2)} · sur ${trend.windowDays}j`}
+    >
+      {trendArrow(trend.direction)} {formatSlope(trend.slopePerWeek, unit)}
+    </div>
+  );
+}
+
 function BodyCompositionCard({
   current,
   previous,
+  trends,
 }: {
   current: BodyCompRow;
   previous: BodyCompRow | null;
+  trends: {
+    weight: import("@/lib/body-trend").BodyTrend | null;
+    fat: import("@/lib/body-trend").BodyTrend | null;
+    lean: import("@/lib/body-trend").BodyTrend | null;
+  };
 }) {
   const analysis = previous ? bodyAnalysis(current, previous) : null;
-  const daysBetween = previous
-    ? Math.round(
-        (new Date(current.measured_at).getTime() -
-          new Date(previous.measured_at).getTime()) /
-          (1000 * 60 * 60 * 24),
-      )
-    : null;
+  const windowDays =
+    trends.weight?.windowDays ?? trends.fat?.windowDays ?? trends.lean?.windowDays ?? null;
+  const samples = Math.max(
+    trends.weight?.samples ?? 0,
+    trends.fat?.samples ?? 0,
+    trends.lean?.samples ?? 0,
+  );
 
   return (
     <div>
-      {daysBetween != null && (
+      {windowDays != null && samples > 0 && (
         <p className="text-[10px] text-[var(--color-body)] mb-3 text-right">
-          vs il y a {daysBetween}j
+          tendance {windowDays}j · {samples} mesure{samples > 1 ? "s" : ""}
         </p>
       )}
       <div className="grid grid-cols-3 gap-4 text-center">
-        {(() => {
-          const wd = previous ? bodyDelta(current.weight_kg, previous.weight_kg, "weight") : null;
-          return (
-            <div>
-              <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-                {current.weight_kg}
-              </div>
-              <div className="text-xs text-[var(--color-body)]">kg</div>
-              {wd && (
-                <div className={`text-[10px] tabular-nums font-normal mt-0.5 ${wd.color}`}>
-                  {wd.text} kg
-                </div>
-              )}
+        <div>
+          <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
+            {current.weight_kg}
+          </div>
+          <div className="text-xs text-[var(--color-body)]">kg</div>
+          <TrendLine kind="weight" unit=" kg" trend={trends.weight} />
+        </div>
+        {current.body_fat_pct != null && (
+          <div>
+            <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
+              {current.body_fat_pct}%
             </div>
-          );
-        })()}
-        {current.body_fat_pct != null && (() => {
-          const fd = previous?.body_fat_pct != null ? bodyDelta(current.body_fat_pct, previous.body_fat_pct, "fat") : null;
-          return (
-            <div>
-              <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-                {current.body_fat_pct}%
-              </div>
-              <div className="text-xs text-[var(--color-body)]">masse grasse</div>
-              {fd && (
-                <div className={`text-[10px] tabular-nums font-normal mt-0.5 ${fd.color}`}>
-                  {fd.text}%
-                </div>
-              )}
+            <div className="text-xs text-[var(--color-body)]">masse grasse</div>
+            <TrendLine kind="fat" unit="%" trend={trends.fat} />
+          </div>
+        )}
+        {current.lean_mass_kg != null && (
+          <div>
+            <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
+              {current.lean_mass_kg}
             </div>
-          );
-        })()}
-        {current.lean_mass_kg != null && (() => {
-          const ld = previous?.lean_mass_kg != null ? bodyDelta(current.lean_mass_kg, previous.lean_mass_kg, "lean") : null;
-          return (
-            <div>
-              <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-                {current.lean_mass_kg}
-              </div>
-              <div className="text-xs text-[var(--color-body)]">kg maigre</div>
-              {ld && (
-                <div className={`text-[10px] tabular-nums font-normal mt-0.5 ${ld.color}`}>
-                  {ld.text} kg
-                </div>
-              )}
-            </div>
-          );
-        })()}
+            <div className="text-xs text-[var(--color-body)]">kg maigre</div>
+            <TrendLine kind="lean" unit=" kg" trend={trends.lean} />
+          </div>
+        )}
       </div>
       {analysis && (
         <p className="text-xs text-[var(--color-body)] mt-3 pt-3 border-t border-[var(--color-border)] dark:border-white/10">

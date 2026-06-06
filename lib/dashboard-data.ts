@@ -4,6 +4,7 @@ import { computeRecoveryScore, type RecoveryResult } from "@/lib/recovery-score"
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
 import { computeStrainScore, type StrainResult } from "@/lib/strain-score";
+import { computeTrend, type BodyTrend } from "@/lib/body-trend";
 import {
   parseObjective,
   computeBaseTargets,
@@ -43,6 +44,11 @@ export type DashboardSnapshot = {
   lastBodyComposition: BodyCompositionRow | null;
   prevBodyComposition: BodyCompositionRow | null;
   bodyCompositionAgeDays: number | null;
+  bodyTrends: {
+    weight: BodyTrend | null;
+    fat: BodyTrend | null;
+    lean: BodyTrend | null;
+  };
   proteinTotalToday: number;
   macrosToday: { calories: number; proteines_g: number; glucides_g: number; lipides_g: number };
   macrosTargets: { calories: number; proteines_g: number; glucides_g: number; lipides_g: number };
@@ -129,7 +135,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .select("*")
 
       .order("measured_at", { ascending: false })
-      .limit(2),
+      .limit(40),
     supabase.from("protein_logs").select("grams").eq("date", date),
     supabase.from("dashboard_config").select("*").eq("id", 1).single(),
     supabase
@@ -203,10 +209,33 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const lastWorkout = recentWorkouts[0] ?? null;
 
   const lastBodyComposition = bodies?.[0] ?? null;
-  const prevBodyComposition = bodies?.[1] ?? null;
+  // Prev poids = premiere mesure anterieure
+  const prevBodyWeight = bodies?.slice(1).find((b) => b.weight_kg != null) ?? null;
+  // Prev compo = premiere mesure anterieure avec fat ET lean
+  const prevBodyFull = bodies?.slice(1).find(
+    (b) => b.body_fat_pct != null && b.lean_mass_kg != null,
+  ) ?? null;
+  // Combiner : poids depuis prevWeight, fat/lean depuis prevFull
+  const prevBodyComposition = prevBodyWeight
+    ? {
+        ...prevBodyWeight,
+        body_fat_pct: prevBodyFull?.body_fat_pct ?? prevBodyWeight.body_fat_pct,
+        lean_mass_kg: prevBodyFull?.lean_mass_kg ?? prevBodyWeight.lean_mass_kg,
+        // Pour le "vs il y a Xj", utiliser la date la plus recente des deux
+        measured_at: prevBodyWeight.measured_at,
+      }
+    : null;
   const bodyCompositionAgeDays = lastBodyComposition
     ? diffDaysIso(date, lastBodyComposition.measured_at)
     : null;
+
+  // Tendances par régression linéaire sur fenêtre 60j (lisse le bruit point-à-point).
+  const TREND_WINDOW = 60;
+  const bodyTrends = {
+    weight: computeTrend(bodies ?? [], "weight_kg", TREND_WINDOW),
+    fat: computeTrend(bodies ?? [], "body_fat_pct", TREND_WINDOW),
+    lean: computeTrend(bodies ?? [], "lean_mass_kg", TREND_WINDOW),
+  };
 
   const proteinTotalToday = (proteinRows ?? []).reduce(
     (sum, r) => sum + r.grams,
@@ -357,6 +386,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     lastBodyComposition,
     prevBodyComposition,
     bodyCompositionAgeDays,
+    bodyTrends,
     proteinTotalToday,
     macrosToday,
     macrosTargets,
