@@ -171,7 +171,14 @@ export async function GET() {
   if (validRows.length === 0) return NextResponse.json(empty);
 
   // 4) Enrichissement via planning (heures, capacité à jour, etc.).
-  let planningById = new Map<string, ReturnType<typeof normalizeEvent>>();
+  // ⚠️ Les slots Reset partagent tous le même eventId Sportigo (différenciés par
+  // startDate uniquement). On indexe donc par "eventId|YYYY-MM-DDTHH:mm" pour ne
+  // pas qu'un slot écrase l'autre dans la map.
+  const planningKey = (eventId: string, start: string) => {
+    const t = start.includes("T") ? start : start.replace(" ", "T");
+    return `${eventId}|${t.slice(0, 16)}`;
+  };
+  let planningByKey = new Map<string, ReturnType<typeof normalizeEvent>>();
   try {
     const [sportEvents, wellnessEvents] = await withAppToken("geoffrey", async (token) =>
       Promise.all([
@@ -181,7 +188,7 @@ export async function GET() {
     );
     for (const raw of [...sportEvents, ...wellnessEvents]) {
       const slot = normalizeEvent(raw);
-      if (slot) planningById.set(slot.eventId, slot);
+      if (slot) planningByKey.set(planningKey(slot.eventId, slot.start), slot);
     }
   } catch (err) {
     if (err instanceof SportigoNotConfiguredError) {
@@ -189,7 +196,7 @@ export async function GET() {
     } else {
       console.warn("[sportigo/reservations] échec fetch planning, fallback DB:", err);
     }
-    planningById = new Map();
+    planningByKey = new Map();
   }
 
   // Index des résa live par reservationId (pour enrichir avec endDate quand le planning ne matche pas).
@@ -216,7 +223,7 @@ export async function GET() {
     const user = row.user_key as SportigoUser;
     if (user !== "geoffrey" && user !== "lauriane") continue;
 
-    const planning = planningById.get(row.event_id);
+    const planning = planningByKey.get(planningKey(row.event_id, row.starts_at));
     const live = liveByResId.get(row.reservation_id);
     const startIso =
       planning?.start ?? toIsoLocal(live?.startDate) ?? toIsoLocal(row.starts_at) ?? row.starts_at;
