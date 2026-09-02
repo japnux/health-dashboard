@@ -76,11 +76,19 @@ export function AiAnalysis() {
       .catch(() => {});
   }, []);
 
+  // Auto-scroll uniquement quand un NOUVEAU message est ajouté (pas quand
+  // un message existant est mis à jour avec la réponse). Ça évite de forcer
+  // le scroll vers le bas quand l'utilisateur est en train de lire.
+  const prevChatLen = useRef(0);
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el) return;
+    const newMessage = chat.length > prevChatLen.current;
+    prevChatLen.current = chat.length;
+    if (newMessage || analysisResult) {
+      el.scrollTop = el.scrollHeight;
     }
-  }, [chat, analysisResult]);
+  }, [chat.length, analysisResult]);
 
   async function analyze(mode: "daily" | "weekly") {
     setAnalysisLoading(mode);
@@ -149,7 +157,9 @@ export function AiAnalysis() {
   const [modalOpen, setModalOpen] = useState(false);
   useEffect(() => {
     function check() {
-      const overlays = document.querySelectorAll(".fixed.inset-0.z-50");
+      const overlays = document.querySelectorAll(
+        ".fixed.inset-0.z-50:not([data-ai-panel])",
+      );
       setModalOpen(overlays.length > 0);
     }
     check();
@@ -193,6 +203,7 @@ export function AiAnalysis() {
       {/* Panel */}
       {open && (
         <div
+          data-ai-panel
           className="fixed z-50 inset-0 sm:inset-auto sm:bottom-24 sm:right-5 sm:w-[400px] sm:h-[min(600px,calc(100vh-120px))] bg-white dark:bg-[#0d1520] sm:rounded-[8px] sm:border sm:border-[var(--color-border)] dark:sm:border-white/10 flex flex-col overflow-hidden"
           style={{
             boxShadow: "rgba(50,50,93,0.25) 0px 30px 45px -30px, rgba(0,0,0,0.1) 0px 18px 36px -18px",

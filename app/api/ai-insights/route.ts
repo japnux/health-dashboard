@@ -71,6 +71,10 @@ INTERDICTIONS ABSOLUES (violation = réponse rejetée) :
 4. JAMAIS écrire "sous objectif" sans vérifier : compare valeur RÉELLE vs target FOURNI. Ex: 495min de sommeil > 450min target = AU-DESSUS.
 5. Reco sur un repas/aliment/macros → category "nutrition", JAMAIS "sommeil".
 6. Nombre de séances : TOUJOURS utiliser workoutsByDayAndType (pré-calculé, source de vérité). NE JAMAIS compter soi-même depuis le tableau workouts. NE PAS confondre plannedActivities.count (=objectif) avec les séances réelles.
+7. Le title DOIT être cohérent avec les bullets. AVANT d'écrire le title, VÉRIFIE chaque bullet :
+   - Valeur ≥ target ou norme → NE PAS écrire "faible", "insuffisant", "bas" pour cette métrique.
+   - Valeur < target → OK pour "faible", "bas".
+   Ex: REM 32% > norme 20-25% = REM élevé/bon, PAS "REM faible". Deep 5% < norme 15-20% = deep faible = OK.
 
 FORMAT :
 1. TENDANCES (exactement 3) : observations sur données MESURÉES (sommeil, HRV, strain, nutrition). Pas de tendance sur le planning.
