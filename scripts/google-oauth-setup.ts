@@ -26,7 +26,16 @@ import { exec } from "node:child_process";
 
 for (const line of readFileSync(".env.local", "utf8").split("\n")) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  if (!m) continue;
+  let value = m[2];
+  // Strip optional double or single quotes autour de la valeur (format Vercel CLI).
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  if (!process.env[m[1]]) process.env[m[1]] = value;
 }
 
 const PORT = 53682;
