@@ -2,6 +2,7 @@ import { getDashboardSnapshot } from "@/lib/dashboard-data";
 import { formatFrLong } from "@/lib/dates";
 import { recoveryColor } from "@/lib/recovery-score";
 import { NutritionTracker } from "@/components/NutritionTracker";
+import { NUTRITION_ENABLED } from "@/lib/features";
 import { MissingDataNotice, StaleScaleNotice } from "@/components/Notices";
 import { JournalDashboard } from "@/components/JournalDashboard";
 import { Reservations } from "@/components/Reservations";
@@ -256,16 +257,20 @@ export default async function Home() {
       </div>
 
       {/* ── Nutrition + Suggestion Workout — côte à côte ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <NutritionTracker
-          date={snap.date}
-          macros={snap.macrosToday}
-          targets={snap.macrosTargets}
-          proteinFromLogs={snap.proteinTotalToday}
-          adjustedTargets={snap.adjustedTargets}
-          estimatedRemainingKcal={snap.estimatedRemainingKcal}
-          activeSlot={snap.activeSlot}
-        />
+      <div
+        className={`grid grid-cols-1 gap-4 ${NUTRITION_ENABLED ? "sm:grid-cols-2" : ""}`}
+      >
+        {NUTRITION_ENABLED && (
+          <NutritionTracker
+            date={snap.date}
+            macros={snap.macrosToday}
+            targets={snap.macrosTargets}
+            proteinFromLogs={snap.proteinTotalToday}
+            adjustedTargets={snap.adjustedTargets}
+            estimatedRemainingKcal={snap.estimatedRemainingKcal}
+            activeSlot={snap.activeSlot}
+          />
+        )}
         <AiWorkoutSuggestion>
           <PlannedActivities date={snap.date} activities={snap.plannedActivities} />
         </AiWorkoutSuggestion>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { NUTRITION_ENABLED } from "@/lib/features";
 import {
   parseObjective,
   computeBaseTargets,
@@ -81,6 +82,7 @@ export function SettingsForm() {
 
   return (
     <form onSubmit={handleSave} className="space-y-6">
+      {NUTRITION_ENABLED && (
       <Section title="Objectifs nutrition">
         <div className="space-y-3">
           <div className="text-xs text-[var(--color-body)] space-y-2">
@@ -109,6 +111,7 @@ export function SettingsForm() {
           </div>
         </div>
       </Section>
+      )}
 
       <Section title="Objectifs quotidiens">
         <Field label="Sommeil (objectif)">

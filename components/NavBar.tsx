@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NUTRITION_ENABLED } from "@/lib/features";
 
 const links = [
   { href: "/", label: "Accueil", emoji: "🏠️" },
-  { href: "/nutrition", label: "Nutrition", emoji: "🥑" },
+  ...(NUTRITION_ENABLED
+    ? [{ href: "/nutrition", label: "Nutrition", emoji: "🥑" }]
+    : []),
   { href: "/biologie", label: "Biologie", emoji: "🧬" },
   { href: "/stats", label: "Stats", emoji: "📈" },
   { href: "/parametres", label: "Paramètres", emoji: "⚙️" },
-] as const;
+];
 
 export function NavBar() {
   const pathname = usePathname();

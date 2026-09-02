@@ -5,15 +5,18 @@ import { SettingsForm } from "./SettingsForm";
 import { SyncLogs } from "./SyncLogs";
 import { MealSlotsSettings } from "./MealSlotsSettings";
 import { ApiUsageStats } from "./ApiUsageStats";
+import { NUTRITION_ENABLED } from "@/lib/features";
 
-const TABS = [
+type TabId = "config" | "slots" | "logs" | "api";
+
+const TABS: { id: TabId; label: string }[] = [
   { id: "config", label: "Configuration" },
-  { id: "slots", label: "Meal Slots" },
+  ...(NUTRITION_ENABLED
+    ? [{ id: "slots" as const, label: "Meal Slots" }]
+    : []),
   { id: "logs", label: "Logs sync" },
   { id: "api", label: "Coûts API" },
-] as const;
-
-type TabId = (typeof TABS)[number]["id"];
+];
 
 export function SettingsTabs() {
   const [tab, setTab] = useState<TabId>("config");
@@ -37,7 +40,7 @@ export function SettingsTabs() {
       </div>
 
       {tab === "config" && <SettingsForm />}
-      {tab === "slots" && <MealSlotsSettings />}
+      {tab === "slots" && NUTRITION_ENABLED && <MealSlotsSettings />}
       {tab === "logs" && <SyncLogs />}
       {tab === "api" && <ApiUsageStats />}
     </div>

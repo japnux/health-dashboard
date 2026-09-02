@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
+import { NUTRITION_ENABLED } from "@/lib/features";
 import { todayIso, isoDaysAgo, formatFrLong } from "@/lib/dates";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
@@ -18,6 +20,9 @@ import { NutritionLogList } from "@/components/NutritionLogList";
 export const dynamic = "force-dynamic";
 
 export default async function NutritionPage() {
+  // Partie nutrition masquée : un lien direct retombe sur l'accueil.
+  if (!NUTRITION_ENABLED) redirect("/");
+
   const supabase = createServiceClient();
   const date = todayIso();
   const sevenDaysAgo = isoDaysAgo(7);
