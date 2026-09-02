@@ -9,7 +9,11 @@ export type BiomarkerCategory =
   | "vitamines"
   | "thyroide"
   | "inflammation"
-  | "reins";
+  | "reins"
+  | "ionogramme"
+  | "hematologie"
+  | "cardiaque"
+  | "hemostase";
 
 export type BiomarkerDef = {
   key: string;
@@ -38,6 +42,10 @@ export const BIOMARKER_CATEGORIES: {
   { key: "thyroide", label: "Thyroïde", icon: "🦋" },
   { key: "inflammation", label: "Inflammation", icon: "🛡️" },
   { key: "reins", label: "Reins", icon: "💧" },
+  { key: "ionogramme", label: "Ionogramme", icon: "⚡" },
+  { key: "hematologie", label: "Hématologie", icon: "🔴" },
+  { key: "cardiaque", label: "Cardiaque", icon: "❤️" },
+  { key: "hemostase", label: "Hémostase", icon: "🩹" },
 ];
 
 export const BIOMARKERS: BiomarkerDef[] = [
@@ -99,6 +107,39 @@ export const BIOMARKERS: BiomarkerDef[] = [
   // ─── Reins ─────────────────────────────────────────────
   { key: "creatinine", label: "Créatinine", category: "reins", unit: "mg/dL", refMin: 0.55, refMax: 1.05, desc: "Déchet musculaire filtré par les reins. Reflète la masse musculaire et la fonction rénale." },
   { key: "egfr", label: "DFG estimé", category: "reins", unit: "mL/min", refMin: 90, refMax: 120, desc: "Débit de filtration glomérulaire, mesure la capacité des reins à filtrer le sang. Indicateur clé de la santé rénale." },
+
+  // ─── Ionogramme ───────────────────────────────────────
+  { key: "sodium", label: "Sodium", category: "ionogramme", unit: "mmol/l", refMin: 138, refMax: 142, desc: "Electrolyte principal du milieu extracellulaire. Régule la volémie et la pression artérielle." },
+  { key: "potassium", label: "Potassium", category: "ionogramme", unit: "mmol/l", refMin: 3.8, refMax: 4.5, desc: "Electrolyte intracellulaire essentiel à la conduction nerveuse et la contraction musculaire, notamment cardiaque." },
+  { key: "chlore", label: "Chlore", category: "ionogramme", unit: "mmol/l", refMin: 100, refMax: 106, desc: "Electrolyte lié au sodium, participe à l'équilibre acido-basique." },
+  { key: "bicarbonates", label: "Bicarbonates", category: "ionogramme", unit: "mmol/l", refMin: 23, refMax: 27, desc: "Tampon principal du sang. Reflète l'équilibre acido-basique." },
+  { key: "protides", label: "Protides plasmatiques", category: "ionogramme", unit: "g/l", refMin: 65, refMax: 78, desc: "Concentration totale en protéines du plasma. Reflète l'état nutritionnel et la fonction hépatique." },
+
+  // ─── Hématologie ──────────────────────────────────────
+  { key: "rbc", label: "Hématies", category: "hematologie", unit: "T/L", refMin: 4.5, refMax: 5.5, desc: "Globules rouges, transporteurs d'oxygène. Bas = anémie, haut = polyglobulie." },
+  { key: "hemoglobin", label: "Hémoglobine", category: "hematologie", unit: "g/dl", refMin: 14, refMax: 17, desc: "Protéine des globules rouges qui transporte l'oxygène. Marqueur clé de l'anémie." },
+  { key: "hematocrit", label: "Hématocrite", category: "hematologie", unit: "%", refMin: 40, refMax: 50, desc: "Proportion du sang occupée par les globules rouges." },
+  { key: "mcv", label: "VGM", category: "hematologie", unit: "fl", refMin: 80, refMax: 95, desc: "Volume globulaire moyen. Oriente le diagnostic étiologique d'une anémie." },
+  { key: "mch", label: "TCMH", category: "hematologie", unit: "pg", refMin: 27, refMax: 32, desc: "Teneur corpusculaire moyenne en hémoglobine par globule rouge." },
+  { key: "mchc", label: "CCMH", category: "hematologie", unit: "g/dl", refMin: 32, refMax: 36, desc: "Concentration corpusculaire moyenne en hémoglobine." },
+  { key: "rdw", label: "IDR-CV", category: "hematologie", unit: "%", refMin: 11.5, refMax: 14, desc: "Indice de distribution des globules rouges. Élevé en cas de carence en fer ou B12." },
+  { key: "platelets", label: "Plaquettes", category: "hematologie", unit: "G/L", refMin: 150, refMax: 400, desc: "Cellules de la coagulation. Basses = risque hémorragique, hautes = risque thrombotique." },
+  { key: "mpv", label: "VPM", category: "hematologie", unit: "fl", refMin: 9, refMax: 12, desc: "Volume plaquettaire moyen. Plaquettes jeunes sont plus grosses." },
+  { key: "neutrophils", label: "Polynucléaires neutrophiles", category: "hematologie", unit: "G/L", refMin: 1.5, refMax: 7.0, desc: "Première ligne de défense contre les infections bactériennes." },
+  { key: "eosinophils", label: "Polynucléaires éosinophiles", category: "hematologie", unit: "G/L", refMin: 0.02, refMax: 0.5, desc: "Impliqués dans les réactions allergiques et la défense antiparasitaire." },
+  { key: "basophils", label: "Polynucléaires basophiles", category: "hematologie", unit: "G/L", refMin: null, refMax: 0.1, lowerIsBetter: true, desc: "Impliqués dans les réactions d'hypersensibilité et l'inflammation." },
+  { key: "lymphocytes", label: "Lymphocytes", category: "hematologie", unit: "G/L", refMin: 1.0, refMax: 4.0, desc: "Cellules de l'immunité adaptative (T, B, NK). Bas = immunodépression." },
+  { key: "monocytes", label: "Monocytes", category: "hematologie", unit: "G/L", refMin: 0.2, refMax: 0.8, desc: "Cellules phagocytaires qui deviennent macrophages dans les tissus." },
+
+  // ─── Cardiaque ────────────────────────────────────────
+  { key: "troponin_i", label: "Troponine I HS", category: "cardiaque", unit: "ng/l", refMin: null, refMax: 26, lowerIsBetter: true, desc: "Marqueur de nécrose myocardique. Élevée en cas d'infarctus ou de souffrance cardiaque." },
+  { key: "bnp", label: "BNP", category: "cardiaque", unit: "ng/l", refMin: null, refMax: 100, lowerIsBetter: true, desc: "Peptide natriurétique cérébral. Marqueur d'insuffisance cardiaque." },
+  { key: "crp", label: "CRP", category: "inflammation", unit: "mg/l", refMin: null, refMax: 5, lowerIsBetter: true, desc: "Protéine C-réactive standard. Marqueur d'inflammation aigue, moins sensible que la hsCRP." },
+
+  // ─── Hémostase ────────────────────────────────────────
+  { key: "tca_ratio", label: "TCA ratio", category: "hemostase", unit: "ratio", refMin: 0.8, refMax: 1.2, desc: "Temps de céphaline activé. Explore la voie intrinsèque de la coagulation." },
+  { key: "tp", label: "Taux de prothrombine", category: "hemostase", unit: "%", refMin: 70, refMax: 120, desc: "Explore la voie extrinsèque de la coagulation et la fonction hépatique." },
+  { key: "d_dimers", label: "D-Dimères", category: "hemostase", unit: "ng/ml", refMin: null, refMax: 500, lowerIsBetter: true, desc: "Produits de dégradation de la fibrine. Élevés en cas de thrombose, mais aussi post-chirurgie, infection, inflammation." },
 ];
 
 // ─── Index et helpers ────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createHash } from "crypto";
 import { redirect } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
-import { BIOMARKER_CATEGORIES, BIOMARKERS_BY_KEY, getBiomarkerStatus } from "@/lib/biomarkers";
+import { BIOMARKERS_BY_KEY, getBiomarkerStatus } from "@/lib/biomarkers";
 import { BiologieClient } from "./client";
 
 export const dynamic = "force-dynamic";
@@ -150,11 +150,7 @@ export default async function BiologiePage() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8 space-y-6">
-      <BiologieClient
-        tests={testsForClient}
-        categories={BIOMARKER_CATEGORIES}
-        attentionMarkers={attentionMarkers}
-      />
+      <BiologieClient tests={testsForClient} attentionMarkers={attentionMarkers} />
     </main>
   );
 }

@@ -31,9 +31,23 @@ type TestWithMeta = {
 
 type Props = {
   tests: TestWithMeta[];
-  categories: { key: BiomarkerCategory; label: string; icon: string }[];
   attentionMarkers: AttentionMarker[];
 };
+
+// Ordonne des clés de catégorie selon le registre, puis ajoute celles qui n'y
+// figurent pas (sinon des résultats en DB seraient silencieusement invisibles).
+function orderCategories(
+  keys: string[],
+): { key: BiomarkerCategory; label: string; icon: string }[] {
+  const present = new Set(keys);
+  const knownKeys = new Set<string>(BIOMARKER_CATEGORIES.map((c) => c.key));
+  return [
+    ...BIOMARKER_CATEGORIES.filter((c) => present.has(c.key)),
+    ...keys
+      .filter((k) => !knownKeys.has(k))
+      .map((k) => ({ key: k as BiomarkerCategory, label: k, icon: "🧪" })),
+  ];
+}
 
 // ── Mini Sparkline SVG ────────────────────────────────────────────
 
@@ -756,7 +770,7 @@ function BloodCategoryAiCard({ category }: { category: string }) {
 // Composant principal
 // ══════════════════════════════════════════════════════════════════
 
-export function BiologieClient({ tests, categories, attentionMarkers }: Props) {
+export function BiologieClient({ tests, attentionMarkers }: Props) {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
   const [expandedTest, setExpandedTest] = useState<string | null>(
@@ -781,9 +795,7 @@ export function BiologieClient({ tests, categories, attentionMarkers }: Props) {
   const allCategories = new Set(
     tests.flatMap((t) => t.blood_test_results.map((r) => r.category)),
   );
-  const visibleCategories = BIOMARKER_CATEGORIES.filter((c) =>
-    allCategories.has(c.key),
-  );
+  const visibleCategories = orderCategories([...allCategories]);
 
   const latest = tests[0] ?? null;
   const previous = tests.length >= 2 ? tests[1] : null;
@@ -958,7 +970,7 @@ export function BiologieClient({ tests, categories, attentionMarkers }: Props) {
 
             {isExpanded && (
               <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-4 border-t border-[var(--color-border)]/50 dark:border-white/5">
-                {categories.map((cat) => {
+                {orderCategories(Object.keys(test.resultsByCategory)).map((cat) => {
                   const results = test.resultsByCategory[cat.key];
                   if (!results || results.length === 0) return null;
 
