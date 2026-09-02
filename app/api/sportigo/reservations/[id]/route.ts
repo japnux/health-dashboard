@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { withAppToken } from "@/lib/sportigo/auth";
-import { cancelReservation, SportigoNotConfiguredError } from "@/lib/sportigo/client";
+import { withSession } from "@/lib/sportigo/auth";
+import {
+  cancelReservation,
+  SportigoApiError,
+  SportigoNotConfiguredError,
+} from "@/lib/sportigo/client";
 import { isDashboardAuthenticated } from "@/lib/sportigo/dashboard-auth";
 import type { SportigoUser } from "@/lib/sportigo/types";
 
@@ -34,7 +38,9 @@ export async function DELETE(_request: Request, { params }: Params) {
   const user = row.user_key as SportigoUser;
 
   try {
-    await withAppToken(user, (token) => cancelReservation(token, row.reservation_id));
+    await withSession(user, (session) =>
+      cancelReservation(session.appToken, row.reservation_id, session.memberId),
+    );
   } catch (err) {
     if (err instanceof SportigoNotConfiguredError) {
       return NextResponse.json(
@@ -42,8 +48,13 @@ export async function DELETE(_request: Request, { params }: Params) {
         { status: 503 },
       );
     }
+    // Log structuré pour diagnostiquer l'erreur Sportigo.
     const message = err instanceof Error ? err.message : "Erreur inconnue";
-    console.error("[sportigo/reservations DELETE] ", err);
+    const payload =
+      err instanceof SportigoApiError ? JSON.stringify(err.payload) : undefined;
+    console.error(
+      `[sportigo/reservations DELETE] user=${user} resaId=${row.reservation_id} error=${message} payload=${payload}`,
+    );
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
