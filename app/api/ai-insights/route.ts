@@ -444,14 +444,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Clé API Anthropic non configurée" }, { status: 500 });
   }
 
-  const [data, profile] = await Promise.all([
-    fetchContextData(supabase),
-    getUserProfile(),
-  ]);
-
-  const systemWithProfile = SYSTEM_PROMPT + profileToPromptBlock(profile);
-
   try {
+    // Chargement du contexte dans le try : une requête Supabase qui échoue
+    // doit renvoyer une erreur lisible, pas un 500 muet.
+    const [data, profile] = await Promise.all([
+      fetchContextData(supabase),
+      getUserProfile(),
+    ]);
+
+    const systemWithProfile = SYSTEM_PROMPT + profileToPromptBlock(profile);
+
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -509,6 +511,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ...content, cached: false });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erreur inconnue";
+    console.error("[ai-insights] génération échouée:", err);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
