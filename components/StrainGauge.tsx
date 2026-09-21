@@ -22,14 +22,18 @@ export function StrainGauge({ strain }: Props) {
           <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
           {strain.label}
         </p>
-        <p className="text-[11px] text-[var(--color-body)] mt-0.5 whitespace-nowrap">
+        <p className="text-[11px] text-[var(--color-body)] mt-0.5">
           {strain.mode === "hr"
             ? `Charge cardio ${strain.cardioLoad}`
             : `Estimé sur ${strain.activeKcalToday} kcal`}
         </p>
-        {strain.hasBaseline && (
-          <p className="text-[11px] text-[var(--color-body)] whitespace-nowrap">
-            moy 30j {strain.baselineAvg}
+        {strain.hasBaseline && strain.baselineAvg > 0 && (
+          <p className="text-[11px] text-[var(--color-body)]">
+            {/* La charge brute ne parle pas seule : on la situe par rapport à la moyenne */}
+            {((strain.mode === "hr" ? (strain.cardioLoad ?? 0) : strain.activeKcalToday) / strain.baselineAvg)
+              .toFixed(1)
+              .replace(".", ",")}
+            × ta moyenne 30 j ({strain.baselineAvg})
           </p>
         )}
       </div>

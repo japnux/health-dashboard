@@ -9,6 +9,8 @@ import {
   Area,
   BarChart,
   Bar,
+  ComposedChart,
+  ReferenceArea,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -26,6 +28,7 @@ import { AiCorrelations } from "@/components/AiCorrelations";
 import { computeJournalImpact } from "@/lib/journal-impact";
 import { JOURNAL_ENABLED } from "@/lib/features";
 import { dateInTz } from "@/lib/dates";
+import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -107,6 +110,8 @@ type StatsPayload = {
   // Strain de chaque jour (deux périodes), calculé côté serveur avec la même
   // référence glissante 30j que l'accueil
   strainByDate: Record<string, number>;
+  // Charge cardio du jour, moyennes 7 j / 28 j et leur ratio (serveur)
+  loadSeries: { date: string; load: number | null; acute: number | null; chronic: number | null; ratio: number | null }[];
   dailyMetrics: DailyMetric[];
   workouts: Workout[];
   bodyComposition: BodyComp[];
@@ -442,6 +447,7 @@ export function StatsCharts() {
                 <WorkoutsSummary workouts={data.workouts} />
               )}
               <ZonesChart workouts={data.workouts} period={period} />
+              <LoadCharts series={data.loadSeries ?? []} period={period} />
               <StrainChart
                 metrics={data.dailyMetrics}
                 strainByDate={data.strainByDate}
@@ -1317,6 +1323,139 @@ function ZonesChart({ workouts, period }: { workouts: Workout[]; period: Period 
         Minutes passées pendant les séances, en % de la FC max. La FC hors séance n&apos;est pas comptée.
       </p>
     </ChartCard>
+  );
+}
+
+// ── Charge cardio et équilibre de charge ─────────────────────────────────
+
+// Couleurs : moyenne 7 j = le signal (bleu), moyenne 28 j = la référence
+// (gris foncé en pointillés, nommée en légende), barres du jour discrètes.
+const LOAD_COLORS = { bar: "#b7d3f6", acute: "#2a78d6", chronic: "#64748d" };
+
+
+function LoadCharts({
+  series,
+  period,
+}: {
+  series: StatsPayload["loadSeries"];
+  period: Period;
+}) {
+  if (!series.some((d) => d.load != null)) return null;
+
+  const chartData = series.map((d) => ({ ...d, label: shortDateLabel(d.date) }));
+  const ratios = series.map((d) => d.ratio).filter((v): v is number => v != null);
+  const yMax = Math.max(2, Math.ceil((Math.max(0, ...ratios) + 0.1) * 10) / 10);
+
+  const tooltipStyle = {
+    backgroundColor: C.zinc800,
+    border: "none",
+    borderRadius: 8,
+    color: "#fff",
+    fontSize: 12,
+  };
+
+  return (
+    <>
+      <ChartCard title="Charge cardio">
+        {/* Légende : 3 séries, identifiées sans dépendre de la seule couleur */}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-[11px] text-[var(--color-body)]">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: LOAD_COLORS.bar }} />
+            charge du jour
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-4 h-0.5" style={{ backgroundColor: LOAD_COLORS.acute }} />
+            moyenne 7 j
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: LOAD_COLORS.chronic }} />
+            moyenne 28 j
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <ComposedChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.5} vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: C.zinc400 }}
+              interval={tickInterval(period)}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis tick={{ fontSize: 11, fill: C.zinc400 }} axisLine={false} tickLine={false} width={36} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(val, name) => {
+                const labels: Record<string, string> = { load: "Charge du jour", acute: "Moyenne 7 j", chronic: "Moyenne 28 j" };
+                return [val as number, labels[String(name)] ?? String(name)];
+              }}
+            />
+            <Bar dataKey="load" fill={LOAD_COLORS.bar} radius={[3, 3, 0, 0]} />
+            <Line dataKey="acute" stroke={LOAD_COLORS.acute} strokeWidth={2} dot={false} connectNulls={false} />
+            <Line
+              dataKey="chronic"
+              stroke={LOAD_COLORS.chronic}
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              dot={false}
+              connectNulls={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+        <p className="text-[10px] text-[var(--color-body)] mt-2">
+          Chaque minute au-dessus de 50 % de ta FC max compte, de 1 point (zone 1, facile) à 5 (zone 5, maximum).
+          Une heure de surf vaut en général 150 à 250. Le jour en cours est partiel.
+        </p>
+      </ChartCard>
+
+      <ChartCard title="Équilibre de charge (7 j / 28 j)">
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={chartData}>
+            {/* Zones colorées en fond, libellées */}
+            {BALANCE_ZONES.map((z) => (
+              <ReferenceArea
+                key={z.label}
+                y1={z.from}
+                y2={Math.min(z.to, yMax)}
+                fill={z.color}
+                fillOpacity={0.1}
+                ifOverflow="hidden"
+                label={{ value: z.label, position: "insideLeft", fontSize: 10, fill: z.color }}
+              />
+            ))}
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.4} vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: C.zinc400 }}
+              interval={tickInterval(period)}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              domain={[0, yMax]}
+              ticks={[0, 0.8, 1.3, 1.5, ...(yMax > 2 ? [yMax] : [2])]}
+              tick={{ fontSize: 11, fill: C.zinc400 }}
+              axisLine={false}
+              tickLine={false}
+              width={36}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(val) => {
+                const r = val as number;
+                return [`${r.toFixed(2)} · ${balanceZone(r).label}`, "Équilibre"];
+              }}
+            />
+            <Line dataKey="ratio" stroke="#0d366b" strokeWidth={2} dot={false} connectNulls={false} />
+          </LineChart>
+        </ResponsiveContainer>
+        <p className="text-[10px] text-[var(--color-body)] mt-2">
+          Moyenne des 7 derniers jours divisée par celle des 28. Vert : charge qui progresse sans à-coup. Orange et
+          rouge : hausse brutale, le risque de blessure augmente. Gris : moins que d&apos;habitude (récupération ou
+          relâchement).
+        </p>
+      </ChartCard>
+    </>
   );
 }
 

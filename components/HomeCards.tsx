@@ -6,6 +6,7 @@ import type { DashboardSnapshot } from "@/lib/dashboard-data";
 import type { StrainResult } from "@/lib/strain-score";
 import { StrainGauge } from "@/components/StrainGauge";
 import { WorkoutBadges } from "@/components/WorkoutBadges";
+import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
 
 export function StrainCard({
   strain,
@@ -37,6 +38,7 @@ export function StrainCard({
       <StrainGauge strain={strain} />
       <WorkoutBadges workouts={todayWorkouts} />
       <CardioMetrics watch={watch} loadBalance={loadBalance} />
+      <StrainHelp />
     </section>
   );
 }
@@ -73,24 +75,9 @@ function CardioMetrics({
   }
   if (items.length === 0 && !loadBalance) return null;
 
-  // Couleur d'état de l'équilibre de charge (toujours accompagnée du libellé)
-  const balanceDot = loadBalance
-    ? { low: "#94a3b8", balanced: "#15be53", rising: "#f97316", spike: "#ea2261" }[loadBalance.level]
-    : undefined;
-
   return (
     <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10 space-y-4 text-sm">
-      {/* Libellé long : sur toute la largeur plutôt qu'en demi-colonne */}
-      {loadBalance && (
-        <MiniMetric
-          label="Équilibre de charge"
-          value={loadBalance.ratio.toFixed(2)}
-          sub={`7 j / 28 j · ${loadBalance.label}`}
-          subDot={balanceDot}
-          delta={null}
-          positiveIsGood
-        />
-      )}
+      {loadBalance && <BalanceGauge ratio={loadBalance.ratio} label={loadBalance.label} />}
       {items.length > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           {items.map((i) => (
@@ -99,6 +86,87 @@ function CardioMetrics({
         </div>
       )}
     </div>
+  );
+}
+
+// Équilibre de charge : jauge 0 → 2 découpée en zones colorées, repère sur
+// la valeur, libellé de la zone (la couleur n'est jamais seule)
+const GAUGE_MAX = 2;
+function BalanceGauge({ ratio, label }: { ratio: number; label: string }) {
+  const zone = balanceZone(ratio);
+  const pos = (Math.min(Math.max(ratio, 0), GAUGE_MAX) / GAUGE_MAX) * 100;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-[var(--color-body)]">Équilibre de charge</span>
+        <span className="text-lg sm:text-base tabular-nums text-[var(--color-heading)] dark:text-white">
+          {ratio.toFixed(2)}
+        </span>
+      </div>
+      <div className="relative mt-2" role="img" aria-label={`Équilibre de charge ${ratio.toFixed(2)} : ${label}`}>
+        <div className="flex h-2 rounded-full overflow-hidden gap-[2px]">
+          {BALANCE_ZONES.map((z) => {
+            const to = Math.min(z.to, GAUGE_MAX);
+            return (
+              <div
+                key={z.level}
+                style={{
+                  width: `${((to - z.from) / GAUGE_MAX) * 100}%`,
+                  backgroundColor: z.color,
+                  opacity: z.level === zone.level ? 0.9 : 0.25,
+                }}
+              />
+            );
+          })}
+        </div>
+        {/* Repère de la valeur */}
+        <div
+          className="absolute -top-1 w-1 h-4 rounded-full bg-[var(--color-heading)] dark:bg-white ring-2 ring-white dark:ring-[#0d1520]"
+          style={{ left: `calc(${pos}% - 2px)` }}
+        />
+      </div>
+      <div className="relative h-3 mt-1 text-[9px] text-[var(--color-body)]/70 tabular-nums">
+        {/* Seuils clés seulement : 1.3 et 1.5 seraient collés sur une carte étroite */}
+        {[0.8, 1.5].map((t) => (
+          <span key={t} className="absolute -translate-x-1/2" style={{ left: `${(t / GAUGE_MAX) * 100}%` }}>
+            {t}
+          </span>
+        ))}
+      </div>
+      <p className="text-[11px] sm:text-[10px] text-[var(--color-body)] mt-0.5">
+        <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle -mt-px" style={{ backgroundColor: zone.color }} />
+        {label} · 7 derniers jours vs 28
+      </p>
+    </div>
+  );
+}
+
+// Explication repliable en bas de la carte Strain (sans JavaScript)
+function StrainHelp() {
+  return (
+    <details className="mt-4 text-[11px] text-[var(--color-body)] group">
+      <summary className="cursor-pointer select-none list-none flex items-center gap-1 hover:text-[var(--color-heading)] dark:hover:text-white">
+        <span className="inline-block transition-transform group-open:rotate-90">›</span>
+        Comment lire ces chiffres ?
+      </summary>
+      <div className="mt-2 space-y-2 leading-relaxed">
+        <p>
+          <span className="text-[var(--color-heading)] dark:text-white">Charge cardio</span> : chaque minute au-dessus
+          de 50 % de ta FC max compte, de 1 point (zone 1, facile) à 5 (zone 5, maximum). Une heure de surf vaut en
+          général 150 à 250.
+        </p>
+        <p>
+          <span className="text-[var(--color-heading)] dark:text-white">Strain</span> : ta charge du jour comparée à ta
+          moyenne des 30 derniers jours actifs, sur 10. Une journée égale à ta moyenne vaut 6, le double 8.
+        </p>
+        <p>
+          <span className="text-[var(--color-heading)] dark:text-white">Équilibre de charge</span> : ta charge moyenne
+          des 7 derniers jours divisée par celle des 28. Vert : tu progresses sans à-coup. Orange puis rouge : hausse
+          brutale, le risque de blessure augmente. Gris : moins que d&apos;habitude. Aujourd&apos;hui n&apos;est compté
+          que demain, une fois la journée finie.
+        </p>
+      </div>
+    </details>
   );
 }
 

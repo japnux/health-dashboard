@@ -171,6 +171,35 @@ export async function GET(request: Request) {
     strainByDate[row.date] = computeDayStrain(row, history).score;
   }
 
+  // Charge cardio et équilibre de charge de chaque jour de la période.
+  // Moyennes glissantes 7 j et 28 j jour inclus (6 jours mesurés sur 7, 24 sur
+  // 28 au minimum). Aujourd'hui : charge partielle, pas de moyennes (journée
+  // en cours). La valeur d'hier est celle affichée sur l'accueil.
+  const userToday = todayIso(tz);
+  const loadByDay = new Map(strainRows.map((r) => [r.date, r.cardio_load]));
+  const meanOver = (end: string, days: number, minKnown: number) => {
+    const vals: number[] = [];
+    for (let i = 0; i < days; i++) {
+      const v = loadByDay.get(isoDateMinusDays(end, i));
+      if (v != null) vals.push(Number(v));
+    }
+    return vals.length >= minKnown ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  const loadSeries: { date: string; load: number | null; acute: number | null; chronic: number | null; ratio: number | null }[] = [];
+  for (let d = current.start; d <= current.end && d <= userToday; d = isoDateMinusDays(d, -1)) {
+    const load = loadByDay.get(d) ?? null;
+    const complete = d < userToday;
+    const acute = complete ? meanOver(d, 7, 6) : null;
+    const chronic = complete ? meanOver(d, 28, 24) : null;
+    loadSeries.push({
+      date: d,
+      load: load != null ? Math.round(Number(load)) : null,
+      acute: acute != null ? Math.round(acute) : null,
+      chronic: chronic != null ? Math.round(chronic) : null,
+      ratio: acute != null && chronic != null && chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : null,
+    });
+  }
+
   const journalEntries = journalRes.data ?? [];
   const prevJournalEntries = prevJournalRes.data ?? [];
 
@@ -201,6 +230,7 @@ export async function GET(request: Request) {
     label: current.label,
     today: todayIso(tz),
     strainByDate,
+    loadSeries,
     dailyMetrics: metricsRes.data ?? [],
     workouts: workoutsRes.data ?? [],
     bodyComposition: bodyRes.data ?? [],

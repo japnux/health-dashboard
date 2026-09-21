@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
+import { balanceZone, type BalanceLevel } from "@/lib/load-balance";
 import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
@@ -107,7 +108,7 @@ export type LoadBalance = {
   ratio: number;
   acute: number; // moyenne journalière sur 7 jours
   chronic: number; // moyenne journalière sur 28 jours
-  level: "low" | "balanced" | "rising" | "spike";
+  level: BalanceLevel;
   label: string;
 };
 
@@ -122,15 +123,8 @@ function computeLoadBalance(past: { date: string; cardio_load: number | null }[]
   const chronic = chronicVals.reduce((a, b) => a + b, 0) / chronicVals.length;
   if (chronic <= 0) return null;
   const ratio = Math.round((acute / chronic) * 100) / 100;
-  const [level, label]: [LoadBalance["level"], string] =
-    ratio < 0.8
-      ? ["low", "sous ta charge habituelle"]
-      : ratio <= 1.3
-        ? ["balanced", "équilibrée"]
-        : ratio <= 1.5
-          ? ["rising", "en hausse"]
-          : ["spike", "pic de charge"];
-  return { ratio, acute: Math.round(acute), chronic: Math.round(chronic), level, label };
+  const zone = balanceZone(ratio);
+  return { ratio, acute: Math.round(acute), chronic: Math.round(chronic), level: zone.level, label: zone.long };
 }
 
 // Données Apple Watch complémentaires (sommeil, cardio, nuit).

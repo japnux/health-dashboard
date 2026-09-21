@@ -12,7 +12,7 @@
  *   rawScore = ln(1 + ratio × k) / ln(1 + k_max) × 10
  *
  * Le ln() rend la progression logarithmique :
- * - Passer de 0 à 5 est facile (activité normale)
+ * - Jusqu'à 6 : journée égale ou inférieure à ta moyenne
  * - Passer de 7 à 8 demande beaucoup plus d'effort
  * - Atteindre 9-10 = journée exceptionnelle (double session, compétition)
  *
@@ -45,7 +45,7 @@ const MIN_DAYS_HR = 7;
 
 // Constante de forme logarithmique.
 // k contrôle la "courbure" : plus k est grand, plus la courbe s'aplatit tôt.
-// Avec k=6 : ratio 1.0 (jour normal) ≈ 5.0, ratio 2.0 (double) ≈ 7.2, ratio 3.0 ≈ 8.3
+// Avec k=6 : ratio 1.0 (jour = moyenne) = 6.0, ratio 2.0 (double) = 8.0, ratio 3.0 = 9.1
 const K = 6;
 // k_max : ratio maximum attendu (4× la baseline = journée extrême → score ~10)
 const K_MAX = 4;
@@ -115,7 +115,7 @@ export function computeDayStrain(today: StrainDay, history: StrainDay[]): Strain
 }
 
 // Score logarithmique : ln(1 + ratio × K) / ln(1 + K_MAX × K) × 10
-// Quand ratio=0 → score=0, ratio=1 → ~5, ratio=2 → ~7.2, ratio=4 → ~10
+// ratio=0 → 0, ratio=1 → 6.0, ratio=2 → 8.0, ratio=4 → 10
 function logScore(ratio: number): number {
   const maxLn = Math.log(1 + K_MAX * K);
   const rawScore = (Math.log(1 + ratio * K) / maxLn) * 10;
