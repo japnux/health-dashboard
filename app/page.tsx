@@ -10,7 +10,7 @@ import { Reservations } from "@/components/Reservations";
 import { AiAnalysis } from "@/components/AiAnalysis";
 import { AiTrends, AiWorkoutSuggestion } from "@/components/AiInsights";
 import { PlannedActivities } from "@/components/PlannedActivities";
-import { StrainCard, SleepCard, MiniMetric } from "@/components/HomeCards";
+import { StrainCard, SleepCard, MiniMetric, LoadBalanceTile } from "@/components/HomeCards";
 import { ScoreRing } from "@/components/ScoreRing";
 import { Sparkline } from "@/components/Sparkline";
 
@@ -252,12 +252,14 @@ export default async function Home() {
           strain={snap.strain}
           todayWorkouts={snap.recentWorkouts.filter((w) => dateInTz(w.started_at, snap.tz) === snap.date).map((w) => ({ type: w.type }))}
           watch={snap.watch}
-          loadBalance={snap.loadBalance}
         />
 
         {/* Sommeil */}
         <SleepCard today={snap.today} sleepTargetMin={snap.sleepTargetMin} watch={snap.watch} tz={snap.tz} />
       </div>
+
+      {/* ── Équilibre de charge : tuile cliquable vers le détail ── */}
+      <LoadBalanceTile loadBalance={snap.loadBalance} />
 
       {/* ── Nutrition + Suggestion Workout — côte à côte ── */}
       <div

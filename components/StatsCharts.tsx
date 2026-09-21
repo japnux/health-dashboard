@@ -1365,11 +1365,11 @@ function LoadCharts({
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-4 h-0.5" style={{ backgroundColor: LOAD_COLORS.acute }} />
-            moyenne 7 j
+            charge aiguë (7 j)
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: LOAD_COLORS.chronic }} />
-            moyenne 28 j
+            charge chronique (42 j)
           </span>
         </div>
         <ResponsiveContainer width="100%" height={220}>
@@ -1386,7 +1386,7 @@ function LoadCharts({
             <Tooltip
               contentStyle={tooltipStyle}
               formatter={(val, name) => {
-                const labels: Record<string, string> = { load: "Charge du jour", acute: "Moyenne 7 j", chronic: "Moyenne 28 j" };
+                const labels: Record<string, string> = { load: "Charge du jour", acute: "Charge aiguë (7 j)", chronic: "Charge chronique (42 j)" };
                 return [val as number, labels[String(name)] ?? String(name)];
               }}
             />
@@ -1404,11 +1404,12 @@ function LoadCharts({
         </ResponsiveContainer>
         <p className="text-[10px] text-[var(--color-body)] mt-2">
           Chaque minute au-dessus de 50 % de ta FC max compte, de 1 point (zone 1, facile) à 5 (zone 5, maximum).
-          Une heure de surf vaut en général 150 à 250. Le jour en cours est partiel.
+          Une heure de surf vaut en général 150 à 250. Charges aiguë et chronique : moyennes pondérées (les jours
+          récents comptent plus). Le jour en cours est partiel.
         </p>
       </ChartCard>
 
-      <ChartCard title="Équilibre de charge (7 j / 28 j)">
+      <ChartCard title="Équilibre de charge">
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
             {/* Zones colorées en fond, libellées */}
@@ -1450,9 +1451,9 @@ function LoadCharts({
           </LineChart>
         </ResponsiveContainer>
         <p className="text-[10px] text-[var(--color-body)] mt-2">
-          Moyenne des 7 derniers jours divisée par celle des 28. Vert : charge qui progresse sans à-coup. Orange et
-          rouge : hausse brutale, le risque de blessure augmente. Gris : moins que d&apos;habitude (récupération ou
-          relâchement).
+          Charge aiguë (moyenne pondérée des 7 derniers jours) divisée par la charge chronique (42 jours). Vert :
+          charge qui progresse sans à-coup. Orange et rouge : hausse brutale, le risque de blessure augmente. Gris :
+          moins que d&apos;habitude.
         </p>
       </ChartCard>
     </>

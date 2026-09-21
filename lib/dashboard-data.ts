@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
-import { balanceZone, type BalanceLevel } from "@/lib/load-balance";
+import { balanceZone, loadBalanceSeries, type BalanceLevel } from "@/lib/load-balance";
 import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
@@ -99,32 +99,35 @@ export type DashboardSnapshot = {
   sleepHrBaselineAvg: number | null;
 };
 
-// Équilibre de charge (ratio aigu/chronique) : charge cardio moyenne des 7
-// derniers jours rapportée à celle des 28 derniers. Aujourd'hui exclu : la
-// journée n'est pas finie, elle ferait baisser le ratio le matin.
-// Zones de Gabbett (2016) : < 0,8 sous-charge ; 0,8-1,3 équilibré ;
-// 1,3-1,5 en hausse ; > 1,5 pic (risque de blessure accru).
+// Équilibre de charge : ratio charge aiguë / chronique (EWMA 7 j / 42 j,
+// journée en cours comprise), voir lib/load-balance.ts
 export type LoadBalance = {
   ratio: number;
-  acute: number; // moyenne journalière sur 7 jours
-  chronic: number; // moyenne journalière sur 28 jours
+  acute: number;
+  chronic: number;
   level: BalanceLevel;
   label: string;
+  advice: string;
+  series: { date: string; ratio: number }[]; // 30 derniers jours, pour la tuile
 };
 
-function computeLoadBalance(past: { date: string; cardio_load: number | null }[], tz: string): LoadBalance | null {
-  const from7 = isoDaysAgo(7, tz);
-  const from28 = isoDaysAgo(28, tz);
-  const acuteVals = past.filter((r) => r.date >= from7).map((r) => r.cardio_load).filter((v): v is number => v != null);
-  const chronicVals = past.filter((r) => r.date >= from28).map((r) => r.cardio_load).filter((v): v is number => v != null);
-  // Il faut des jours réellement mesurés : 6 sur 7 et 24 sur 28
-  if (acuteVals.length < 6 || chronicVals.length < 24) return null;
-  const acute = acuteVals.reduce((a, b) => a + b, 0) / acuteVals.length;
-  const chronic = chronicVals.reduce((a, b) => a + b, 0) / chronicVals.length;
-  if (chronic <= 0) return null;
-  const ratio = Math.round((acute / chronic) * 100) / 100;
-  const zone = balanceZone(ratio);
-  return { ratio, acute: Math.round(acute), chronic: Math.round(chronic), level: zone.level, label: zone.long };
+function computeLoadBalance(rows: { date: string; cardio_load: number | null }[], today: string): LoadBalance | null {
+  const series = loadBalanceSeries(rows, today);
+  const last = series[series.length - 1];
+  if (!last || last.ratio == null || last.date !== today) return null;
+  const zone = balanceZone(last.ratio);
+  return {
+    ratio: last.ratio,
+    acute: Math.round(last.acute),
+    chronic: Math.round(last.chronic),
+    level: zone.level,
+    label: zone.long,
+    advice: zone.advice,
+    series: series
+      .slice(-30)
+      .filter((p): p is typeof p & { ratio: number } => p.ratio != null)
+      .map((p) => ({ date: p.date, ratio: p.ratio })),
+  };
 }
 
 // Données Apple Watch complémentaires (sommeil, cardio, nuit).
@@ -176,6 +179,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     { data: journalRows },
     { data: bloodTests },
     { data: syncRows },
+    { data: loadRows },
   ] = await Promise.all([
     supabase
       .from("daily_metrics")
@@ -234,6 +238,15 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .select("created_at")
       .order("created_at", { ascending: false })
       .limit(1),
+    // Charge cardio sur un an : la moyenne exponentielle 42 j a le temps de
+    // se stabiliser
+    supabase
+      .from("daily_metrics")
+      .select("date, cardio_load")
+      .not("cardio_load", "is", null)
+      .gte("date", isoDaysAgo(365, tz))
+      .lte("date", date)
+      .order("date", { ascending: true }),
   ]);
 
   const config = (configRow ?? DEFAULTS) as Record<string, unknown>;
@@ -486,7 +499,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60, tz),
-    loadBalance: computeLoadBalance(baseline60, tz),
+    loadBalance: computeLoadBalance(loadRows ?? [], date),
     tz,
     sleepHrBaselineAvg: avg(baseline60.map((r) => r.sleeping_hr_bpm)),
     trend7d: Array.from({ length: 7 }, (_, i) => {

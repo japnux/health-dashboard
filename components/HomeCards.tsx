@@ -6,18 +6,17 @@ import type { DashboardSnapshot } from "@/lib/dashboard-data";
 import type { StrainResult } from "@/lib/strain-score";
 import { StrainGauge } from "@/components/StrainGauge";
 import { WorkoutBadges } from "@/components/WorkoutBadges";
-import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
+import Link from "next/link";
+import { balanceZone } from "@/lib/load-balance";
 
 export function StrainCard({
   strain,
   todayWorkouts,
   watch,
-  loadBalance,
 }: {
   strain: StrainResult;
   todayWorkouts: { type: string | null }[];
   watch: DashboardSnapshot["watch"];
-  loadBalance: DashboardSnapshot["loadBalance"];
 }) {
   const bgMap: Record<string, string> = {
     light: "from-[#15be53]/10 to-[#15be53]/3 border-[#15be53]/20",
@@ -37,7 +36,7 @@ export function StrainCard({
       </p>
       <StrainGauge strain={strain} />
       <WorkoutBadges workouts={todayWorkouts} />
-      <CardioMetrics watch={watch} loadBalance={loadBalance} />
+      <CardioMetrics watch={watch} />
       <StrainHelp />
     </section>
   );
@@ -45,13 +44,7 @@ export function StrainCard({
 
 // Indicateurs cardio sous le Strain : équilibre de charge, effort du jour
 // (FC max, FC en marche) puis forme de fond (VO2 max, récup cardio).
-function CardioMetrics({
-  watch,
-  loadBalance,
-}: {
-  watch: DashboardSnapshot["watch"];
-  loadBalance: DashboardSnapshot["loadBalance"];
-}) {
+function CardioMetrics({ watch }: { watch: DashboardSnapshot["watch"] }) {
   const items: { label: string; value: string; sub?: string }[] = [];
   if (watch.hrMaxBpm != null) {
     items.push({ label: "FC max", value: `${watch.hrMaxBpm} bpm`, sub: "aujourd'hui" });
@@ -73,11 +66,10 @@ function CardioMetrics({
       sub: `1 min, le ${shortDate(watch.cardioRecoveryBpm.date)}`,
     });
   }
-  if (items.length === 0 && !loadBalance) return null;
+  if (items.length === 0) return null;
 
   return (
     <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10 space-y-4 text-sm">
-      {loadBalance && <BalanceGauge ratio={loadBalance.ratio} label={loadBalance.label} />}
       {items.length > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
           {items.map((i) => (
@@ -85,58 +77,6 @@ function CardioMetrics({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-// Équilibre de charge : jauge 0 → 2 découpée en zones colorées, repère sur
-// la valeur, libellé de la zone (la couleur n'est jamais seule)
-const GAUGE_MAX = 2;
-function BalanceGauge({ ratio, label }: { ratio: number; label: string }) {
-  const zone = balanceZone(ratio);
-  const pos = (Math.min(Math.max(ratio, 0), GAUGE_MAX) / GAUGE_MAX) * 100;
-  return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs text-[var(--color-body)]">Équilibre de charge</span>
-        <span className="text-lg sm:text-base tabular-nums text-[var(--color-heading)] dark:text-white">
-          {ratio.toFixed(2)}
-        </span>
-      </div>
-      <div className="relative mt-2" role="img" aria-label={`Équilibre de charge ${ratio.toFixed(2)} : ${label}`}>
-        <div className="flex h-2 rounded-full overflow-hidden gap-[2px]">
-          {BALANCE_ZONES.map((z) => {
-            const to = Math.min(z.to, GAUGE_MAX);
-            return (
-              <div
-                key={z.level}
-                style={{
-                  width: `${((to - z.from) / GAUGE_MAX) * 100}%`,
-                  backgroundColor: z.color,
-                  opacity: z.level === zone.level ? 0.9 : 0.25,
-                }}
-              />
-            );
-          })}
-        </div>
-        {/* Repère de la valeur */}
-        <div
-          className="absolute -top-1 w-1 h-4 rounded-full bg-[var(--color-heading)] dark:bg-white ring-2 ring-white dark:ring-[#0d1520]"
-          style={{ left: `calc(${pos}% - 2px)` }}
-        />
-      </div>
-      <div className="relative h-3 mt-1 text-[9px] text-[var(--color-body)]/70 tabular-nums">
-        {/* Seuils clés seulement : 1.3 et 1.5 seraient collés sur une carte étroite */}
-        {[0.8, 1.5].map((t) => (
-          <span key={t} className="absolute -translate-x-1/2" style={{ left: `${(t / GAUGE_MAX) * 100}%` }}>
-            {t}
-          </span>
-        ))}
-      </div>
-      <p className="text-[11px] sm:text-[10px] text-[var(--color-body)] mt-0.5">
-        <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle -mt-px" style={{ backgroundColor: zone.color }} />
-        {label} · 7 derniers jours vs 28
-      </p>
     </div>
   );
 }
@@ -158,12 +98,6 @@ function StrainHelp() {
         <p>
           <span className="text-[var(--color-heading)] dark:text-white">Strain</span> : ta charge du jour comparée à ta
           moyenne des 30 derniers jours actifs, sur 10. Une journée égale à ta moyenne vaut 6, le double 8.
-        </p>
-        <p>
-          <span className="text-[var(--color-heading)] dark:text-white">Équilibre de charge</span> : ta charge moyenne
-          des 7 derniers jours divisée par celle des 28. Vert : tu progresses sans à-coup. Orange puis rouge : hausse
-          brutale, le risque de blessure augmente. Gris : moins que d&apos;habitude. Aujourd&apos;hui n&apos;est compté
-          que demain, une fois la journée finie.
         </p>
       </div>
     </details>
@@ -415,5 +349,101 @@ export function SleepCard({
       )}
       <SleepTiming watch={watch} tz={tz} />
     </section>
+  );
+}
+
+// ── Équilibre de charge : tuile de l'accueil, ouvre la page de détail ──
+
+// Pictogramme de statut (toujours avec le libellé à côté)
+function StatusBadge({ level, color }: { level: string; color: string }) {
+  const glyph = level === "balanced" ? "✓" : level === "low" ? "↓" : "!";
+  return (
+    <span
+      className="inline-flex items-center justify-center w-4 h-4 rounded-[4px] text-[10px] font-semibold text-white shrink-0"
+      style={{ backgroundColor: color }}
+      aria-hidden
+    >
+      {glyph}
+    </span>
+  );
+}
+
+// Mini-courbe du ratio sur 30 jours, zones en fond, dernier point mis en avant
+function RatioSparkline({ series, width = 180, height = 64 }: { series: { date: string; ratio: number }[]; width?: number; height?: number }) {
+  if (series.length < 2) return null;
+  const values = series.map((p) => p.ratio);
+  const min = Math.min(0.4, ...values) - 0.05;
+  const max = Math.max(1.7, ...values) + 0.05;
+  const pad = 6;
+  const x = (i: number) => pad + (i * (width - 2 * pad)) / (series.length - 1);
+  const y = (v: number) => pad + ((max - v) * (height - 2 * pad)) / (max - min);
+  const band = (from: number, to: number, color: string, opacity: number) => (
+    <rect
+      x={0}
+      width={width}
+      y={y(Math.min(to, max))}
+      height={Math.max(0, y(Math.max(from, min)) - y(Math.min(to, max)))}
+      fill={color}
+      fillOpacity={opacity}
+      rx={4}
+    />
+  );
+  const path = series.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.ratio).toFixed(1)}`).join("");
+  const last = series[series.length - 1];
+  const lastColor = balanceZone(last.ratio).color;
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="block max-w-full overflow-visible shrink-0"
+      role="img"
+      aria-label={`Équilibre de charge sur ${series.length} jours, ${last.ratio.toFixed(2)} aujourd'hui`}
+    >
+      {band(0.8, 1.3, "#94a3b8", 0.14)}
+      {band(1.3, 1.5, "#f97316", 0.22)}
+      {band(1.5, 99, "#ea2261", 0.16)}
+      <path d={path} fill="none" stroke="#94a3b8" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={x(series.length - 1)} cy={y(last.ratio)} r={8} fill={lastColor} fillOpacity={0.3} />
+      <circle
+        cx={x(series.length - 1)}
+        cy={y(last.ratio)}
+        r={4}
+        className="fill-[var(--color-heading)] dark:fill-white"
+        stroke={lastColor}
+        strokeWidth={2}
+      />
+    </svg>
+  );
+}
+
+export function LoadBalanceTile({ loadBalance }: { loadBalance: DashboardSnapshot["loadBalance"] }) {
+  if (!loadBalance) return null;
+  const zone = balanceZone(loadBalance.ratio);
+  return (
+    <Link
+      href="/charge"
+      className="block rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5 hover:border-[var(--color-brand-purple)]/40 transition-colors"
+      style={{ boxShadow: "var(--shadow-ambient)" }}
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">Équilibre de charge</p>
+        <span className="text-[var(--color-body)] text-lg leading-none" aria-hidden>
+          ›
+        </span>
+      </div>
+      {/* Chiffre et courbe côte à côte, statut en pleine largeur dessous :
+          en colonne étroite, le statut passait sur 3 lignes */}
+      <div className="flex items-center justify-between gap-4 mt-2">
+        <p className="text-4xl font-light text-[var(--color-heading)] dark:text-white">
+          {loadBalance.ratio.toFixed(2).replace(".", ",")}
+        </p>
+        <RatioSparkline series={loadBalance.series} />
+      </div>
+      <p className="flex items-center gap-1.5 mt-2 text-[11px] uppercase tracking-wide text-[var(--color-heading)] dark:text-white">
+        <StatusBadge level={zone.level} color={zone.color} />
+        {zone.long}
+      </p>
+    </Link>
   );
 }

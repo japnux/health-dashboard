@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
 import { computeDayStrain } from "@/lib/strain-score";
+import { loadBalanceSeries } from "@/lib/load-balance";
 
 async function isAuthenticated(): Promise<boolean> {
   const pw = process.env.DASHBOARD_PASSWORD;
@@ -171,34 +172,26 @@ export async function GET(request: Request) {
     strainByDate[row.date] = computeDayStrain(row, history).score;
   }
 
-  // Charge cardio et équilibre de charge de chaque jour de la période.
-  // Moyennes glissantes 7 j et 28 j jour inclus (6 jours mesurés sur 7, 24 sur
-  // 28 au minimum). Aujourd'hui : charge partielle, pas de moyennes (journée
-  // en cours). La valeur d'hier est celle affichée sur l'accueil.
+  // Charge cardio et équilibre de charge de chaque jour de la période, même
+  // calcul que l'accueil et la page /charge (lib/load-balance.ts)
   const userToday = todayIso(tz);
-  const loadByDay = new Map(strainRows.map((r) => [r.date, r.cardio_load]));
-  const meanOver = (end: string, days: number, minKnown: number) => {
-    const vals: number[] = [];
-    for (let i = 0; i < days; i++) {
-      const v = loadByDay.get(isoDateMinusDays(end, i));
-      if (v != null) vals.push(Number(v));
-    }
-    return vals.length >= minKnown ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  };
-  const loadSeries: { date: string; load: number | null; acute: number | null; chronic: number | null; ratio: number | null }[] = [];
-  for (let d = current.start; d <= current.end && d <= userToday; d = isoDateMinusDays(d, -1)) {
-    const load = loadByDay.get(d) ?? null;
-    const complete = d < userToday;
-    const acute = complete ? meanOver(d, 7, 6) : null;
-    const chronic = complete ? meanOver(d, 28, 24) : null;
-    loadSeries.push({
-      date: d,
-      load: load != null ? Math.round(Number(load)) : null,
-      acute: acute != null ? Math.round(acute) : null,
-      chronic: chronic != null ? Math.round(chronic) : null,
-      ratio: acute != null && chronic != null && chronic > 0 ? Math.round((acute / chronic) * 100) / 100 : null,
-    });
-  }
+  const { data: loadRows } = await supabase
+    .from("daily_metrics")
+    .select("date, cardio_load")
+    .not("cardio_load", "is", null)
+    .gte("date", isoDateMinusDays(current.start, 365))
+    .lte("date", current.end)
+    .order("date", { ascending: true });
+  const lastDay = current.end < userToday ? current.end : userToday;
+  const loadSeries = loadBalanceSeries(loadRows ?? [], lastDay)
+    .filter((p) => p.date >= current.start)
+    .map((p) => ({
+      date: p.date,
+      load: p.measured ? p.load : null,
+      acute: Math.round(p.acute),
+      chronic: Math.round(p.chronic),
+      ratio: p.ratio,
+    }));
 
   const journalEntries = journalRes.data ?? [];
   const prevJournalEntries = prevJournalRes.data ?? [];
