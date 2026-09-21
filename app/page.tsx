@@ -53,7 +53,9 @@ export default async function Home() {
     snap.today?.hrv_ms != null && snap.yesterdayMetrics?.hrv_ms != null
       ? snap.today.hrv_ms - snap.yesterdayMetrics.hrv_ms
       : null;
-  // FC repos : celle du jour, sinon celle d'hier, signalée comme telle
+  // FC affichée : celle du sommeil (base du score) quand elle existe, sinon
+  // la FC repos d'Apple, du jour ou d'hier (signalée comme telle)
+  const sleepHr = snap.today?.sleeping_hr_bpm ?? null;
   const effectiveHr = snap.today?.resting_hr_bpm ?? snap.yesterdayMetrics?.resting_hr_bpm ?? null;
   const hrIsYesterday = snap.today?.resting_hr_bpm == null && effectiveHr != null;
   const hrDelta = null;
@@ -174,29 +176,51 @@ export default async function Home() {
                 />
               }
             />
-            <MiniMetric
-              label={hrIsYesterday ? "FC repos (hier)" : "FC repos"}
-              value={
-                effectiveHr != null
-                  ? `${effectiveHr} bpm`
-                  : "—"
-              }
-              sub={
-                snap.hrBaselineAvg != null
-                  ? `moy 60j ${Math.round(snap.hrBaselineAvg)}`
-                  : undefined
-              }
-              delta={hrDelta}
-              positiveIsGood={false}
-              chart={
-                <Sparkline
-                  points={snap.trend7d.map((t) => ({ date: t.date, value: t.rhr }))}
-                  reference={snap.hrBaselineAvg}
-                  unit="bpm"
-                  label="FC repos"
-                />
-              }
-            />
+            {sleepHr != null ? (
+              <MiniMetric
+                label="FC sommeil"
+                value={`${sleepHr} bpm`}
+                sub={
+                  snap.sleepHrBaselineAvg != null
+                    ? `moy 60j ${Math.round(snap.sleepHrBaselineAvg)}`
+                    : undefined
+                }
+                delta={null}
+                positiveIsGood={false}
+                chart={
+                  <Sparkline
+                    points={snap.trend7d.map((t) => ({ date: t.date, value: t.sleepHr }))}
+                    reference={snap.sleepHrBaselineAvg}
+                    unit="bpm"
+                    label="FC sommeil"
+                  />
+                }
+              />
+            ) : (
+              <MiniMetric
+                label={hrIsYesterday ? "FC repos (hier)" : "FC repos"}
+                value={
+                  effectiveHr != null
+                    ? `${effectiveHr} bpm`
+                    : "—"
+                }
+                sub={
+                  snap.hrBaselineAvg != null
+                    ? `moy 60j ${Math.round(snap.hrBaselineAvg)}`
+                    : undefined
+                }
+                delta={hrDelta}
+                positiveIsGood={false}
+                chart={
+                  <Sparkline
+                    points={snap.trend7d.map((t) => ({ date: t.date, value: t.rhr }))}
+                    reference={snap.hrBaselineAvg}
+                    unit="bpm"
+                    label="FC repos"
+                  />
+                }
+              />
+            )}
             {snap.today?.respiratory_rate != null && (
               <MiniMetric
                 label="Respi"

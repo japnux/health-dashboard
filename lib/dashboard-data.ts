@@ -90,8 +90,10 @@ export type DashboardSnapshot = {
   lastSyncAt: string | null;
   watch: WatchInsights;
   // 7 derniers jours (aujourd'hui compris), ordre chronologique, pour les mini-courbes
-  trend7d: { date: string; hrv: number | null; rhr: number | null }[];
+  trend7d: { date: string; hrv: number | null; rhr: number | null; sleepHr: number | null }[];
   loadBalance: LoadBalance | null;
+  // FC de sommeil : moyenne des 60 jours précédents (référence du score)
+  sleepHrBaselineAvg: number | null;
 };
 
 // Équilibre de charge (ratio aigu/chronique) : charge cardio moyenne des 7
@@ -486,10 +488,16 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
     loadBalance: computeLoadBalance(baseline60),
+    sleepHrBaselineAvg: avg(baseline60.map((r) => r.sleeping_hr_bpm)),
     trend7d: Array.from({ length: 7 }, (_, i) => {
       const d = isoDaysAgo(6 - i);
       const row = recentMetrics?.find((r) => r.date === d);
-      return { date: d, hrv: row?.hrv_ms ?? null, rhr: row?.resting_hr_bpm ?? null };
+      return {
+        date: d,
+        hrv: row?.hrv_ms ?? null,
+        rhr: row?.resting_hr_bpm ?? null,
+        sleepHr: row?.sleeping_hr_bpm ?? null,
+      };
     }),
   };
 }
