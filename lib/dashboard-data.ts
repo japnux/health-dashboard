@@ -2,6 +2,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
 import { balanceZone, loadBalanceSeries, type BalanceLevel } from "@/lib/load-balance";
+import { formSeries, formZone, type FormLevel } from "@/lib/form";
+import { BODY_METRICS, metricRange, metricStatus, type BodyMetricKey, type MetricRange, type MetricStatus } from "@/lib/body-metrics";
 import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
@@ -97,6 +99,26 @@ export type DashboardSnapshot = {
   loadBalance: LoadBalance | null;
   // FC de sommeil : moyenne des 60 jours précédents (référence du score)
   sleepHrBaselineAvg: number | null;
+  form: FormSummary | null;
+  bodyMetrics: BodyMetricSummary[];
+};
+
+// Forme d'entraînement du jour (voir lib/form.ts) et 30 derniers jours
+export type FormSummary = {
+  value: number;
+  level: FormLevel;
+  label: string;
+  advice: string;
+  series: { date: string; value: number }[];
+};
+
+// Mesure corporelle de la nuit, avec la plage normale personnelle
+export type BodyMetricSummary = {
+  key: BodyMetricKey;
+  value: number | null;
+  range: MetricRange | null;
+  status: MetricStatus | null;
+  history: number; // nuits disponibles pour la plage
 };
 
 // Équilibre de charge : ratio charge aiguë / chronique (EWMA 7 j / 42 j,
@@ -110,6 +132,20 @@ export type LoadBalance = {
   advice: string;
   series: { date: string; ratio: number }[]; // 30 derniers jours, pour la tuile
 };
+
+function computeForm(rows: { date: string; cardio_load: number | null }[], today: string): FormSummary | null {
+  const series = formSeries(loadBalanceSeries(rows, today));
+  const last = series[series.length - 1];
+  if (!last || last.date !== today) return null;
+  const zone = formZone(last.form);
+  return {
+    value: last.form,
+    level: zone.level,
+    label: zone.long,
+    advice: zone.advice,
+    series: series.slice(-30).map((p) => ({ date: p.date, value: p.form })),
+  };
+}
 
 function computeLoadBalance(rows: { date: string; cardio_load: number | null }[], today: string): LoadBalance | null {
   const series = loadBalanceSeries(rows, today);
@@ -219,7 +255,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, spo2_pct, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -500,6 +536,19 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60, tz),
     loadBalance: computeLoadBalance(loadRows ?? [], date),
+    form: computeForm(loadRows ?? [], date),
+    bodyMetrics: BODY_METRICS.map((def) => {
+      const value = (today?.[def.column] as number | null | undefined) ?? null;
+      const past = baseline60.map((r) => (r as Record<string, unknown>)[def.column] as number | null);
+      const range = metricRange(past, def.minHistory);
+      return {
+        key: def.key,
+        value,
+        range,
+        status: value != null ? metricStatus(value, range, def.normalFrom) : null,
+        history: past.filter((v) => v != null).length,
+      };
+    }),
     tz,
     sleepHrBaselineAvg: avg(baseline60.map((r) => r.sleeping_hr_bpm)),
     trend7d: Array.from({ length: 7 }, (_, i) => {

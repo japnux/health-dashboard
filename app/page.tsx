@@ -1,7 +1,6 @@
 import { getDashboardSnapshot } from "@/lib/dashboard-data";
 import { formatFrLong, dateInTz, diffDaysIso } from "@/lib/dates";
 import { workoutDisplayLabel } from "@/lib/workout-types";
-import { recoveryColor } from "@/lib/recovery-score";
 import { NutritionTracker } from "@/components/NutritionTracker";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { MissingDataNotice, StaleScaleNotice } from "@/components/Notices";
@@ -10,59 +9,19 @@ import { Reservations } from "@/components/Reservations";
 import { AiAnalysis } from "@/components/AiAnalysis";
 import { AiTrends, AiWorkoutSuggestion } from "@/components/AiInsights";
 import { PlannedActivities } from "@/components/PlannedActivities";
-import { StrainCard, SleepCard, MiniMetric, LoadBalanceTile } from "@/components/HomeCards";
-import { ScoreRing } from "@/components/ScoreRing";
-import { Sparkline } from "@/components/Sparkline";
+import { TodayHero, WorkoutsToday, TrainingBalance, BodyMetricsRow, SleepTile } from "@/components/home/TodaySections";
 
 export const dynamic = "force-dynamic";
-
-const recoveryBg: Record<string, string> = {
-  green: "from-[#15be53]/15 to-[#15be53]/5 border-[#15be53]/20",
-  yellow: "from-[#eab308]/15 to-[#eab308]/5 border-[#eab308]/20",
-  red: "from-[#ea2261]/15 to-[#ea2261]/5 border-[#ea2261]/20",
-  gray: "from-[var(--color-body)]/10 to-[var(--color-body)]/5 border-[var(--color-border)]",
-};
-
-// Couleur de l'anneau et libellé d'état de la récupération
-const recoveryRing: Record<string, string> = {
-  green: "#15be53",
-  yellow: "#eab308",
-  red: "#ea2261",
-  gray: "#94a3b8",
-};
-
-const recoveryLabel: Record<string, string> = {
-  green: "Bonne",
-  yellow: "Moyenne",
-  red: "Faible",
-  gray: "Pas de données",
-};
 
 export default async function Home() {
   const snap = await getDashboardSnapshot();
 
-  const color = recoveryColor(snap.recovery.score);
   const noDataToday = snap.today == null;
 
   const showStaleScale =
     snap.bodyCompositionAgeDays != null && snap.bodyCompositionAgeDays > 7;
 
-  const hrvDelta =
-    snap.today?.hrv_ms != null && snap.yesterdayMetrics?.hrv_ms != null
-      ? snap.today.hrv_ms - snap.yesterdayMetrics.hrv_ms
-      : null;
-  // FC affichée : celle du sommeil (base du score) quand elle existe, sinon
-  // la FC repos d'Apple, du jour ou d'hier (signalée comme telle)
-  const sleepHr = snap.today?.sleeping_hr_bpm ?? null;
-  const effectiveHr = snap.today?.resting_hr_bpm ?? snap.yesterdayMetrics?.resting_hr_bpm ?? null;
-  const hrIsYesterday = snap.today?.resting_hr_bpm == null && effectiveHr != null;
-  const hrDelta = null;
-  const respiDelta =
-    snap.today?.respiratory_rate != null && snap.yesterdayMetrics?.respiratory_rate != null
-      ? snap.today.respiratory_rate - snap.yesterdayMetrics.respiratory_rate
-      : null;
   const spo2Today = snap.today?.spo2_pct ?? null;
-  const spo2Yesterday = snap.yesterdayMetrics?.spo2_pct ?? null;
 
 
   return (
@@ -119,147 +78,11 @@ export default async function Home() {
         </div>
       )}
 
-      {/* ── Recovery + Strain + Sommeil : empilées sur mobile, 3 colonnes au-delà ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Recovery */}
-        <section
-          className={`relative overflow-hidden rounded-[var(--radius-lg)] border bg-gradient-to-br ${recoveryBg[color]} p-5`}
-          style={{ boxShadow: "var(--shadow-ambient)" }}
-        >
-          <p className="text-xs uppercase tracking-wide text-[var(--color-body)] mb-1 font-normal">
-            Récupération
-          </p>
-          <div className="flex items-center sm:flex-col sm:items-start gap-4 sm:gap-3 mt-2">
-            <ScoreRing score={snap.recovery.score} color={recoveryRing[color]} label="Récupération" />
-            <div>
-              <p className="flex items-center gap-1.5 text-sm text-[var(--color-heading)] dark:text-white">
-                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: recoveryRing[color] }} />
-                {recoveryLabel[color]}
-              </p>
-              <p className="text-[11px] text-[var(--color-body)] mt-0.5">sur 10</p>
-              {snap.recovery.basis !== "full" && (
-                <p className="text-[10px] text-[var(--color-body)] mt-0.5">
-                  Score {snap.recovery.basis === "partial" ? "partiel" : "estimé"}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 text-sm">
-            <MiniMetric
-              label="HRV"
-              value={
-                snap.today?.hrv_ms != null
-                  ? `${Math.round(snap.today.hrv_ms)} ms`
-                  : "—"
-              }
-              sub={
-                snap.hrvBaselineAvg != null
-                  ? `méd 60j ${Math.round(snap.hrvBaselineAvg)}`
-                  : undefined
-              }
-              delta={hrvDelta}
-              positiveIsGood
-              chart={
-                <Sparkline
-                  points={snap.trend7d.map((t) => ({ date: t.date, value: t.hrv }))}
-                  reference={snap.hrvBaselineAvg}
-                  unit="ms"
-                  label="HRV"
-                />
-              }
-            />
-            {sleepHr != null ? (
-              <MiniMetric
-                label="FC sommeil"
-                value={`${sleepHr} bpm`}
-                sub={
-                  snap.sleepHrBaselineAvg != null
-                    ? `moy 60j ${Math.round(snap.sleepHrBaselineAvg)}`
-                    : undefined
-                }
-                delta={null}
-                positiveIsGood={false}
-                chart={
-                  <Sparkline
-                    points={snap.trend7d.map((t) => ({ date: t.date, value: t.sleepHr }))}
-                    reference={snap.sleepHrBaselineAvg}
-                    unit="bpm"
-                    label="FC sommeil"
-                  />
-                }
-              />
-            ) : (
-              <MiniMetric
-                label={hrIsYesterday ? "FC repos (hier)" : "FC repos"}
-                value={
-                  effectiveHr != null
-                    ? `${effectiveHr} bpm`
-                    : "—"
-                }
-                sub={
-                  snap.hrBaselineAvg != null
-                    ? `moy 60j ${Math.round(snap.hrBaselineAvg)}`
-                    : undefined
-                }
-                delta={hrDelta}
-                positiveIsGood={false}
-                chart={
-                  <Sparkline
-                    points={snap.trend7d.map((t) => ({ date: t.date, value: t.rhr }))}
-                    reference={snap.hrBaselineAvg}
-                    unit="bpm"
-                    label="FC repos"
-                  />
-                }
-              />
-            )}
-            {snap.today?.respiratory_rate != null && (
-              <MiniMetric
-                label="Respi"
-                value={`${Math.round(snap.today.respiratory_rate * 10) / 10}/min`}
-                sub={
-                  snap.respiBaselineAvg != null
-                    ? `moy 60j ${Math.round(snap.respiBaselineAvg * 10) / 10}`
-                    : undefined
-                }
-                delta={respiDelta}
-                positiveIsGood={false}
-              />
-            )}
-            {spo2Today != null && (
-              <MiniMetric
-                label="SpO₂"
-                value={`${Math.round(spo2Today * 10) / 10}%`}
-                sub={spo2Yesterday != null ? `hier ${Math.round(spo2Yesterday * 10) / 10}%` : undefined}
-                delta={null}
-                positiveIsGood
-              />
-            )}
-            {snap.watch.wristTempDeltaC != null && (
-              <MiniMetric
-                label="Temp. poignet"
-                value={`${snap.watch.wristTempDeltaC > 0 ? "+" : ""}${snap.watch.wristTempDeltaC.toFixed(1)} °C`}
-                sub="vs méd 60j"
-                delta={null}
-                positiveIsGood={false}
-              />
-            )}
-          </div>
-        </section>
+      {/* ── Aujourd'hui : récupération, Strain et quoi faire (détail au clic) ── */}
+      <TodayHero snap={snap} />
 
-        {/* Strain */}
-        <StrainCard
-          strain={snap.strain}
-          todayWorkouts={snap.recentWorkouts.filter((w) => dateInTz(w.started_at, snap.tz) === snap.date).map((w) => ({ type: w.type }))}
-          watch={snap.watch}
-        />
-
-        {/* Sommeil */}
-        <SleepCard today={snap.today} sleepTargetMin={snap.sleepTargetMin} watch={snap.watch} tz={snap.tz} />
-      </div>
-
-      {/* ── Équilibre de charge : tuile cliquable vers le détail ── */}
-      <LoadBalanceTile loadBalance={snap.loadBalance} />
+      {/* ── Séances du jour (détail au clic) ── */}
+      <WorkoutsToday snap={snap} />
 
       {/* ── Nutrition + Suggestion Workout — côte à côte ── */}
       <div
@@ -280,6 +103,11 @@ export default async function Home() {
           <PlannedActivities date={snap.date} activities={snap.plannedActivities} />
         </AiWorkoutSuggestion>
       </div>
+
+      {/* ── Équilibre d'entraînement, mesures de la nuit, sommeil (détail au clic) ── */}
+      <TrainingBalance snap={snap} />
+      <BodyMetricsRow snap={snap} />
+      <SleepTile snap={snap} />
 
       {/* ── Tendances & Signaux (IA) + Score semaine ── */}
       <AiTrends />

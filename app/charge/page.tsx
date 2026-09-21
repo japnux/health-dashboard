@@ -13,7 +13,7 @@ import {
   balanceZone,
   loadBalanceSeries,
 } from "@/lib/load-balance";
-import { LoadRatioChart } from "@/components/LoadRatioChart";
+import { ZonedLineChart } from "@/components/charts/ZonedLineChart";
 
 export const dynamic = "force-dynamic";
 
@@ -117,7 +117,7 @@ export default async function ChargePage({
               ))}
             </div>
           </div>
-          <LoadRatioChart points={shown.map((p) => ({ date: p.date, ratio: p.ratio, load: p.load }))} />
+          <ZonedLineChart kind="balance" points={shown.map((p) => ({ date: p.date, value: p.ratio, load: p.load }))} />
 
           {/* Aperçu chiffré de la période */}
           {avg != null && max != null && min != null && (
