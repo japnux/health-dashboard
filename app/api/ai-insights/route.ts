@@ -83,13 +83,20 @@ FORMAT :
 2. RECOMMANDATIONS (exactement 3) : 1 phrase max 15 mots, priorité P1/P2/P3.
    { emoji, text, priority, category: "sommeil"|"récupération"|"activité"|"nutrition"|"général" }
 
-3. SUGGESTION WORKOUT : basée sur recovery, HRV, strain, sommeil.
+3. SUGGESTION WORKOUT : l'utilisateur décide de son plan, tu adaptes son exécution.
+   - Si remainingPlanned n'est PAS vide → type = la prochaine activité de remainingPlanned.
+     Tu ajustes intensity et duration selon recovery, HRV, sommeil et strain
+     (ex : session plus courte, rythme tranquille). Un plan de 2 séances le même jour est un choix de l'utilisateur, pas une erreur.
+   - Tu ne remplaces une activité planifiée par Repos QUE sur un signal d'alerte :
+     recovery < 5, SpO2 < 94 %, ou respiration > moyenne 7j + 1,5/min.
+     Dans ce cas, la reason le dit explicitement : "Plan : <activité>. Déconseillé aujourd'hui car <signal>."
+   - Si hasPlannedActivities=true ET remainingPlanned vide → tout est fait → suggère Repos/Mobilité.
+     Si strain ≥ 6 ET tout est fait → repos/récupération active obligatoire.
+   - Si hasPlannedActivities=false → propose selon recovery, HRV, strain, sommeil.
    - type : nom normalisé (Surf, Musculation, Yoga, Course, Natation, Repos)
    - duration : avec unité (ex: "45 min")
-   - reason : 1 phrase, basée sur biométrie uniquement
+   - reason : 1 phrase ; cite le plan s'il existe
    - factors : observations factuelles depuis les données
-   Si hasPlannedActivities=true ET remainingPlanned vide → tout est fait → suggère Repos/Mobilité.
-   Si strain ≥ 6 ET tout est fait → repos/récupération active obligatoire.
 
 RÈGLES :
 - Sommeil en XhYY (pas en minutes). HRV en ms, FC en bpm, poids en kg.
@@ -99,6 +106,8 @@ RÈGLES :
 - Sauna = récupération (pas un entraînement intense), effet positif sur recovery.
 - Meal slots : utilise mealSlots, remainingMacros et dayProfile pour des recos nutrition concrètes (quel slot, quoi manger, combien de P/G/L).
 - Respi élevée ou SpO2 < 95% → baisser intensité workout, signaler en tendance recovery.
+- Charge d'entraînement : strain.score (0-10) et strain.cardioLoad comparé à strain.baselineAvg (moyenne 30j des jours actifs) sont la référence. NE recalcule JAMAIS de moyenne de charge toi-même depuis dailyMetrics (les jours de repos à 0 fausseraient la moyenne).
+- FC repos du jour : Apple l'actualise pendant la journée et elle monte après une séance. Un jour où une séance a déjà eu lieu, ne la traite pas comme un signal de fatigue à elle seule.
 
 JSON uniquement, sans markdown :
 {
@@ -383,7 +392,11 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     strain: {
       score: strain.score,
       level: strain.label,
+      // "hr" : charge cardio (FC) ; "kcal" : repli sur les kcal actives
+      mode: strain.mode,
+      cardioLoad: strain.cardioLoad,
       activeKcalToday: strain.activeKcalToday,
+      // Moyenne 30j des jours actifs, dans l'unité du mode (charge ou kcal)
       baselineAvg: strain.baselineAvg,
     },
     objective,
