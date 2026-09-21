@@ -8,6 +8,7 @@ import {
   Line,
   LineChart,
   ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -30,6 +31,26 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
   const hi = Math.max(...data.map((d) => d.max));
   const domain: [number, number] = [Math.floor((lo - 8) / 10) * 10, Math.ceil((hi + 5) / 10) * 10];
 
+  // Dégradé vertical à paliers : la courbe prend la couleur de sa zone.
+  // Le dégradé suit la boîte de la courbe (de sa FC max à sa FC min).
+  const avgs = data.map((d) => d.avg);
+  const top = Math.max(...avgs);
+  const bottom = Math.min(...avgs);
+  const span = Math.max(1, top - bottom);
+  const stops: { offset: number; color: string }[] = [];
+  for (let i = HR_ZONES.length - 1; i >= -1; i--) {
+    // Zone i couvre [ZONE_BOUNDS[i], ZONE_BOUNDS[i+1]] ; sous Z1 : couleur de Z1
+    const hiBpm = i === HR_ZONES.length - 1 ? Infinity : ZONE_BOUNDS[i + 1] * hrMax;
+    const loBpm = i >= 0 ? ZONE_BOUNDS[i] * hrMax : -Infinity;
+    const color = HR_ZONES[Math.max(0, i)].color;
+    const from = Math.min(1, Math.max(0, (top - Math.min(hiBpm, top)) / span));
+    const to = Math.min(1, Math.max(0, (top - Math.max(loBpm, bottom)) / span));
+    if (to > from) {
+      stops.push({ offset: from, color }, { offset: to, color });
+    }
+  }
+  const meanHr = Math.round(avgs.reduce((a, b) => a + b, 0) / avgs.length);
+
   const zoneOf = (bpm: number) => {
     const pct = bpm / hrMax;
     for (let i = HR_ZONES.length - 1; i >= 0; i--) if (pct >= ZONE_BOUNDS[i]) return HR_ZONES[i];
@@ -41,6 +62,13 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
     <div className="text-zinc-900 dark:text-white">
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id="hr-zone-gradient" x1="0" y1="0" x2="0" y2="1">
+              {stops.map((st, i) => (
+                <stop key={i} offset={st.offset} stopColor={st.color} />
+              ))}
+            </linearGradient>
+          </defs>
           {HR_ZONES.map((z, i) => {
             const y1 = Math.max(ZONE_BOUNDS[i] * hrMax, domain[0]);
             const y2 = Math.min(ZONE_BOUNDS[i + 1] * hrMax, domain[1]);
@@ -51,7 +79,7 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
                 y1={y1}
                 y2={y2}
                 fill={z.color}
-                fillOpacity={0.14}
+                fillOpacity={0.1}
                 ifOverflow="hidden"
                 label={{ value: z.label, position: "insideRight", fontSize: 10, fill: "#71717a" }}
               />
@@ -77,11 +105,25 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
               return [`${bpm} bpm${z ? ` · ${z.label} ${z.name}` : ""}`, key === "avg" ? "moyenne" : "max"];
             }}
           />
-          <Line type="monotone" dataKey="avg" stroke="currentColor" strokeWidth={2} dot={false} isAnimationActive={false} />
+          <ReferenceLine
+            y={meanHr}
+            stroke="#a1a1aa"
+            strokeWidth={1.5}
+            label={{ value: `moy. ${meanHr}`, position: "insideTopLeft", fontSize: 11, fill: "#52525b" }}
+          />
+          <Line
+            type="monotone"
+            dataKey="avg"
+            stroke={stops.length > 0 ? "url(#hr-zone-gradient)" : "currentColor"}
+            strokeWidth={3}
+            strokeLinecap="round"
+            dot={false}
+            isAnimationActive={false}
+          />
         </LineChart>
       </ResponsiveContainer>
       <p className="text-[11px] text-[var(--color-body)] mt-1">
-        FC moyenne de chaque minute. Bandes : zones cardio (FC max {hrMax} bpm).
+        FC moyenne de chaque minute, colorée selon la zone cardio (FC max {hrMax} bpm).
       </p>
     </div>
   );

@@ -2,6 +2,7 @@
 // mesures, sommeil) : même en-tête, mêmes cartes, même choix de période.
 
 import Link from "next/link";
+import { tintedBackground, tint } from "@/lib/palette";
 
 export function DetailPage({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto max-w-2xl p-4 pb-24 sm:p-6 space-y-5">{children}</main>;
@@ -18,7 +19,8 @@ export function BackLink({ href = "/", label = "Accueil" }: { href?: string; lab
   );
 }
 
-// En-tête : sur-titre, grand chiffre, statut (pastille + libellé), date, conseil
+// En-tête : sur-titre, grand chiffre, statut (pastille + libellé), date, conseil.
+// Carte teintée par la couleur du statut (ou `accent`), comme l'app de référence.
 export function DetailHeader({
   eyebrow,
   value,
@@ -26,7 +28,11 @@ export function DetailHeader({
   status,
   date,
   advice,
+  accent,
+  children,
 }: {
+  accent?: string;
+  children?: React.ReactNode;
   eyebrow: string;
   value: string;
   unit?: string;
@@ -34,8 +40,12 @@ export function DetailHeader({
   date?: string | null;
   advice?: string | null;
 }) {
+  const color = accent ?? status?.color ?? null;
   return (
-    <header>
+    <header
+      className={color ? "rounded-[var(--radius-lg)] border p-5 sm:p-6" : undefined}
+      style={color ? { background: tintedBackground(color), borderColor: tint(color, 0.3) } : undefined}
+    >
       <p className="text-xs uppercase tracking-wide text-[var(--color-body)]">{eyebrow}</p>
       <p className="mt-2 text-[var(--color-heading)] dark:text-white">
         <span className="text-6xl font-light">{value}</span>
@@ -43,12 +53,16 @@ export function DetailHeader({
       </p>
       {status && (
         <p className="flex items-center gap-1.5 mt-2 text-xs uppercase tracking-wide text-[var(--color-heading)] dark:text-white">
-          <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: status.color }} />
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: status.color, boxShadow: `0 0 0 3px ${tint(status.color, 0.25)}` }}
+          />
           {status.label}
         </p>
       )}
       {date && <p className="text-sm text-[var(--color-body)] mt-1">{date}</p>}
       {advice && <p className="text-base text-[var(--color-heading)] dark:text-white mt-4 leading-relaxed">{advice}</p>}
+      {children}
     </header>
   );
 }
@@ -109,9 +123,9 @@ export function StatGrid({
 }) {
   const grid = cols === 2 ? "grid-cols-2" : cols === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
   return (
-    <div className={`grid ${grid} gap-x-3 gap-y-4`}>
+    <div className={`grid ${grid} gap-2 sm:gap-3`}>
       {items.map((i) => (
-        <div key={i.label} className="min-w-0">
+        <div key={i.label} className="min-w-0 rounded-[var(--radius-md)] bg-[#061b31]/[0.04] dark:bg-white/[0.06] px-3 py-2.5">
           <p className="text-xs text-[var(--color-body)]">{i.label}</p>
           <p className="text-xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">{i.value}</p>
           {i.sub && <div className="text-[11px] text-[var(--color-body)] mt-0.5">{i.sub}</div>}
@@ -123,12 +137,17 @@ export function StatGrid({
 
 // Écart vs une référence : flèche + valeur, vert si favorable, rouge sinon
 export function Delta({ diff, betterWhen, format }: { diff: number | null; betterWhen: "up" | "down" | "none"; format: (v: number) => string }) {
-  if (diff == null || Math.abs(diff) < 1e-9) return <span>= moyenne</span>;
+  const pill = "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 tabular-nums";
+  if (diff == null || Math.abs(diff) < 1e-9) return <span className={`${pill} bg-[#061b31]/[0.06] dark:bg-white/10`}>= moyenne</span>;
   const up = diff > 0;
-  const color =
-    betterWhen === "none" ? "text-[var(--color-body)]" : (betterWhen === "up") === up ? "text-[#108c3d]" : "text-[#c2410c]";
+  const tone =
+    betterWhen === "none"
+      ? "bg-[#061b31]/[0.06] dark:bg-white/10 text-[var(--color-heading)] dark:text-white"
+      : (betterWhen === "up") === up
+        ? "bg-[#34c759]/15 text-[#1f7a3a] dark:text-[#6ee7a0]"
+        : "bg-[#ff3b30]/15 text-[#c0271e] dark:text-[#ff8a80]";
   return (
-    <span className={color}>
+    <span className={`${pill} ${tone}`}>
       {up ? "▲" : "▼"} {format(Math.abs(diff))}
     </span>
   );

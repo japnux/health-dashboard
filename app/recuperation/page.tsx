@@ -19,7 +19,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const COLOR: Record<string, string> = { green: "#15be53", yellow: "#eab308", red: "#ea2261", gray: "#94a3b8" };
+const COLOR: Record<string, string> = { green: "#34c759", yellow: "#ffcc00", red: "#ff3b30", gray: "#8e8e93" };
 const LABEL: Record<string, string> = { green: "bonne", yellow: "moyenne", red: "faible", gray: "inconnue" };
 const ADVICE: Record<string, string> = {
   green: "Ton corps a bien récupéré cette nuit : bon jour pour une séance exigeante.",
@@ -119,7 +119,7 @@ export default async function RecuperationPage({
         <div className="space-y-4">
           {rows.map((r) => {
             const comp = c[r.key];
-            const barColor = !comp.available ? "#94a3b8" : comp.score >= 7 ? "#15be53" : comp.score >= 4 ? "#eab308" : "#ea2261";
+            const barColor = !comp.available ? "#8e8e93" : comp.score >= 7 ? "#34c759" : comp.score >= 4 ? "#ffcc00" : "#ff3b30";
             return (
               <div key={r.key}>
                 <div className="flex items-baseline justify-between gap-3">
@@ -130,7 +130,7 @@ export default async function RecuperationPage({
                     {comp.available ? `${fmt1(comp.score)}/10` : "non mesuré"} · poids {weight(r.key)}
                   </p>
                 </div>
-                <div className="h-2 rounded-full bg-[var(--color-border)] dark:bg-white/10 mt-1.5 overflow-hidden">
+                <div className="h-2 rounded-full bar-track mt-1.5 overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${comp.available ? comp.score * 10 : 0}%`, backgroundColor: barColor }} />
                 </div>
                 {r.ref && <p className="text-[11px] text-[var(--color-body)] mt-1">{r.ref}</p>}

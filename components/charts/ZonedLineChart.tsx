@@ -24,16 +24,16 @@ type Kind = "balance" | "form" | "recovery" | "strain";
 
 // Zones du score de récupération (mêmes seuils que recoveryColor)
 const RECOVERY_ZONES = [
-  { level: "red", from: 0, to: 5, color: "#ea2261", label: "faible" },
-  { level: "yellow", from: 5, to: 7, color: "#eab308", label: "moyenne" },
-  { level: "green", from: 7, to: 10.01, color: "#15be53", label: "bonne" },
+  { level: "red", from: 0, to: 5, color: "#ff3b30", label: "faible" },
+  { level: "yellow", from: 5, to: 7, color: "#ffcc00", label: "moyenne" },
+  { level: "green", from: 7, to: 10.01, color: "#34c759", label: "bonne" },
 ];
 // Zones du Strain (mêmes seuils que strainColor)
 const STRAIN_ZONES = [
-  { level: "light", from: 0, to: 3, color: "#15be53", label: "léger" },
-  { level: "moderate", from: 3, to: 6, color: "#eab308", label: "modéré" },
-  { level: "high", from: 6, to: 8, color: "#f97316", label: "élevé" },
-  { level: "very_high", from: 8, to: 10.01, color: "#ea2261", label: "très élevé" },
+  { level: "light", from: 0, to: 3, color: "#34c759", label: "léger" },
+  { level: "moderate", from: 3, to: 6, color: "#ffcc00", label: "modéré" },
+  { level: "high", from: 6, to: 8, color: "#ff9500", label: "élevé" },
+  { level: "very_high", from: 8, to: 10.01, color: "#ff3b30", label: "très élevé" },
 ];
 const strainZone = (v: number) => STRAIN_ZONES.find((z) => v < z.to) ?? STRAIN_ZONES[STRAIN_ZONES.length - 1];
 const recoveryZone = (v: number) => RECOVERY_ZONES.find((z) => v < z.to) ?? RECOVERY_ZONES[RECOVERY_ZONES.length - 1];
@@ -97,14 +97,15 @@ export function ZonedLineChart({ points, kind }: { points: Point[]; kind: Kind }
             y1={Math.max(z.from, yMin)}
             y2={Math.min(z.to, yMax)}
             fill={z.color}
-            fillOpacity={0.1}
+            fillOpacity={0.2}
             ifOverflow="hidden"
             // "sous-charge" en bas de sa bande : les points tombent souvent vers 0,7
             label={{
               value: z.label,
               position: z.level === "low" || z.level === "high_risk" || z.level === "red" ? "insideBottomLeft" : "insideTopLeft",
               fontSize: 10,
-              fill: z.color,
+              // Libellé en gris lisible : le jaune ou le vert anis seraient illisibles en texte
+              fill: "#52525b",
             }}
           />
         ))}
@@ -150,8 +151,10 @@ export function ZonedLineChart({ points, kind }: { points: Point[]; kind: Kind }
                 </g>
               );
             }
-            if (!showValues) return <g key={`dot-${index}`} />;
-            return <circle key={`dot-${index}`} cx={cx} cy={cy} r={3.5} fill="#fff" stroke="#64748d" strokeWidth={2} />;
+            // Chaque point dans la couleur de sa zone (plus petit en vue longue)
+            return (
+              <circle key={`dot-${index}`} cx={cx} cy={cy} r={showValues ? 4 : 2.5} fill={color} stroke="#fff" strokeWidth={showValues ? 1.5 : 1} />
+            );
           }}
         >
           {/* Valeur sur chaque point en vue courte, sur le dernier sinon */}

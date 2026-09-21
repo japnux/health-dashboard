@@ -64,17 +64,17 @@ export function HistoryChart({
           <ReferenceArea
             y1={band.low}
             y2={band.high}
-            fill="#15be53"
+            fill="#34c759"
             fillOpacity={0.12}
-            label={{ value: "ta plage normale", position: "insideTopLeft", fontSize: 10, fill: "#108c3d" }}
+            label={{ value: "ta plage normale", position: "insideTopLeft", fontSize: 10, fill: "#1f7a3a" }}
           />
         )}
         {target && (
           <ReferenceLine
             y={target.value}
-            stroke="#15be53"
+            stroke="#34c759"
             strokeDasharray="4 4"
-            label={{ value: target.label, position: "insideTopRight", fontSize: 10, fill: "#108c3d" }}
+            label={{ value: target.label, position: "insideTopRight", fontSize: 10, fill: "#1f7a3a" }}
           />
         )}
         <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.4} vertical={false} />
@@ -97,7 +97,7 @@ export function HistoryChart({
             {data.map((d, i) => (
               <Cell
                 key={d.date}
-                fill={target && d.value >= target.value ? "#15be53" : "#93c5fd"}
+                fill={target && d.value >= target.value ? "#34c759" : "#7ab8ff"}
                 fillOpacity={i === lastIndex ? 1 : 0.75}
               />
             ))}
@@ -117,8 +117,8 @@ export function HistoryChart({
               if (index === lastIndex) {
                 return (
                   <g key={`d-${index}`}>
-                    <circle cx={cx} cy={cy} r={9} fill="#2a78d6" fillOpacity={0.25} />
-                    <circle cx={cx} cy={cy} r={4.5} fill="#2a78d6" stroke="#fff" strokeWidth={2} />
+                    <circle cx={cx} cy={cy} r={9} fill="#007aff" fillOpacity={0.25} />
+                    <circle cx={cx} cy={cy} r={4.5} fill="#007aff" stroke="#fff" strokeWidth={2} />
                   </g>
                 );
               }

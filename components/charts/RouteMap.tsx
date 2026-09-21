@@ -21,7 +21,7 @@ const SPEED_BINS = [
 const SPEED_COLORS = HR_ZONES.map((z) => z.color);
 
 function speedColor(ms: number | null): string {
-  if (ms == null) return "#94a3b8";
+  if (ms == null) return "#8e8e93";
   const kmh = ms * 3.6;
   const i = SPEED_BINS.findIndex((b) => kmh < b.max);
   return SPEED_COLORS[i === -1 ? SPEED_COLORS.length - 1 : i];
@@ -56,7 +56,7 @@ export function RouteMap({ route }: { route: RoutePoint[] }) {
         for (let i = 1; i < route.length; i++) {
           L.polyline([latlngs[i - 1], latlngs[i]], { color: speedColor(route[i][2]), weight: 3, opacity: 1 }).addTo(map);
         }
-        L.circleMarker(latlngs[0], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#15be53", fillOpacity: 1 })
+        L.circleMarker(latlngs[0], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#34c759", fillOpacity: 1 })
           .bindTooltip("Départ")
           .addTo(map);
         L.circleMarker(latlngs[latlngs.length - 1], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#18181b", fillOpacity: 1 })
@@ -88,7 +88,7 @@ export function RouteMap({ route }: { route: RoutePoint[] }) {
           </span>
         ))}
         <span className="inline-flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-full bg-[#15be53]" /> départ
+          <span className="inline-block w-2 h-2 rounded-full bg-[#34c759]" /> départ
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="inline-block w-2 h-2 rounded-full bg-[#18181b]" /> arrivée

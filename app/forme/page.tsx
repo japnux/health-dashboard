@@ -94,7 +94,7 @@ export default async function FormePage({
             {distribution.map((z) => (
               <div key={z.level} className="flex items-center gap-3 text-sm">
                 <span className="w-36 sm:w-44 shrink-0 text-[var(--color-heading)] dark:text-white">{z.long}</span>
-                <div className="flex-1 h-2.5 rounded-full bg-[var(--color-border)] dark:bg-white/10 overflow-hidden">
+                <div className="flex-1 h-2.5 rounded-full bar-track overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${z.pct}%`, backgroundColor: z.color }} />
                 </div>
                 <span className="w-10 text-right tabular-nums text-[var(--color-body)]">{z.pct} %</span>

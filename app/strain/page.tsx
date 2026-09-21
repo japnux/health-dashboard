@@ -6,7 +6,8 @@ import { getDashboardSnapshot } from "@/lib/dashboard-data";
 import { createServiceClient } from "@/lib/supabase/service";
 import { dateInTz, isoDateMinusDays } from "@/lib/dates";
 import { computeDayStrain, strainColor, type StrainResult } from "@/lib/strain-score";
-import { workoutDisplayLabel, workoutEmoji } from "@/lib/workout-types";
+import { normalizeWorkoutType, workoutDisplayLabel, workoutEmoji } from "@/lib/workout-types";
+import { sportColor } from "@/lib/palette";
 import { ZonedLineChart } from "@/components/charts/ZonedLineChart";
 import {
   BackLink,
@@ -119,8 +120,11 @@ export default async function StrainPage({
                       {new Date(w.started_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: snap.tz })}
                     </span>
                   </span>
-                  <div className="flex-1 h-2.5 rounded-full bg-[var(--color-border)] dark:bg-white/10 overflow-hidden">
-                    <div className="h-full rounded-full bg-[#2a78d6]" style={{ width: `${share(v)}%` }} />
+                  <div className="flex-1 h-2.5 rounded-full bar-track overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${share(v)}%`, backgroundColor: sportColor(normalizeWorkoutType(w.type ?? "")) }}
+                    />
                   </div>
                   <span className="w-16 text-right tabular-nums text-[var(--color-body)]">
                     {Math.round(v)}
@@ -134,8 +138,8 @@ export default async function StrainPage({
                 🚶
               </span>
               <span className="w-28 sm:w-36 shrink-0 text-[var(--color-heading)] dark:text-white">Hors séances</span>
-              <div className="flex-1 h-2.5 rounded-full bg-[var(--color-border)] dark:bg-white/10 overflow-hidden">
-                <div className="h-full rounded-full bg-[#86b6ef]" style={{ width: `${share(background)}%` }} />
+              <div className="flex-1 h-2.5 rounded-full bar-track overflow-hidden">
+                <div className="h-full rounded-full bg-[#8e8e93]" style={{ width: `${share(background)}%` }} />
               </div>
               <span className="w-16 text-right tabular-nums text-[var(--color-body)]">
                 {Math.round(background)}

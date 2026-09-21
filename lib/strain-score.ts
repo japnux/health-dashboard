@@ -23,6 +23,8 @@
  *   8-10  → Très élevé (compétition, effort exceptionnel)
  */
 
+import { VIVID } from "@/lib/palette";
+
 export type StrainResult = {
   score: number;          // 0-10, arrondi à 0.1
   level: "light" | "moderate" | "high" | "very_high";
@@ -131,8 +133,8 @@ function strainLevel(score: number): { level: StrainResult["level"]; label: stri
 
 // Couleur CSS pour la jauge
 export function strainColor(score: number): string {
-  if (score >= 8) return "#ea2261";
-  if (score >= 6) return "#f97316";
-  if (score >= 3) return "#eab308";
-  return "#15be53";
+  if (score >= 8) return VIVID.red;
+  if (score >= 6) return VIVID.orange;
+  if (score >= 3) return VIVID.yellow;
+  return VIVID.green;
 }

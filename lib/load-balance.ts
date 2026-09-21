@@ -11,6 +11,8 @@
 // détail, les stats et le calcul : mêmes seuils, couleurs, libellés et
 // conseils. La couleur n'est jamais seule : chaque zone a son libellé.
 
+import { VIVID } from "@/lib/palette";
+
 export type BalanceLevel = "low" | "balanced" | "rising" | "spike";
 
 export const BALANCE_ZONES: {
@@ -26,7 +28,7 @@ export const BALANCE_ZONES: {
     level: "low",
     from: 0,
     to: 0.8,
-    color: "#94a3b8",
+    color: VIVID.cyan,
     label: "sous-charge",
     long: "sous ta charge habituelle",
     advice:
@@ -36,7 +38,7 @@ export const BALANCE_ZONES: {
     level: "balanced",
     from: 0.8,
     to: 1.3,
-    color: "#15be53",
+    color: VIVID.green,
     label: "optimal",
     long: "zone optimale",
     advice:
@@ -46,7 +48,7 @@ export const BALANCE_ZONES: {
     level: "rising",
     from: 1.3,
     to: 1.5,
-    color: "#f97316",
+    color: VIVID.orange,
     label: "risque modéré",
     long: "risque modéré de blessure",
     advice:
@@ -56,7 +58,7 @@ export const BALANCE_ZONES: {
     level: "spike",
     from: 1.5,
     to: Infinity,
-    color: "#ea2261",
+    color: VIVID.red,
     label: "risque élevé",
     long: "risque élevé de blessure",
     advice:

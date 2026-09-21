@@ -7,10 +7,21 @@ import { getUserTz } from "@/lib/user-tz";
 import { normalizeWorkoutType, workoutDisplayLabel } from "@/lib/workout-types";
 import { HR_ZONES } from "@/lib/hr-zones";
 import { getHrMax } from "@/lib/cardio-load";
-import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
-import { BackLink, DetailCard, DetailPage, Delta, StatGrid } from "@/components/detail/DetailBits";
+import {
+  heartRateRecoveryDrop,
+  type RecoveryPoint,
+} from "@/lib/workout-details";
+import {
+  BackLink,
+  DetailCard,
+  DetailPage,
+  Delta,
+  StatGrid,
+} from "@/components/detail/DetailBits";
 import { WorkoutHrChart } from "@/components/charts/WorkoutHrChart";
 import { RouteMap } from "@/components/charts/RouteMap";
+import { sportColor, tint, tintedBackground } from "@/lib/palette";
+import { workoutEmoji } from "@/lib/workout-types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +36,11 @@ function mean(values: (number | null)[]): number | null {
   return v.length > 0 ? v.reduce((a, b) => a + Number(b), 0) / v.length : null;
 }
 
-export default async function SeancePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SeancePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   // Identifiant attendu : UUID (évite une requête inutile sur une URL fantaisiste)
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -40,50 +55,139 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
 
   // Séances du même type sur les 30 jours précédents (hors celle-ci)
   const typeKey = normalizeWorkoutType(w.type ?? "");
-  const from = new Date(new Date(w.started_at).getTime() - 30 * 86_400_000).toISOString();
+  const from = new Date(
+    new Date(w.started_at).getTime() - 30 * 86_400_000,
+  ).toISOString();
   const { data: others } = await supabase
     .from("workouts")
     .select("type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_recovery")
     .gte("started_at", from)
     .lt("started_at", w.started_at);
-  const same = (others ?? []).filter((o) => normalizeWorkoutType(o.type ?? "") === typeKey);
+  const same = (others ?? []).filter(
+    (o) => normalizeWorkoutType(o.type ?? "") === typeKey,
+  );
 
   const ref = {
     duration: mean(same.map((o) => o.duration_min)),
-    load: mean(same.map((o) => (o.cardio_load != null ? Number(o.cardio_load) : null))),
+    load: mean(
+      same.map((o) => (o.cardio_load != null ? Number(o.cardio_load) : null)),
+    ),
     hr: mean(same.map((o) => o.avg_hr_bpm)),
     kcal: mean(same.map((o) => o.kcal)),
-    drop1: mean(same.map((o) => heartRateRecoveryDrop(o.hr_recovery as RecoveryPoint[] | null)?.drop1 ?? null)),
+    drop1: mean(
+      same.map(
+        (o) =>
+          heartRateRecoveryDrop(o.hr_recovery as RecoveryPoint[] | null)
+            ?.drop1 ?? null,
+      ),
+    ),
   };
   const hrr = heartRateRecoveryDrop(w.hr_recovery as RecoveryPoint[] | null);
   // Baisse de FC signée : une FC qui remonte après l'arrêt s'affiche en "+"
-  const fmtDrop = (v: number) => (v >= 0 ? `−${Math.round(v)}` : `+${Math.round(-v)}`);
-  const fmtKm = (v: number) => (v < 10 ? v.toFixed(2) : v.toFixed(1)).replace(".", ",");
+  const fmtDrop = (v: number) =>
+    v >= 0 ? `−${Math.round(v)}` : `+${Math.round(-v)}`;
+  const accent = sportColor(typeKey);
+  const hasRoute = Array.isArray(w.route) && w.route.length >= 2;
+  const fmtKm = (v: number) =>
+    (v < 10 ? v.toFixed(2) : v.toFixed(1)).replace(".", ",");
   const label = workoutDisplayLabel(w.type ?? "Séance");
   const start = new Date(w.started_at);
-  const zones = Array.isArray(w.hr_zone_min) && w.hr_zone_min.length === 5 ? (w.hr_zone_min as number[]) : null;
+  const zones =
+    Array.isArray(w.hr_zone_min) && w.hr_zone_min.length === 5
+      ? (w.hr_zone_min as number[])
+      : null;
   const zoneTotal = zones ? zones.reduce((a, b) => a + b, 0) : 0;
-  const diff = (v: number | null, r: number | null) => (v != null && r != null ? v - r : null);
-  const refSub = (r: number | null, fmt: (v: number) => string) => (r != null ? `moy. ${fmt(r)}` : "pas de référence");
+  const diff = (v: number | null, r: number | null) =>
+    v != null && r != null ? v - r : null;
+  const refSub = (r: number | null, fmt: (v: number) => string) =>
+    r != null ? `moy. ${fmt(r)}` : "pas de référence";
 
   return (
     <DetailPage>
       <BackLink />
-      <header>
-        <p className="text-xs uppercase tracking-wide text-[var(--color-body)]">Séance</p>
-        <p className="text-5xl font-light text-[var(--color-heading)] dark:text-white mt-2">{label}</p>
-        <p className="text-sm text-[var(--color-body)] mt-2">
-          {/* Majuscule sur le premier mot seulement ("capitalize" les mettait partout) */}
-          {(() => {
-            const d = start.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: tz });
-            return d.charAt(0).toUpperCase() + d.slice(1);
-          })()}{" "}
-          à {start.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: tz })}
-        </p>
-        {w.source && <p className="text-xs text-[var(--color-body)]/70 mt-0.5">Source : {w.source}</p>}
+      {/* En-tête teinté par la couleur du sport, carte du tracé en tête comme l'app de référence */}
+      <header
+        className="rounded-[var(--radius-lg)] border overflow-hidden"
+        style={{
+          background: tintedBackground(accent, 1.3),
+          borderColor: tint(accent, 0.35),
+        }}
+      >
+        {hasRoute && (
+          <div className="p-2 pb-0">
+            <RouteMap route={w.route!} />
+          </div>
+        )}
+        <div className="p-5 sm:p-6">
+          <p className="text-4xl" aria-hidden>
+            {workoutEmoji(w.type ?? "")}
+          </p>
+          <p className="text-5xl font-light text-[var(--color-heading)] dark:text-white mt-2">
+            {label}
+          </p>
+          <p className="text-sm text-[var(--color-body)] mt-2">
+            {/* Majuscule sur le premier mot seulement ("capitalize" les mettait partout) */}
+            {(() => {
+              const d = start.toLocaleDateString("fr-FR", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+                timeZone: tz,
+              });
+              return d.charAt(0).toUpperCase() + d.slice(1);
+            })()}{" "}
+            à{" "}
+            {start.toLocaleTimeString("fr-FR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: tz,
+            })}
+          </p>
+          {w.source && (
+            <p className="text-xs text-[var(--color-body)]/70 mt-0.5">
+              Source : {w.source}
+            </p>
+          )}
+          {hasRoute && (
+            <div className="mt-5">
+              <StatGrid
+                items={[
+                  {
+                    label: "Distance",
+                    value:
+                      w.distance_km != null
+                        ? `${fmtKm(Number(w.distance_km))} km`
+                        : "—",
+                  },
+                  {
+                    label: "Vitesse moy.",
+                    value:
+                      w.avg_speed_kmh != null
+                        ? `${String(w.avg_speed_kmh).replace(".", ",")} km/h`
+                        : "—",
+                  },
+                  {
+                    label: "Vitesse max",
+                    value:
+                      w.max_speed_kmh != null
+                        ? `${String(w.max_speed_kmh).replace(".", ",")} km/h`
+                        : "—",
+                  },
+                ]}
+              />
+            </div>
+          )}
+        </div>
       </header>
 
-      <DetailCard title={same.length > 0 ? `Chiffres clés · vs ${label} sur 30 j (${same.length} séances)` : "Chiffres clés"}>
+      <DetailCard
+        title={
+          same.length > 0
+            ? `Chiffres clés · vs ${label} sur 30 j (${same.length} séances)`
+            : "Chiffres clés"
+        }
+      >
         <StatGrid
           cols={2}
           items={[
@@ -92,22 +196,36 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
               value: w.duration_min != null ? fmtDuration(w.duration_min) : "—",
               sub: (
                 <>
-                  <Delta diff={diff(w.duration_min, ref.duration)} betterWhen="none" format={(v) => fmtDuration(v)} />{" "}
-                  <span className="text-[var(--color-body)]/70">{refSub(ref.duration, fmtDuration)}</span>
+                  <Delta
+                    diff={diff(w.duration_min, ref.duration)}
+                    betterWhen="none"
+                    format={(v) => fmtDuration(v)}
+                  />{" "}
+                  <span className="text-[var(--color-body)]/70">
+                    {refSub(ref.duration, fmtDuration)}
+                  </span>
                 </>
               ),
             },
             {
               label: "Charge cardio",
-              value: w.cardio_load != null ? String(Math.round(Number(w.cardio_load))) : "—",
+              value:
+                w.cardio_load != null
+                  ? String(Math.round(Number(w.cardio_load)))
+                  : "—",
               sub: (
                 <>
                   <Delta
-                    diff={diff(w.cardio_load != null ? Number(w.cardio_load) : null, ref.load)}
+                    diff={diff(
+                      w.cardio_load != null ? Number(w.cardio_load) : null,
+                      ref.load,
+                    )}
                     betterWhen="none"
                     format={(v) => String(Math.round(v))}
                   />{" "}
-                  <span className="text-[var(--color-body)]/70">{refSub(ref.load, (v) => String(Math.round(v)))}</span>
+                  <span className="text-[var(--color-body)]/70">
+                    {refSub(ref.load, (v) => String(Math.round(v)))}
+                  </span>
                 </>
               ),
             },
@@ -116,8 +234,14 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
               value: w.avg_hr_bpm != null ? `${w.avg_hr_bpm} bpm` : "—",
               sub: (
                 <>
-                  <Delta diff={diff(w.avg_hr_bpm, ref.hr)} betterWhen="none" format={(v) => `${Math.round(v)} bpm`} />{" "}
-                  <span className="text-[var(--color-body)]/70">{refSub(ref.hr, (v) => `${Math.round(v)} bpm`)}</span>
+                  <Delta
+                    diff={diff(w.avg_hr_bpm, ref.hr)}
+                    betterWhen="none"
+                    format={(v) => `${Math.round(v)} bpm`}
+                  />{" "}
+                  <span className="text-[var(--color-body)]/70">
+                    {refSub(ref.hr, (v) => `${Math.round(v)} bpm`)}
+                  </span>
                 </>
               ),
             },
@@ -126,30 +250,25 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
               value: w.kcal != null ? `${w.kcal} kcal` : "—",
               sub: (
                 <>
-                  <Delta diff={diff(w.kcal, ref.kcal)} betterWhen="none" format={(v) => `${Math.round(v)} kcal`} />{" "}
-                  <span className="text-[var(--color-body)]/70">{refSub(ref.kcal, (v) => `${Math.round(v)} kcal`)}</span>
+                  <Delta
+                    diff={diff(w.kcal, ref.kcal)}
+                    betterWhen="none"
+                    format={(v) => `${Math.round(v)} kcal`}
+                  />{" "}
+                  <span className="text-[var(--color-body)]/70">
+                    {refSub(ref.kcal, (v) => `${Math.round(v)} kcal`)}
+                  </span>
                 </>
               ),
             },
           ]}
         />
-        {w.max_hr_bpm != null && <p className="text-xs text-[var(--color-body)] mt-4">FC max de la séance : {w.max_hr_bpm} bpm</p>}
+        {w.max_hr_bpm != null && (
+          <p className="text-xs text-[var(--color-body)] mt-4">
+            FC max de la séance : {w.max_hr_bpm} bpm
+          </p>
+        )}
       </DetailCard>
-
-      {w.route && w.route.length >= 2 && (
-        <DetailCard title="Tracé">
-          <RouteMap route={w.route} />
-          <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
-            <StatGrid
-              items={[
-                { label: "Distance", value: w.distance_km != null ? `${fmtKm(Number(w.distance_km))} km` : "—" },
-                { label: "Vitesse moy.", value: w.avg_speed_kmh != null ? `${String(w.avg_speed_kmh).replace(".", ",")} km/h` : "—" },
-                { label: "Vitesse max", value: w.max_speed_kmh != null ? `${String(w.max_speed_kmh).replace(".", ",")} km/h` : "—" },
-              ]}
-            />
-          </div>
-        </DetailCard>
-      )}
 
       {w.hr_series && w.hr_series.length >= 2 && (
         <DetailCard title="Fréquence cardiaque">
@@ -168,22 +287,34 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
                 <div key={z.key} className="flex items-center gap-3 text-sm">
                   <span className="w-32 sm:w-40 shrink-0 text-[var(--color-heading)] dark:text-white">
                     {z.label} {z.name}
-                    <span className="block text-[10px] text-[var(--color-body)]">{z.range} FC max</span>
+                    <span className="block text-[10px] text-[var(--color-body)]">
+                      {z.range} FC max
+                    </span>
                   </span>
-                  <div className="flex-1 h-2.5 rounded-full bg-[var(--color-border)] dark:bg-white/10 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: z.color }} />
+                  <div className="flex-1 h-2.5 rounded-full bar-track overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: z.color }}
+                    />
                   </div>
-                  <span className="w-10 text-right tabular-nums text-[var(--color-body)]">{pct} %</span>
-                  <span className="w-14 text-right tabular-nums text-[var(--color-body)]">{fmtDuration(min)}</span>
+                  <span className="w-10 text-right tabular-nums text-[var(--color-body)]">
+                    {pct} %
+                  </span>
+                  <span className="w-14 text-right tabular-nums text-[var(--color-body)]">
+                    {fmtDuration(min)}
+                  </span>
                 </div>
               );
             })}
             <p className="text-[11px] text-[var(--color-body)] pt-1">
-              Temps passé au-dessus de 50 % de ta FC max : {fmtDuration(zoneTotal)}.
+              Temps passé au-dessus de 50 % de ta FC max :{" "}
+              {fmtDuration(zoneTotal)}.
             </p>
           </div>
         ) : (
-          <p className="text-sm text-[var(--color-body)]">Pas de fréquence cardiaque minute par minute pour cette séance.</p>
+          <p className="text-sm text-[var(--color-body)]">
+            Pas de fréquence cardiaque minute par minute pour cette séance.
+          </p>
         )}
       </DetailCard>
 
@@ -197,16 +328,23 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
                 value: hrr.drop1 != null ? `${fmtDrop(hrr.drop1)} bpm` : "—",
                 sub:
                   ref.drop1 != null ? (
-                    <span className="text-[var(--color-body)]/70">moy. {label} {fmtDrop(ref.drop1)} bpm</span>
+                    <span className="text-[var(--color-body)]/70">
+                      moy. {label} {fmtDrop(ref.drop1)} bpm
+                    </span>
                   ) : null,
               },
-              { label: "Après 2 min", value: hrr.drop2 != null ? `${fmtDrop(hrr.drop2)} bpm` : "—" },
+              {
+                label: "Après 2 min",
+                value: hrr.drop2 != null ? `${fmtDrop(hrr.drop2)} bpm` : "—",
+              },
             ]}
           />
           <p className="text-[11px] text-[var(--color-body)] mt-4 leading-relaxed">
-            Vitesse à laquelle ton cœur redescend après la fin de la séance : plus la baisse est forte, meilleure est ta
-            forme cardio. Après un effort soutenu suivi d&apos;un arrêt complet, on attend plus de 12 bpm en 1 minute (plus
-            de 20 est bon). Si tu bouges encore après avoir arrêté la montre (sortie de l&apos;eau, marche), la baisse est
+            Vitesse à laquelle ton cœur redescend après la fin de la séance :
+            plus la baisse est forte, meilleure est ta forme cardio. Après un
+            effort soutenu suivi d&apos;un arrêt complet, on attend plus de 12
+            bpm en 1 minute (plus de 20 est bon). Si tu bouges encore après
+            avoir arrêté la montre (sortie de l&apos;eau, marche), la baisse est
             plus faible : compare-la surtout à tes séances du même sport.
           </p>
         </DetailCard>

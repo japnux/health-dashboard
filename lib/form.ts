@@ -11,6 +11,7 @@
 // l'historique : mêmes valeurs que l'app de suivi de l'utilisateur à 1-3
 // points près (hors un jour où les charges diffèrent).
 
+import { VIVID } from "@/lib/palette";
 import { intensityWeight } from "@/lib/cardio-load";
 import type { LoadPoint } from "@/lib/load-balance";
 
@@ -33,7 +34,7 @@ export const FORM_ZONES: {
     level: "high_risk",
     from: -Infinity,
     to: -30,
-    color: "#ea2261",
+    color: VIVID.red,
     label: "risque élevé",
     long: "fatigue excessive",
     advice:
@@ -43,7 +44,7 @@ export const FORM_ZONES: {
     level: "optimal",
     from: -30,
     to: -10,
-    color: "#15be53",
+    color: VIVID.green,
     label: "optimal",
     long: "entraînement optimal",
     advice:
@@ -53,7 +54,7 @@ export const FORM_ZONES: {
     level: "neutral",
     from: -10,
     to: 5,
-    color: "#94a3b8",
+    color: VIVID.lime,
     label: "neutre",
     long: "neutre",
     advice:
@@ -63,7 +64,7 @@ export const FORM_ZONES: {
     level: "fresh",
     from: 5,
     to: 25,
-    color: "#2a78d6",
+    color: VIVID.cyan,
     label: "frais",
     long: "frais, prêt à performer",
     advice:
@@ -73,7 +74,7 @@ export const FORM_ZONES: {
     level: "detraining",
     from: 25,
     to: Infinity,
-    color: "#b7d3f6",
+    color: VIVID.purple,
     label: "désentraînement",
     long: "désentraînement",
     advice:

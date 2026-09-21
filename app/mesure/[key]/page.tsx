@@ -72,11 +72,11 @@ export default async function MesurePage({
   const rangeText = range ? `${fmt(range.low)} – ${fmt(range.high)} ${def.unit}` : null;
   const statusView =
     status == null
-      ? { color: "#94a3b8", label: `plage en cours de calcul (${rows.length - 1}/${def.minHistory} nuits)` }
+      ? { color: "#8e8e93", label: `plage en cours de calcul (${rows.length - 1}/${def.minHistory} nuits)` }
       : status === "in"
-        ? { color: "#15be53", label: "dans ta plage habituelle" }
+        ? { color: "#34c759", label: "dans ta plage habituelle" }
         : {
-            color: favorable ? "#15be53" : "#f97316",
+            color: favorable ? "#34c759" : "#ff9500",
             label: status === "above" ? "au-dessus de ta plage" : "en dessous de ta plage",
           };
   const advice =

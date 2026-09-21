@@ -11,10 +11,17 @@ import { BODY_METRICS_BY_KEY, formatMetric, isFavorable } from "@/lib/body-metri
 import { workoutDisplayLabel, normalizeWorkoutType } from "@/lib/workout-types";
 import { dateInTz } from "@/lib/dates";
 import { ScoreRing } from "@/components/ScoreRing";
+import { sportColor, tint, tintedBackground } from "@/lib/palette";
 
 const CARD =
   "block rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5 hover:border-[var(--color-brand-purple)]/40 transition-colors";
 const SHADOW = { boxShadow: "var(--shadow-ambient)" };
+// Carte teintée par une couleur de statut (dégradé + bordure), comme l'app de référence
+const tinted = (color: string, strength = 1) => ({
+  ...SHADOW,
+  background: tintedBackground(color, strength),
+  borderColor: tint(color, 0.3),
+});
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-lg text-[var(--color-heading)] dark:text-white pt-2">{children}</h2>;
@@ -30,7 +37,7 @@ function Chevron() {
 
 // ── En tête : récupération (nuit) et Strain (journée), une phrase d'action ──
 
-const RECOVERY_RING: Record<string, string> = { green: "#15be53", yellow: "#eab308", red: "#ea2261", gray: "#94a3b8" };
+const RECOVERY_RING: Record<string, string> = { green: "#34c759", yellow: "#ffcc00", red: "#ff3b30", gray: "#8e8e93" };
 const RECOVERY_TITLE: Record<string, string> = {
   green: "Bien récupéré",
   yellow: "Récupération moyenne",
@@ -75,7 +82,7 @@ function ScoreTile({
   sub: string | null;
 }) {
   return (
-    <Link href={href} className={`${CARD} !p-3 sm:!p-5 flex flex-col`} style={SHADOW}>
+    <Link href={href} className={`${CARD} !p-3 sm:!p-5 flex flex-col`} style={tinted(statusColor)}>
       <div className="flex items-center justify-center sm:justify-between gap-1">
         <p className="text-[10px] sm:text-xs uppercase sm:tracking-wide text-[var(--color-body)] truncate">{title}</p>
         {/* Chevron masqué sur mobile : place pour le titre, la tuile entière reste cliquable */}
@@ -94,7 +101,7 @@ function ScoreTile({
 }
 
 const SLEEP_QUALITY: Record<number, string> = { 10: "Excellent", 7: "Bon", 4: "Moyen", 1: "Insuffisant" };
-const SLEEP_QUALITY_COLOR: Record<string, string> = { Excellent: "#15be53", Bon: "#15be53", Moyen: "#eab308", Insuffisant: "#ea2261" };
+const SLEEP_QUALITY_COLOR: Record<string, string> = { Excellent: "#34c759", Bon: "#34c759", Moyen: "#ffcc00", Insuffisant: "#ff3b30" };
 
 export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const color = recoveryColor(snap.recovery.score);
@@ -106,7 +113,7 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const sleepMin = t?.sleep_total_min ?? null;
   const sleepScore = snap.recovery.components.sleep.available ? snap.recovery.components.sleep.score : null;
   const quality = sleepScore != null ? SLEEP_QUALITY[sleepScore] ?? null : null;
-  const sleepColor = quality ? SLEEP_QUALITY_COLOR[quality] : "#94a3b8";
+  const sleepColor = quality ? SLEEP_QUALITY_COLOR[quality] : "#8e8e93";
   const sleepLabel = sleepMin != null ? `${Math.floor(sleepMin / 60)}h${String(Math.round(sleepMin % 60)).padStart(2, "0")}` : "—";
 
   return (
@@ -186,7 +193,7 @@ export function WorkoutsToday({ snap }: { snap: DashboardSnapshot }) {
       <SectionTitle>Séances du jour</SectionTitle>
       <div className="space-y-3">
         {workouts.map((w) => (
-          <Link key={w.id} href={`/seance/${w.id}`} className={CARD} style={SHADOW}>
+          <Link key={w.id} href={`/seance/${w.id}`} className={CARD} style={tinted(sportColor(normalizeWorkoutType(w.type ?? "")))}>
             <div className="flex items-center gap-4">
               <span className="text-3xl" aria-hidden>
                 {WORKOUT_EMOJI[normalizeWorkoutType(w.type ?? "")] ?? "💪"}
@@ -269,7 +276,7 @@ function ZoneSparkline({
           const bottom = y(Math.max(z.from, min));
           return <rect key={z.level} x={0} width={width} y={top} height={Math.max(0, bottom - top)} fill={z.color} fillOpacity={0.18} rx={4} />;
         })}
-      <path d={path} fill="none" stroke="#94a3b8" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={path} fill="none" stroke="#8e8e93" strokeWidth={1.75} strokeLinejoin="round" strokeLinecap="round" />
       <circle cx={x(series.length - 1)} cy={y(last.value)} r={8} fill={lastZone.color} fillOpacity={0.3} />
       <circle cx={x(series.length - 1)} cy={y(last.value)} r={4} className="fill-[var(--color-heading)] dark:fill-white" stroke={lastZone.color} strokeWidth={2} />
     </svg>
@@ -292,7 +299,7 @@ function ZoneTile({
   sparkline: React.ReactNode;
 }) {
   return (
-    <Link href={href} className={CARD} style={SHADOW}>
+    <Link href={href} className={CARD} style={tinted(zone.color)}>
       <div className="flex items-center justify-between">
         <p className="text-xs uppercase tracking-wide text-[var(--color-body)]">{title}</p>
         <Chevron />
@@ -372,8 +379,8 @@ function RangeBar({ value, low, high, color }: { value: number; low: number; hig
   const max = Math.max(high + span * 0.6, value);
   const pct = (v: number) => ((v - min) / (max - min)) * 100;
   return (
-    <div className="relative h-1.5 w-full rounded-full bg-[var(--color-border)] dark:bg-white/10 mt-3">
-      <div className="absolute h-full rounded-full bg-[#15be53]/35" style={{ left: `${pct(low)}%`, width: `${pct(high) - pct(low)}%` }} />
+    <div className="relative h-1.5 w-full rounded-full bar-track mt-3">
+      <div className="absolute h-full rounded-full bg-[#34c759]/60" style={{ left: `${pct(low)}%`, width: `${pct(high) - pct(low)}%` }} />
       <div
         className="absolute -top-[3px] w-3 h-3 rounded-full ring-2 ring-white dark:ring-[#0d1520]"
         style={{ left: `calc(${pct(value)}% - 6px)`, backgroundColor: color }}
@@ -391,13 +398,13 @@ export function BodyMetricsRow({ snap }: { snap: DashboardSnapshot }) {
         {snap.bodyMetrics.map((m) => {
           const def = BODY_METRICS_BY_KEY.get(m.key)!;
           const favorable = isFavorable(def, m.status);
-          const color = m.status === "in" || favorable === true ? "#15be53" : favorable === false ? "#f97316" : "#94a3b8";
+          const color = m.status === "in" || favorable === true ? "#34c759" : favorable === false ? "#ff9500" : "#8e8e93";
           return (
             <Link
               key={m.key}
               href={`/mesure/${m.key}`}
               className="flex flex-col items-center rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 px-1.5 py-3 hover:border-[var(--color-brand-purple)]/40 transition-colors"
-              style={SHADOW}
+              style={tinted(color, 0.8)}
             >
               <span className="text-base" aria-hidden>
                 {METRIC_ICON[m.key]}

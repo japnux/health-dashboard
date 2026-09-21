@@ -20,10 +20,10 @@ import { formatHour } from "@/components/HomeCards";
 export const dynamic = "force-dynamic";
 
 const QUALITY: Record<number, { label: string; color: string; text: string }> = {
-  10: { label: "Excellent", color: "#15be53", text: "Durée et phases au rendez-vous : nuit complète et réparatrice." },
-  7: { label: "Bon", color: "#15be53", text: "Bonne nuit. Il manque un peu de durée ou de sommeil profond pour qu'elle soit excellente." },
-  4: { label: "Moyen", color: "#eab308", text: "Nuit un peu courte ou pauvre en sommeil profond / REM. Vise un coucher un peu plus tôt ce soir." },
-  1: { label: "Insuffisant", color: "#ea2261", text: "Nuit trop courte pour bien récupérer. Garde la journée légère et couche-toi tôt." },
+  10: { label: "Excellent", color: "#34c759", text: "Durée et phases au rendez-vous : nuit complète et réparatrice." },
+  7: { label: "Bon", color: "#34c759", text: "Bonne nuit. Il manque un peu de durée ou de sommeil profond pour qu'elle soit excellente." },
+  4: { label: "Moyen", color: "#ffcc00", text: "Nuit un peu courte ou pauvre en sommeil profond / REM. Vise un coucher un peu plus tôt ce soir." },
+  1: { label: "Insuffisant", color: "#ff3b30", text: "Nuit trop courte pour bien récupérer. Garde la journée légère et couche-toi tôt." },
 };
 
 function fmtHM(min: number): string {
@@ -74,7 +74,7 @@ export default async function SommeilPage({
       <DetailHeader
         eyebrow="Sommeil"
         value={quality?.label ?? (total != null ? fmtHM(total) : "—")}
-        status={total != null ? { color: quality?.color ?? "#94a3b8", label: `${fmtHM(total)} · ${Math.round((total / target) * 100)} % de ton objectif (${fmtHM(target)})` } : null}
+        status={total != null ? { color: quality?.color ?? "#8e8e93", label: `${fmtHM(total)} · ${Math.round((total / target) * 100)} % de ton objectif (${fmtHM(target)})` } : null}
         date={t ? `Nuit du ${formatLongDate(t.date)}` : null}
         advice={quality?.text ?? null}
       />
@@ -84,9 +84,9 @@ export default async function SommeilPage({
           {deep != null && rem != null && light != null && (
             <>
               <div className="flex h-9 rounded-[6px] overflow-hidden gap-[2px]" role="img" aria-label="Répartition des phases de sommeil">
-                <div style={{ width: `${deep}%`, backgroundColor: "#6366f1" }} />
-                <div style={{ width: `${rem}%`, backgroundColor: "#06b6d4" }} />
-                <div style={{ width: `${light}%`, backgroundColor: "#93c5fd" }} />
+                <div style={{ width: `${deep}%`, backgroundColor: "#5856d6" }} />
+                <div style={{ width: `${rem}%`, backgroundColor: "#00c7be" }} />
+                <div style={{ width: `${light}%`, backgroundColor: "#7ab8ff" }} />
               </div>
               <div className="mt-4">
                 <StatGrid
