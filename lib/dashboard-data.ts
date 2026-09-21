@@ -89,6 +89,8 @@ export type DashboardSnapshot = {
   bloodTestAgeDays: number | null;
   lastSyncAt: string | null;
   watch: WatchInsights;
+  // 7 derniers jours (aujourd'hui compris), ordre chronologique, pour les mini-courbes
+  trend7d: { date: string; hrv: number | null; rhr: number | null }[];
 };
 
 // Données Apple Watch complémentaires (sommeil, cardio, nuit).
@@ -442,6 +444,11 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
+    trend7d: Array.from({ length: 7 }, (_, i) => {
+      const d = isoDaysAgo(6 - i);
+      const row = recentMetrics?.find((r) => r.date === d);
+      return { date: d, hrv: row?.hrv_ms ?? null, rhr: row?.resting_hr_bpm ?? null };
+    }),
   };
 }
 

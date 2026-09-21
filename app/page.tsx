@@ -10,9 +10,10 @@ import { AiAnalysis } from "@/components/AiAnalysis";
 import { AiTrends, AiWorkoutSuggestion } from "@/components/AiInsights";
 import { PlannedActivities } from "@/components/PlannedActivities";
 import { StrainGauge } from "@/components/StrainGauge";
-import { strainColor as getStrainColor } from "@/lib/strain-score";
 import { WorkoutBadges } from "@/components/WorkoutBadges";
 import type { StrainResult } from "@/lib/strain-score";
+import { ScoreRing } from "@/components/ScoreRing";
+import { Sparkline } from "@/components/Sparkline";
 
 export const dynamic = "force-dynamic";
 
@@ -23,18 +24,25 @@ const recoveryBg: Record<string, string> = {
   gray: "from-[var(--color-body)]/10 to-[var(--color-body)]/5 border-[var(--color-border)]",
 };
 
-const recoveryText: Record<string, string> = {
-  green: "text-[#108c3d]",
-  yellow: "text-[#9b6829]",
-  red: "text-[#ea2261]",
-  gray: "text-[var(--color-body)]",
+// Couleur de l'anneau et libellé d'état de la récupération
+const recoveryRing: Record<string, string> = {
+  green: "#15be53",
+  yellow: "#eab308",
+  red: "#ea2261",
+  gray: "#94a3b8",
+};
+
+const recoveryLabel: Record<string, string> = {
+  green: "Bonne",
+  yellow: "Moyenne",
+  red: "Faible",
+  gray: "Pas de données",
 };
 
 export default async function Home() {
   const snap = await getDashboardSnapshot();
 
   const color = recoveryColor(snap.recovery.score);
-  const scoreText = snap.recovery.score != null ? snap.recovery.score : "—";
   const noDataToday = snap.today == null;
 
   const showStaleScale =
@@ -91,7 +99,7 @@ export default async function Home() {
           <p className="text-xs text-[#c2410c]">
             Troubles respiratoires élevés cette nuit :{" "}
             <span className="font-normal">{snap.watch.breathingAlert.value}</span> contre{" "}
-            {snap.watch.breathingAlert.baseline} habituellement (médiane 30 nuits). Une nuit isolée n'est pas
+            {snap.watch.breathingAlert.baseline} habituellement (médiane 30 nuits). Une nuit isolée n&apos;est pas
             inquiétante ; si ça se répète, regarde Santé → Sommeil ou parles-en à un médecin.
           </p>
         </div>
@@ -120,25 +128,21 @@ export default async function Home() {
           <p className="text-xs uppercase tracking-wide text-[var(--color-body)] mb-1 font-normal">
             Récupération
           </p>
-          <div className="flex items-baseline gap-1">
-            <span
-              className={`text-4xl font-light tabular-nums ${recoveryText[color]}`}
-            >
-              {snap.recovery.score != null ? Math.floor(snap.recovery.score) : "—"}
-            </span>
-            {snap.recovery.score != null && snap.recovery.score % 1 !== 0 && (
-              <span className={`text-xl font-light tabular-nums ${recoveryText[color]}`}>
-                .{Math.round((snap.recovery.score % 1) * 10)}
-              </span>
-            )}
-            <span className="text-sm text-[var(--color-body)]">/10</span>
+          <div className="flex items-center sm:flex-col sm:items-start gap-4 sm:gap-3 mt-2">
+            <ScoreRing score={snap.recovery.score} color={recoveryRing[color]} label="Récupération" />
+            <div>
+              <p className="flex items-center gap-1.5 text-sm text-[var(--color-heading)] dark:text-white">
+                <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: recoveryRing[color] }} />
+                {recoveryLabel[color]}
+              </p>
+              <p className="text-[11px] text-[var(--color-body)] mt-0.5">sur 10</p>
+              {snap.recovery.basis !== "full" && (
+                <p className="text-[10px] text-[var(--color-body)] mt-0.5">
+                  Score {snap.recovery.basis === "partial" ? "partiel" : "estimé"}
+                </p>
+              )}
+            </div>
           </div>
-          {snap.recovery.basis !== "full" && (
-            <p className="text-[10px] text-[var(--color-body)] mt-1">
-              Score{" "}
-              {snap.recovery.basis === "partial" ? "partiel" : "estimé"}
-            </p>
-          )}
           <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 text-sm">
             <MiniMetric
               label="HRV"
@@ -154,6 +158,14 @@ export default async function Home() {
               }
               delta={hrvDelta}
               positiveIsGood
+              chart={
+                <Sparkline
+                  points={snap.trend7d.map((t) => ({ date: t.date, value: t.hrv }))}
+                  reference={snap.hrvBaselineAvg}
+                  unit="ms"
+                  label="HRV"
+                />
+              }
             />
             <MiniMetric
               label="FC repos"
@@ -169,6 +181,14 @@ export default async function Home() {
               }
               delta={hrDelta}
               positiveIsGood={false}
+              chart={
+                <Sparkline
+                  points={snap.trend7d.map((t) => ({ date: t.date, value: t.rhr }))}
+                  reference={snap.hrBaselineAvg}
+                  unit="bpm"
+                  label="FC repos"
+                />
+              }
             />
             {snap.today?.respiratory_rate != null && (
               <MiniMetric
@@ -505,12 +525,14 @@ function MiniMetric({
   sub,
   delta,
   positiveIsGood,
+  chart,
 }: {
   label: string;
   value: string;
   sub?: string;
   delta: number | null;
   positiveIsGood: boolean;
+  chart?: React.ReactNode; // mini-courbe optionnelle sous la valeur
 }) {
   let deltaStr = "";
   let deltaColor = "text-[var(--color-body)]";
@@ -541,6 +563,7 @@ function MiniMetric({
           </span>
         )}
       </div>
+      {chart}
     </div>
   );
 }
