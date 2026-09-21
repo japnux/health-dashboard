@@ -9,7 +9,7 @@ import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
-import { NUTRITION_ENABLED } from "@/lib/features";
+import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import {
   DEFAULT_SLOTS,
   DEFAULT_PROFILES,
@@ -434,7 +434,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     hasPlannedActivities: (plannedRes.data ?? []).length > 0,
     completedToday,
     remainingPlanned,
-    journal: journalRes.data ?? [],
+    ...(JOURNAL_ENABLED ? { journal: journalRes.data ?? [] } : {}),
   };
 }
 

@@ -1,3 +1,4 @@
+import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createHash } from "crypto";
@@ -20,21 +21,33 @@ async function isAuthenticated(): Promise<boolean> {
   return cookieStore.get("hd_session")?.value === expected;
 }
 
+// Sources désactivées : ni envoyées au modèle, ni citées dans le prompt
+const SOURCES_EXTRA = [
+  NUTRITION_ENABLED ? "- nutritionByDay : calories, protéines, glucides, lipides (agrégé par jour)" : null,
+  JOURNAL_ENABLED ? "- journal : mood (1-5), energy (1-5), stress (1-5) par jour" : null,
+].filter(Boolean).join("\n");
+const CROSSINGS = [
+  NUTRITION_ENABLED ? "biométrie ↔ nutrition" : null,
+  JOURNAL_ENABLED ? "journal ↔ recovery" : null,
+  "strain ↔ sommeil",
+  "sauna ↔ HRV/recovery J+1",
+  "lumière du jour ↔ sommeil",
+].filter(Boolean).join(", ");
+
 const SYSTEM_PROMPT = `Tu es un analyste de données santé. Tu cherches des corrélations significatives dans les données biologiques et comportementales de l'utilisateur.
 
 DONNÉES DISPONIBLES :
 - dailyMetrics : HRV, FC repos, sommeil (total + phases + sleep_readable), pas, kcal actives, lumière, recovery score
 - workouts : type normalisé, durée, kcal (inclut sauna comme modalité de récupération)
-- nutritionByDay : calories, protéines, glucides, lipides (agrégé par jour)
-- journal : mood (1-5), energy (1-5), stress (1-5) par jour
+${SOURCES_EXTRA}
 - bodyComposition : poids, body fat %, masse maigre
 - dailyStrain : score de charge (0-10) et niveau par jour
-- targets : objectifs caloriques, protéines, sommeil, pas
+- targets : objectifs ${NUTRITION_ENABLED ? "caloriques, protéines, " : ""}sommeil, pas
 
 Règles :
 - Analyse les 90 derniers jours de données.
 - Cherche des corrélations temporelles (jour J → jour J+1) et simultanées.
-- Croise TOUTES les sources : biométrie ↔ nutrition, journal ↔ recovery, strain ↔ sommeil, sauna ↔ HRV/recovery J+1, etc.
+- Croise TOUTES les sources fournies : ${CROSSINGS}, etc. N'invente aucune source absente des données.
 - Ne rapporte que les corrélations que les données soutiennent clairement, pas des généralités.
 - Cite des valeurs concrètes (moyennes, écarts, nb de jours observés) pour étayer chaque corrélation.
 - VÉRIFIE les chiffres : compare les valeurs réelles aux targets fournis avant de conclure.
@@ -199,8 +212,9 @@ export async function GET(request: Request) {
   const weightKg = (latestBodyCorr?.weight_kg ?? 70) as number;
   const baseTargets = computeBaseTargets({ objective, tdee, weightKg, isTrainingDay: true });
   const targets = {
-    calories: baseTargets.calories,
-    proteines_g: baseTargets.proteines_g,
+    ...(NUTRITION_ENABLED
+      ? { calories: baseTargets.calories, proteines_g: baseTargets.proteines_g }
+      : {}),
     sleepMin: (config.sleep_target_min ?? 450) as number,
     steps: (config.steps_target ?? 10000) as number,
   };
@@ -222,8 +236,8 @@ export async function GET(request: Request) {
       ...w,
       typeNormalized: normalizeWorkoutType(w.type ?? ""),
     })),
-    nutritionByDay,
-    journal: journalRes.data ?? [],
+    ...(NUTRITION_ENABLED ? { nutritionByDay } : {}),
+    ...(JOURNAL_ENABLED ? { journal: journalRes.data ?? [] } : {}),
     bodyComposition: bodyRes.data ?? [],
     dailyStrain,
   };

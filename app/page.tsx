@@ -2,7 +2,7 @@ import { getDashboardSnapshot, type DashboardSnapshot } from "@/lib/dashboard-da
 import { formatFrLong } from "@/lib/dates";
 import { recoveryColor } from "@/lib/recovery-score";
 import { NutritionTracker } from "@/components/NutritionTracker";
-import { NUTRITION_ENABLED } from "@/lib/features";
+import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { MissingDataNotice, StaleScaleNotice } from "@/components/Notices";
 import { JournalDashboard } from "@/components/JournalDashboard";
 import { Reservations } from "@/components/Reservations";
@@ -109,7 +109,7 @@ export default async function Home() {
       )}
 
       {/* Alerte journal */}
-      {!snap.hasJournalToday && (
+      {JOURNAL_ENABLED && !snap.hasJournalToday && (
         <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-brand-purple)]/5 border border-[var(--color-brand-purple)]/15 px-3 py-2">
           <span className="text-sm">📝</span>
           <p className="text-xs text-[var(--color-body)]">
@@ -395,7 +395,7 @@ export default async function Home() {
         )}
 
       {/* ── Journal ── */}
-      <JournalDashboard date={snap.date} impact={snap.journalImpact} />
+      {JOURNAL_ENABLED && <JournalDashboard date={snap.date} impact={snap.journalImpact} />}
 
       {/* ── Réservations Sportigo ── */}
       <Reservations />

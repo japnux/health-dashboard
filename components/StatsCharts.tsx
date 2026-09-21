@@ -25,6 +25,7 @@ import { formatWorkoutType } from "@/lib/workout-recommendation";
 import { AiCorrelations } from "@/components/AiCorrelations";
 import { computeDayStrain, type StrainDay } from "@/lib/strain-score";
 import { computeJournalImpact } from "@/lib/journal-impact";
+import { JOURNAL_ENABLED } from "@/lib/features";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -275,6 +276,7 @@ export function StatsCharts() {
   const visibleTabs = STATS_TABS.filter((t) => {
     if (!data) return true;
     if (t.key === "corps" && data.bodyComposition.length === 0) return false;
+    if (t.key === "journal" && !JOURNAL_ENABLED) return false;
     if (t.key === "journal" && (data.journalAverages?.entryCount ?? 0) === 0 && !(data.journalEntries && data.journalEntries.length > 0)) return false;
     return true;
   });
