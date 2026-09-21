@@ -1,35 +1,35 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+// Statistiques : comment tu évolues (semaine, mois, année), comparé à la
+// période précédente. Mêmes calculs, zones et couleurs que l'accueil et les
+// pages de détail, qui répondent elles à « où j'en suis ».
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   ResponsiveContainer,
   LineChart,
   Line,
-  AreaChart,
-  Area,
   BarChart,
   Bar,
-  ComposedChart,
-  ReferenceArea,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ReferenceLine,
   Legend,
 } from "recharts";
-import {
-  fillMissingDays,
-  computeMovingAverage,
-  shortDateLabel,
-} from "@/lib/stats-data";
-import { formatWorkoutType } from "@/lib/workout-recommendation";
+import { shortDateLabel } from "@/lib/stats-data";
 import { AiCorrelations } from "@/components/AiCorrelations";
-import { computeJournalImpact } from "@/lib/journal-impact";
-import { JOURNAL_ENABLED } from "@/lib/features";
 import { dateInTz } from "@/lib/dates";
 import { HR_ZONES } from "@/lib/hr-zones";
-import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
+import { formZone } from "@/lib/form";
+import { strainColor } from "@/lib/strain-score";
+import { BODY_METRICS_BY_KEY, formatMetric, isFavorable, type BodyMetricKey, type MetricStatus } from "@/lib/body-metrics";
+import { normalizeWorkoutType, workoutDisplayLabel, workoutEmoji } from "@/lib/workout-types";
+import { VIVID, sportColor, tint, tintedBackground } from "@/lib/palette";
+import { ZonedLineChart } from "@/components/charts/ZonedLineChart";
+import { HistoryChart } from "@/components/charts/HistoryChart";
+import { Delta, StatGrid } from "@/components/detail/DetailBits";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -38,28 +38,37 @@ type Period = "week" | "month" | "year";
 type DailyMetric = {
   date: string;
   hrv_ms: number | null;
-  resting_hr_bpm: number | null;
+  sleeping_hr_bpm: number | null;
   respiratory_rate: number | null;
   spo2_pct: number | null;
+  wrist_temp_c: number | null;
   sleep_total_min: number | null;
   sleep_rem_pct: number | null;
   sleep_deep_pct: number | null;
   sleep_awake_pct: number | null;
+  sleep_start: string | null;
+  sleep_end: string | null;
   steps: number | null;
   active_kcal: number | null;
-  cardio_load?: number | null;
-  daylight_min: number | null;
+  cardio_load: number | null;
   recovery_score: number | null;
-  recovery_score_basis: string | null;
 };
 
 type Workout = {
+  id: string;
   started_at: string;
   type: string;
   duration_min: number | null;
   kcal: number | null;
+  avg_hr_bpm: number | null;
+  cardio_load: number | null;
   hr_zone_min?: number[] | null; // minutes par zone de FC (50-60 … 90-100 % FC max)
+  hr_drop_1min: number | null; // baisse de FC 1 min après la fin
+  distance_km: number | null;
+  max_speed_kmh: number | null;
 };
+
+type PrevWorkout = { started_at: string; type: string; duration_min: number | null; cardio_load: number | null };
 
 type BodyComp = {
   measured_at: string;
@@ -68,190 +77,89 @@ type BodyComp = {
   lean_mass_kg: number | null;
 };
 
-type PrevPeriodMetric = {
-  date: string;
-  hrv_ms: number | null;
-  resting_hr_bpm: number | null;
-  respiratory_rate: number | null;
-  spo2_pct: number | null;
-  sleep_total_min: number | null;
-  sleep_rem_pct: number | null;
-  sleep_deep_pct: number | null;
-  sleep_awake_pct: number | null;
-  steps: number | null;
-  active_kcal: number | null;
-  cardio_load?: number | null;
-  daylight_min: number | null;
-  recovery_score: number | null;
-};
-
-type JournalEntry = {
-  date: string;
-  mood: number | null;
-  energy: number | null;
-  stress: number | null;
-  notes: string | null;
-  gratitude: string | null;
-};
-
-type JournalAverages = {
-  mood: number | null;
-  energy: number | null;
-  stress: number | null;
-  entryCount?: number;
+type NightMetric = {
+  key: BodyMetricKey;
+  points: { date: string; value: number; low: number | null; high: number | null; status: MetricStatus | null }[];
 };
 
 type StatsPayload = {
   period: string;
   offset: number;
+  tz: string;
   startDate: string;
   endDate: string;
   label: string;
   today: string;
-  // Strain de chaque jour (deux périodes), calculé côté serveur avec la même
-  // référence glissante 30j que l'accueil
+  sleepTargetMin: number;
   strainByDate: Record<string, number>;
-  // Charge cardio du jour, moyennes 7 j / 28 j et leur ratio (serveur)
-  loadSeries: { date: string; load: number | null; acute: number | null; chronic: number | null; ratio: number | null }[];
+  loadSeries: { date: string; load: number | null; ratio: number | null; form: number | null }[];
+  nightMetrics: NightMetric[];
   dailyMetrics: DailyMetric[];
   workouts: Workout[];
   bodyComposition: BodyComp[];
-  journalEntries?: JournalEntry[];
-  journalAverages?: JournalAverages;
   previousPeriod: {
     startDate: string;
     endDate: string;
     label: string;
-    dailyMetrics: PrevPeriodMetric[];
-    workouts: Workout[];
-    journalAverages?: JournalAverages;
+    dailyMetrics: DailyMetric[];
+    workouts: PrevWorkout[];
   };
 };
 
 // ── Couleurs ─────────────────────────────────────────────────────────────
 
 const C = {
-  green: "#15be53",
-  yellow: "#eab308",
-  red: "#ea2261",
-  blue: "#533afd",
-  purple: "#533afd",
-  orange: "#f97316",
-  cyan: "#06b6d4",
+  green: VIVID.green,
+  blue: VIVID.blue,
+  orange: VIVID.orange,
   zinc400: "#64748d",
-  zinc600: "#273951",
-  zinc700: "#061b31",
   zinc800: "#0d1520",
 };
+const ZONES = HR_ZONES;
+const RECOVERY_COLOR = (v: number) => (v >= 7 ? VIVID.green : v >= 5 ? VIVID.yellow : VIVID.red);
+const TOOLTIP_STYLE = { backgroundColor: C.zinc800, border: "none", borderRadius: 8, color: "#fff", fontSize: 12 };
 
-// ── Tabs de contenu ─────────────────────────────────────────────────────
+// ── Petits calculs ───────────────────────────────────────────────────────
 
-type StatsTab = "resume" | "correlations" | "recovery" | "sommeil" | "activite" | "corps" | "journal";
+function avgOf(vals: (number | null | undefined)[]): number | null {
+  const v = vals.filter((x): x is number => x != null);
+  return v.length > 0 ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+const r1 = (v: number) => Math.round(v * 10) / 10;
+const fr1 = (v: number) => r1(v).toString().replace(".", ",");
+function fmtHM(min: number): string {
+  return `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, "0")}`;
+}
+function diff(a: number | null, b: number | null): number | null {
+  return a != null && b != null ? a - b : null;
+}
+// Dernier jour à prendre en compte : fin de période, ou aujourd'hui si elle est en cours
+function lastDayOf(end: string, today: string): string {
+  return end < today ? end : today;
+}
+function inPeriod(date: string, start: string, end: string): boolean {
+  return date >= start && date <= end;
+}
+
+// Fin de la période précédente comparable : même nombre de jours écoulés
+// si la période en cours n'est pas terminée
+function comparableEnd(data: StatsPayload, lastDay: string): string {
+  const day = 86_400_000;
+  const elapsed = Math.round((Date.parse(`${lastDay}T12:00:00Z`) - Date.parse(`${data.startDate}T12:00:00Z`)) / day);
+  const end = new Date(Date.parse(`${data.previousPeriod.startDate}T12:00:00Z`) + elapsed * day).toISOString().slice(0, 10);
+  return end < data.previousPeriod.endDate ? end : data.previousPeriod.endDate;
+}
+
+// ── Onglets ──────────────────────────────────────────────────────────────
+
+type StatsTab = "resume" | "entrainement" | "recuperation" | "corps";
 
 const STATS_TABS: { key: StatsTab; label: string; icon: string }[] = [
   { key: "resume", label: "Résumé", icon: "📊" },
-  { key: "correlations", label: "Corrélations", icon: "🔗" },
-  { key: "recovery", label: "Recovery", icon: "❤️" },
-  { key: "sommeil", label: "Sommeil", icon: "🌙" },
-  { key: "activite", label: "Activité", icon: "🏃" },
+  { key: "entrainement", label: "Entraînement", icon: "🏄" },
+  { key: "recuperation", label: "Récupération", icon: "💚" },
   { key: "corps", label: "Corps", icon: "⚖️" },
-  { key: "journal", label: "Journal", icon: "📝" },
 ];
-
-// ── Mini-analyses par tab ───────────────────────────────────────────────
-
-function tabMiniAnalysis(tab: StatsTab, data: StatsPayload, period: Period): string | null {
-  const m = data.dailyMetrics;
-  const pm = data.previousPeriod.dailyMetrics;
-
-  switch (tab) {
-    case "resume":
-    case "correlations":
-      return null;
-
-    case "recovery": {
-      const vals = m.map((d) => d.recovery_score).filter((v): v is number => v != null);
-      if (vals.length === 0) return "Pas de données recovery sur cette période.";
-      const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-      const prevVals = pm.map((d) => d.recovery_score).filter((v): v is number => v != null);
-      const prevAvg = prevVals.length > 0 ? prevVals.reduce((a, b) => a + b, 0) / prevVals.length : null;
-      const trend = prevAvg != null ? (avg > prevAvg + 0.3 ? " — en hausse" : avg < prevAvg - 0.3 ? " — en baisse" : " — stable") : "";
-      const hrvVals = m.map((d) => d.hrv_ms).filter((v): v is number => v != null);
-      const avgHrv = hrvVals.length > 0 ? Math.round(hrvVals.reduce((a, b) => a + b, 0) / hrvVals.length) : null;
-      const respiVals = m.map((d) => d.respiratory_rate).filter((v): v is number => v != null);
-      const avgRespi = respiVals.length > 0 ? Math.round(respiVals.reduce((a, b) => a + b, 0) / respiVals.length * 10) / 10 : null;
-      let text = `Recovery moy. ${avg.toFixed(1)}/10${trend}.`;
-      if (avgHrv != null) text += ` HRV moy. ${avgHrv} ms.`;
-      if (avgRespi != null) text += ` Respi moy. ${avgRespi}/min.`;
-      return text;
-    }
-
-    case "sommeil": {
-      const vals = m.map((d) => d.sleep_total_min).filter((v): v is number => v != null);
-      if (vals.length === 0) return "Pas de données sommeil sur cette période.";
-      const avgH = (vals.reduce((a, b) => a + b, 0) / vals.length) / 60;
-      const deepVals = m.map((d) => d.sleep_deep_pct).filter((v): v is number => v != null);
-      const avgDeep = deepVals.length > 0 ? Math.round(deepVals.reduce((a, b) => a + b, 0) / deepVals.length) : null;
-      const daylightVals = m.map((d) => d.daylight_min).filter((v): v is number => v != null);
-      const avgDaylight = daylightVals.length > 0 ? Math.round(daylightVals.reduce((a, b) => a + b, 0) / daylightVals.length) : null;
-      const spo2Vals = m.map((d) => d.spo2_pct).filter((v): v is number => v != null);
-      const avgSpo2 = spo2Vals.length > 0 ? Math.round(spo2Vals.reduce((a, b) => a + b, 0) / spo2Vals.length * 10) / 10 : null;
-      const awakeVals = m.map((d) => d.sleep_awake_pct).filter((v): v is number => v != null);
-      const avgAwake = awakeVals.length > 0 ? Math.round(awakeVals.reduce((a, b) => a + b, 0) / awakeVals.length) : null;
-      let text = `Moyenne ${avgH.toFixed(1)}h/nuit.`;
-      if (avgDeep != null) text += ` ${avgDeep}% profond.`;
-      if (avgAwake != null) text += ` ${avgAwake}% éveillé.`;
-      if (avgSpo2 != null) text += ` SpO₂ moy. ${avgSpo2}%.`;
-      if (avgDaylight != null) text += ` ${Math.round(avgDaylight / 60 * 10) / 10}h de lumière/jour.`;
-      return text;
-    }
-
-    case "activite": {
-      const stepsVals = m.map((d) => d.steps).filter((v): v is number => v != null);
-      const avgStepsVal = stepsVals.length > 0 ? Math.round(stepsVals.reduce((a, b) => a + b, 0) / stepsVals.length) : null;
-      const nbWorkouts = data.workouts.length;
-      // Jours réellement couverts : la période entière si elle est passée,
-      // sinon jusqu'à aujourd'hui (avant : 30 ou 365 jours fixes, septembre
-      // en cours sortait à 2.8 séances/sem au lieu de 4.0)
-      const lastDay = data.endDate < data.today ? data.endDate : data.today;
-      const daysInPeriod = Math.max(
-        1,
-        Math.round((Date.parse(`${lastDay}T00:00:00Z`) - Date.parse(`${data.startDate}T00:00:00Z`)) / 86_400_000) + 1,
-      );
-      const freqPerWeek = nbWorkouts > 0 ? Math.round((nbWorkouts / daysInPeriod) * 7 * 10) / 10 : 0;
-      const kcalVals = m.map((d) => d.active_kcal).filter((v): v is number => v != null);
-      const avgKcal = kcalVals.length > 0 ? Math.round(kcalVals.reduce((a, b) => a + b, 0) / kcalVals.length) : null;
-      const strainData = computeDailyStrain(m, data.strainByDate);
-      const strainAvg = strainData.length > 0 ? Math.round((strainData.reduce((s, d) => s + d.strain, 0) / strainData.length) * 10) / 10 : null;
-      let text = avgStepsVal != null ? `${avgStepsVal.toLocaleString("fr-FR")} pas/jour.` : "";
-      if (nbWorkouts > 0) text += ` ${nbWorkouts} séances (${freqPerWeek}/sem).`;
-      if (avgKcal != null) text += ` ${avgKcal} kcal actives/jour.`;
-      if (strainAvg != null) text += ` Strain moy. ${strainAvg}/10.`;
-      return text || "Pas de données d'activité.";
-    }
-
-    case "corps": {
-      if (data.bodyComposition.length === 0) return "Pas de pesée sur cette période.";
-      const first = data.bodyComposition[0];
-      const last = data.bodyComposition[data.bodyComposition.length - 1];
-      if (first.weight_kg != null && last.weight_kg != null && data.bodyComposition.length > 1) {
-        const diff = last.weight_kg - first.weight_kg;
-        const sign = diff > 0 ? "+" : "";
-        return `${data.bodyComposition.length} pesées. ${sign}${diff.toFixed(1)} kg sur la période (${first.weight_kg} → ${last.weight_kg} kg).`;
-      }
-      return `${data.bodyComposition.length} pesée${data.bodyComposition.length > 1 ? "s" : ""}. Dernier poids : ${last.weight_kg} kg.`;
-    }
-
-    case "journal": {
-      const avg = data.journalAverages;
-      if (!avg || (avg.entryCount ?? 0) === 0) return "Aucune entrée journal sur cette période.";
-      const parts: string[] = [`${avg.entryCount} entrées.`];
-      if (avg.mood != null) parts.push(`Humeur moy. ${avg.mood.toFixed(1)}/5.`);
-      if (avg.stress != null) parts.push(`Stress moy. ${avg.stress.toFixed(1)}/5.`);
-      return parts.join(" ");
-    }
-  }
-}
 
 // ── Composant principal ──────────────────────────────────────────────────
 
@@ -262,42 +170,45 @@ export function StatsCharts() {
   const [data, setData] = useState<StatsPayload | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async (p: Period, o: number) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/stats?period=${p}&offset=${o}`);
-      if (!res.ok) throw new Error("Fetch stats failed");
-      const json: StatsPayload = await res.json();
-      setData(json);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Chargement à chaque changement de période ; l'état "chargement" est posé
+  // par les boutons (changePeriod / changeOffset), pas dans l'effet
   useEffect(() => {
-    fetchData(period, offset);
-  }, [period, offset, fetchData]);
+    let cancelled = false;
+    fetch(`/api/stats?period=${period}&offset=${offset}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Chargement des statistiques impossible");
+        return res.json() as Promise<StatsPayload>;
+      })
+      .then((json) => {
+        if (!cancelled) setData(json);
+      })
+      .catch(() => {
+        if (!cancelled) setData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [period, offset]);
 
-  function handlePeriodChange(p: Period) {
+  const changePeriod = (p: Period) => {
+    setLoading(true);
     setPeriod(p);
     setOffset(0);
-  }
+  };
+  const changeOffset = (o: number) => {
+    if (o === offset) return;
+    setLoading(true);
+    setOffset(o);
+  };
 
   const periodTabs: { key: Period; label: string }[] = [
     { key: "week", label: "Semaine" },
     { key: "month", label: "Mois" },
     { key: "year", label: "Année" },
   ];
-
-  const visibleTabs = STATS_TABS.filter((t) => {
-    if (!data) return true;
-    if (t.key === "corps" && data.bodyComposition.length === 0) return false;
-    if (t.key === "journal" && !JOURNAL_ENABLED) return false;
-    if (t.key === "journal" && (data.journalAverages?.entryCount ?? 0) === 0 && !(data.journalEntries && data.journalEntries.length > 0)) return false;
-    return true;
-  });
 
   return (
     <div className="space-y-5">
@@ -307,7 +218,7 @@ export function StatsCharts() {
           {periodTabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => handlePeriodChange(t.key)}
+              onClick={() => changePeriod(t.key)}
               className={`rounded-[var(--radius-sm)] px-4 py-1.5 text-sm font-normal transition-colors ${
                 period === t.key
                   ? "bg-white dark:bg-white/10 text-[var(--color-heading)] dark:text-white"
@@ -321,35 +232,35 @@ export function StatsCharts() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setOffset((o) => o + 1)}
+            onClick={() => changeOffset(offset + 1)}
+            aria-label="Période précédente"
             className="rounded-[var(--radius-sm)] px-2 py-1 text-sm text-[var(--color-body)] hover:bg-[var(--color-border)]/50 dark:hover:bg-white/5 transition-colors"
           >
             ←
           </button>
           <button
-            onClick={() => setOffset(0)}
+            onClick={() => changeOffset(0)}
             className={`text-sm font-normal ${offset === 0 ? "text-[var(--color-brand-purple)]" : "text-[var(--color-heading)] dark:text-white hover:text-[var(--color-brand-purple)]"}`}
           >
             {data?.label ?? "…"}
           </button>
           <button
-            onClick={() => setOffset((o) => Math.max(0, o - 1))}
+            onClick={() => changeOffset(Math.max(0, offset - 1))}
             disabled={offset === 0}
+            aria-label="Période suivante"
             className="rounded-[var(--radius-sm)] px-2 py-1 text-sm text-[var(--color-body)] hover:bg-[var(--color-border)]/50 dark:hover:bg-white/5 transition-colors disabled:opacity-30"
           >
             →
           </button>
           {data?.previousPeriod.label && (
-            <span className="text-xs text-[var(--color-body)] uppercase">
-              vs. {data.previousPeriod.label}
-            </span>
+            <span className="text-xs text-[var(--color-body)] uppercase">vs. {data.previousPeriod.label}</span>
           )}
         </div>
       </div>
 
-      {/* Tabs de contenu */}
+      {/* Onglets de contenu */}
       <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
-        {visibleTabs.map((t) => (
+        {STATS_TABS.filter((t) => t.key !== "corps" || !data || data.bodyComposition.length > 0).map((t) => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
@@ -365,131 +276,619 @@ export function StatsCharts() {
         ))}
       </div>
 
-      {loading && (
-        <div className="text-center text-sm text-zinc-500 py-12">
-          Chargement…
-        </div>
-      )}
+      {loading && <div className="text-center text-sm text-[var(--color-body)] py-12">Chargement…</div>}
 
       {!loading && data && (
         <div className="space-y-5">
-          {/* Mini-analyse */}
-          {activeTab !== "resume" && (() => {
-            const analysis = tabMiniAnalysis(activeTab, data, period);
-            if (!analysis) return null;
-            return (
-              <div className="rounded-[var(--radius-md)] bg-[var(--color-brand-purple)]/5 border border-[var(--color-brand-purple)]/10 px-4 py-3">
-                <p className="text-sm text-[var(--color-heading)] dark:text-white/90">{analysis}</p>
+          {activeTab === "resume" && <SummaryTab data={data} period={period} />}
+          {activeTab === "entrainement" && <TrainingTab data={data} period={period} />}
+          {activeTab === "recuperation" && <RecoveryTab data={data} />}
+          {activeTab === "corps" &&
+            (data.bodyComposition.length > 0 ? (
+              <>
+                <WeightChart bodyComposition={data.bodyComposition} />
+                <Link href="/biologie" className="block text-sm text-[var(--color-brand-purple)] hover:underline">
+                  Voir tes analyses de biologie ›
+                </Link>
+              </>
+            ) : (
+              <p className="text-sm text-[var(--color-body)]">Pas de pesée sur cette période.</p>
+            ))}
+        </div>
+      )}
+
+      {!loading && !data && <div className="text-center text-sm text-[var(--color-body)] py-12">Erreur de chargement.</div>}
+    </div>
+  );
+}
+
+// ── Résumé ───────────────────────────────────────────────────────────────
+
+// Pavé d'indicateur teinté par son statut, comparé à la période précédente
+function KpiTile({
+  label,
+  value,
+  unit,
+  color,
+  sub,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  color: string;
+  sub?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-[var(--radius-lg)] border p-3.5 sm:p-4 min-w-0"
+      style={{ background: tintedBackground(color), borderColor: tint(color, 0.3), boxShadow: "var(--shadow-ambient)" }}
+    >
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[var(--color-body)]">
+        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        {label}
+      </p>
+      <p className="mt-1.5 text-[var(--color-heading)] dark:text-white">
+        <span className="text-2xl sm:text-3xl font-light tabular-nums">{value}</span>
+        {unit && <span className="text-sm text-[var(--color-body)] ml-1">{unit}</span>}
+      </p>
+      {sub && <div className="text-[11px] text-[var(--color-body)] mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
+  const [showCorrelations, setShowCorrelations] = useState(false);
+  const m = data.dailyMetrics;
+  const lastDay = lastDayOf(data.endDate, data.today);
+  // Période en cours : on compare aux mêmes jours de la période précédente
+  // (1er-21 septembre contre 1er-21 août), sinon le volume paraît en baisse
+  const prevEnd = comparableEnd(data, lastDay);
+  const pm = data.previousPeriod.dailyMetrics.filter((d) => d.date <= prevEnd);
+  const prevWorkouts = data.previousPeriod.workouts.filter((w) => dateInTz(w.started_at, data.tz) <= prevEnd);
+
+  const rec = avgOf(m.map((d) => d.recovery_score));
+  const prevRec = avgOf(pm.map((d) => d.recovery_score));
+  const strainVals = (start: string, end: string) =>
+    Object.entries(data.strainByDate)
+      .filter(([d]) => inPeriod(d, start, end) && d <= data.today)
+      .map(([, v]) => v);
+  const strain = avgOf(strainVals(data.startDate, data.endDate));
+  const prevStrain = avgOf(strainVals(data.previousPeriod.startDate, prevEnd));
+  const formAt = (start: string, end: string) =>
+    [...data.loadSeries].reverse().find((p) => inPeriod(p.date, start, end) && p.form != null)?.form ?? null;
+  const form = formAt(data.startDate, lastDay);
+  const prevForm = formAt(data.previousPeriod.startDate, prevEnd);
+  const hours = data.workouts.reduce((a, w) => a + (w.duration_min ?? 0), 0) / 60;
+  const prevHours = prevWorkouts.reduce((a, w) => a + (w.duration_min ?? 0), 0) / 60;
+  const sleep = avgOf(m.map((d) => d.sleep_total_min));
+  const prevSleep = avgOf(pm.map((d) => d.sleep_total_min));
+  const hrv = avgOf(m.map((d) => d.hrv_ms));
+  const prevHrv = avgOf(pm.map((d) => d.hrv_ms));
+  const steps = avgOf(m.map((d) => d.steps));
+  const prevSteps = avgOf(pm.map((d) => d.steps));
+  const kcal = avgOf(m.map((d) => d.active_kcal));
+  const prevKcal = avgOf(pm.map((d) => d.active_kcal));
+
+  const vs = (d: number | null, betterWhen: "up" | "down" | "none", fmt: (v: number) => string) =>
+    d != null ? <Delta diff={d} betterWhen={betterWhen} format={fmt} /> : <span>pas de comparaison</span>;
+
+  // Records de la période
+  const bestRec = m.filter((d) => d.recovery_score != null).sort((a, b) => b.recovery_score! - a.recovery_score!)[0];
+  const bigDay = Object.entries(data.strainByDate)
+    .filter(([d]) => inPeriod(d, data.startDate, data.endDate))
+    .sort((a, b) => b[1] - a[1])[0];
+  const longest = [...data.workouts].sort((a, b) => (b.duration_min ?? 0) - (a.duration_min ?? 0))[0];
+  const heaviest = [...data.workouts].sort((a, b) => (b.cardio_load ?? 0) - (a.cardio_load ?? 0))[0];
+  const dateLabel = (d: string) => shortDateLabel(d);
+
+  return (
+    <>
+      <SummarySentence
+        data={data}
+        period={period}
+        rec={rec}
+        prevRec={prevRec}
+        hours={hours}
+        prevHours={prevHours}
+        form={form}
+        partial={prevEnd < data.previousPeriod.endDate}
+      />
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <KpiTile
+          label="Récupération"
+          value={rec != null ? fr1(rec) : "—"}
+          unit="/10"
+          color={rec != null ? RECOVERY_COLOR(rec) : VIVID.gray}
+          sub={vs(diff(rec, prevRec), "up", fr1)}
+        />
+        <KpiTile
+          label="Strain moyen"
+          value={strain != null ? fr1(strain) : "—"}
+          unit="/10"
+          color={strain != null ? strainColor(strain) : VIVID.gray}
+          sub={vs(diff(strain, prevStrain), "none", fr1)}
+        />
+        <KpiTile
+          label="Forme"
+          value={form != null ? (form > 0 ? `+${form}` : form < 0 ? `−${Math.abs(form)}` : "0") : "—"}
+          color={form != null ? formZone(form).color : VIVID.gray}
+          sub={
+            form != null ? (
+              <>
+                {formZone(form).label} · {vs(diff(form, prevForm), "none", (v) => String(Math.round(v)))}
+              </>
+            ) : (
+              "pas assez d'historique"
+            )
+          }
+        />
+        <KpiTile
+          label="Séances"
+          value={String(data.workouts.length)}
+          color={VIVID.indigo}
+          sub={
+            <>
+              {hours > 0 ? `${fmtHM(hours * 60)} · ` : ""}
+              {vs(diff(data.workouts.length, prevWorkouts.length), "none", (v) => String(Math.round(v)))}
+            </>
+          }
+        />
+        <KpiTile
+          label="Sommeil"
+          value={sleep != null ? fmtHM(sleep) : "—"}
+          color={sleep == null ? VIVID.gray : sleep >= data.sleepTargetMin ? VIVID.green : sleep >= data.sleepTargetMin - 45 ? VIVID.yellow : VIVID.red}
+          sub={vs(diff(sleep, prevSleep), "up", (v) => `${Math.round(v)} min`)}
+        />
+        <KpiTile
+          label="HRV"
+          value={hrv != null ? String(Math.round(hrv)) : "—"}
+          unit="ms"
+          color={VIVID.cyan}
+          sub={vs(diff(hrv, prevHrv), "up", (v) => `${Math.round(v)} ms`)}
+        />
+      </div>
+
+      {/* Activité quotidienne : un seul pavé */}
+      <div className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-4" style={{ boxShadow: "var(--shadow-ambient)" }}>
+        <p className="text-[11px] uppercase tracking-wide text-[var(--color-body)] mb-2">Activité quotidienne</p>
+        <StatGrid
+          cols={2}
+          items={[
+            {
+              label: "🚶 Pas / jour",
+              value: steps != null ? Math.round(steps).toLocaleString("fr-FR") : "—",
+              sub: vs(diff(steps, prevSteps), "up", (v) => Math.round(v).toLocaleString("fr-FR")),
+            },
+            {
+              label: "🔥 Kcal actives / jour",
+              value: kcal != null ? String(Math.round(kcal)) : "—",
+              sub: vs(diff(kcal, prevKcal), "up", (v) => String(Math.round(v))),
+            },
+          ]}
+        />
+      </div>
+
+      {/* Records */}
+      <ChartCard title="Records de la période">
+        <div className="space-y-2.5 text-sm">
+          {bestRec && (
+            <RecordRow emoji="💚" label="Meilleure récupération" value={`${fr1(bestRec.recovery_score!)}/10`} date={dateLabel(bestRec.date)} color={RECOVERY_COLOR(bestRec.recovery_score!)} />
+          )}
+          {bigDay && <RecordRow emoji="🔥" label="Plus grosse journée" value={`Strain ${fr1(bigDay[1])}`} date={dateLabel(bigDay[0])} color={strainColor(bigDay[1])} />}
+          {longest?.duration_min != null && (
+            <RecordRow
+              emoji={workoutEmoji(longest.type)}
+              label="Plus longue séance"
+              value={`${workoutDisplayLabel(longest.type)} · ${fmtHM(longest.duration_min)}`}
+              date={dateLabel(dateInTz(longest.started_at, data.tz))}
+              color={sportColor(normalizeWorkoutType(longest.type))}
+              href={`/seance/${longest.id}`}
+            />
+          )}
+          {heaviest?.cardio_load != null && heaviest.cardio_load > 0 && (
+            <RecordRow
+              emoji={workoutEmoji(heaviest.type)}
+              label="Séance la plus chargée"
+              value={`${workoutDisplayLabel(heaviest.type)} · charge ${heaviest.cardio_load}`}
+              date={dateLabel(dateInTz(heaviest.started_at, data.tz))}
+              color={sportColor(normalizeWorkoutType(heaviest.type))}
+              href={`/seance/${heaviest.id}`}
+            />
+          )}
+          {!bestRec && !bigDay && !longest && <p className="text-[var(--color-body)]">Pas encore de données sur cette période.</p>}
+        </div>
+      </ChartCard>
+
+      {/* Corrélations IA : générées seulement sur demande */}
+      {showCorrelations ? (
+        <AiCorrelations />
+      ) : (
+        <button
+          onClick={() => setShowCorrelations(true)}
+          className="w-full rounded-[var(--radius-lg)] border border-dashed border-[var(--color-brand-purple)]/40 px-4 py-3 text-sm text-[var(--color-brand-purple)] hover:bg-[var(--color-brand-purple)]/5 transition-colors"
+        >
+          🔗 Analyser les corrélations (IA)
+        </button>
+      )}
+    </>
+  );
+}
+
+function RecordRow({ emoji, label, value, date, color, href }: { emoji: string; label: string; value: string; date: string; color: string; href?: string }) {
+  const content = (
+    <div className="flex items-center gap-3">
+      <span className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: tint(color, 0.18) }} aria-hidden>
+        {emoji}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] text-[var(--color-body)]">{label}</p>
+        <p className="text-[var(--color-heading)] dark:text-white truncate">{value}</p>
+      </div>
+      <span className="text-xs text-[var(--color-body)] shrink-0">{date}</span>
+      {href && <span className="text-[var(--color-body)]">›</span>}
+    </div>
+  );
+  return href ? (
+    <Link href={href} className="block hover:opacity-80">
+      {content}
+    </Link>
+  ) : (
+    content
+  );
+}
+
+// Phrase de synthèse calculée (pas d'IA) : volume, récupération, forme
+function SummarySentence({
+  data,
+  period,
+  rec,
+  prevRec,
+  hours,
+  prevHours,
+  form,
+  partial,
+}: {
+  data: StatsPayload;
+  period: Period;
+  rec: number | null;
+  prevRec: number | null;
+  hours: number;
+  prevHours: number;
+  form: number | null;
+  partial: boolean;
+}) {
+  const unit = period === "week" ? "Semaine" : period === "month" ? "Mois" : "Année";
+  // "que la période précédente" ou "qu'à la même date de la période précédente"
+  const than = partial ? "qu'à la même date de la période précédente" : "que la période précédente";
+  const parts: string[] = [];
+  if (data.workouts.length === 0) parts.push(`${unit} sans séance enregistrée`);
+  else if (prevHours > 0) {
+    const change = (hours - prevHours) / prevHours;
+    parts.push(
+      change > 0.15
+        ? `${unit} plus chargé ${than} (${fmtHM(hours * 60)} d'entraînement contre ${fmtHM(prevHours * 60)})`
+        : change < -0.15
+          ? `${unit} plus léger ${than} (${fmtHM(hours * 60)} contre ${fmtHM(prevHours * 60)})`
+          : `Volume stable (${fmtHM(hours * 60)} d'entraînement)`,
+    );
+  } else parts.push(`${data.workouts.length} séance${data.workouts.length > 1 ? "s" : ""}, ${fmtHM(hours * 60)} d'entraînement`);
+  if (rec != null) {
+    const d = prevRec != null ? rec - prevRec : 0;
+    parts.push(
+      prevRec == null || Math.abs(d) < 0.3
+        ? `récupération stable (${fr1(rec)}/10)`
+        : d > 0
+          ? `récupération en hausse (${fr1(rec)} contre ${fr1(prevRec)})`
+          : `récupération en baisse (${fr1(rec)} contre ${fr1(prevRec)})`,
+    );
+  }
+  if (form != null) parts.push(`forme : ${formZone(form).long}`);
+  return (
+    <div className="rounded-[var(--radius-md)] bg-[var(--color-brand-purple)]/5 border border-[var(--color-brand-purple)]/10 px-4 py-3">
+      <p className="text-sm text-[var(--color-heading)] dark:text-white/90">{parts.join(", ")}.</p>
+    </div>
+  );
+}
+
+// ── Entraînement ─────────────────────────────────────────────────────────
+
+// Clé de regroupement : jour (semaine), semaine (mois), mois (année)
+function bucketKey(date: string, period: Period): string {
+  if (period === "week") return date;
+  if (period === "month") return mondayOf(date);
+  return date.slice(0, 7);
+}
+function bucketLabel(key: string, period: Period): string {
+  if (period === "week") return shortDateLabel(key);
+  if (period === "month") return `sem. ${shortDateLabel(key)}`;
+  return new Intl.DateTimeFormat("fr-FR", { month: "short", timeZone: "UTC" }).format(new Date(`${key}-15T12:00:00Z`));
+}
+
+function TrainingTab({ data, period }: { data: StatsPayload; period: Period }) {
+  const lastDay = lastDayOf(data.endDate, data.today);
+  const current = data.loadSeries.filter((p) => inPeriod(p.date, data.startDate, lastDay));
+  const strainPoints = Object.entries(data.strainByDate)
+    .filter(([d]) => inPeriod(d, data.startDate, lastDay))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value }));
+
+  return (
+    <>
+      <LoadBySport data={data} period={period} />
+      {current.some((p) => p.ratio != null) && (
+        <ChartCard title="Ratio de charge (7 j / 42 j)">
+          <ZonedLineChart kind="balance" points={current.filter((p) => p.ratio != null).map((p) => ({ date: p.date, value: p.ratio! }))} />
+        </ChartCard>
+      )}
+      {current.some((p) => p.form != null) && (
+        <ChartCard title="Forme d'entraînement">
+          <ZonedLineChart kind="form" points={current.filter((p) => p.form != null).map((p) => ({ date: p.date, value: p.form! }))} />
+        </ChartCard>
+      )}
+      <ZonesChart workouts={data.workouts} period={period} tz={data.tz} />
+      <SportTable workouts={data.workouts} />
+      {strainPoints.length > 0 && (
+        <ChartCard title="Strain jour par jour">
+          <ZonedLineChart kind="strain" points={strainPoints} />
+        </ChartCard>
+      )}
+    </>
+  );
+}
+
+// Charge cardio empilée par sport, plus l'activité hors séances (même
+// décomposition que la page Strain)
+function LoadBySport({ data, period }: { data: StatsPayload; period: Period }) {
+  const lastDay = lastDayOf(data.endDate, data.today);
+  const sports = new Map<string, string>(); // clé normalisée → libellé
+  const buckets = new Map<string, Record<string, number>>();
+  const add = (key: string, sport: string, v: number) => {
+    const b = buckets.get(key) ?? {};
+    b[sport] = (b[sport] ?? 0) + v;
+    buckets.set(key, b);
+  };
+  // Charge des séances par jour, pour déduire le hors-séances
+  const workoutLoadByDay = new Map<string, number>();
+  for (const w of data.workouts) {
+    if (w.cardio_load == null) continue;
+    const day = dateInTz(w.started_at, data.tz);
+    const sport = normalizeWorkoutType(w.type);
+    sports.set(sport, workoutDisplayLabel(w.type));
+    add(bucketKey(day, period), sport, w.cardio_load);
+    workoutLoadByDay.set(day, (workoutLoadByDay.get(day) ?? 0) + w.cardio_load);
+  }
+  for (const p of data.loadSeries) {
+    if (!inPeriod(p.date, data.startDate, lastDay) || p.load == null) continue;
+    const rest = Math.max(0, p.load - (workoutLoadByDay.get(p.date) ?? 0));
+    add(bucketKey(p.date, period), "_hors", rest);
+  }
+  if (buckets.size === 0) return null;
+
+  const keys = [...sports.keys()];
+  const chartData = [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, v]) => ({ label: bucketLabel(key, period), ...Object.fromEntries(Object.entries(v).map(([k, x]) => [k, Math.round(x)])) }));
+  const total = [...buckets.values()].reduce((a, b) => a + Object.values(b).reduce((x, y) => x + y, 0), 0);
+  const title = period === "week" ? "Charge par jour" : period === "month" ? "Charge par semaine" : "Charge par mois";
+
+  return (
+    <ChartCard title={title}>
+      <p className="text-sm text-[var(--color-body)] mb-3">
+        Total <span className="text-[var(--color-heading)] dark:text-white">{Math.round(total)}</span>, dont{" "}
+        {Math.round((1 - [...buckets.values()].reduce((a, b) => a + (b._hors ?? 0), 0) / Math.max(1, total)) * 100)} % en séance.
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.5} vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: C.zinc400 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <YAxis tick={{ fontSize: 11, fill: C.zinc400 }} axisLine={false} tickLine={false} width={36} />
+          <Tooltip
+            cursor={{ fill: "rgba(100,116,141,0.08)" }}
+            contentStyle={TOOLTIP_STYLE}
+            formatter={(val, name) => [String(val), name === "_hors" ? "Hors séances" : sports.get(String(name)) ?? String(name)]}
+          />
+          <Legend
+            wrapperStyle={{ fontSize: 11 }}
+            formatter={(v: string) => (v === "_hors" ? "Hors séances" : `${workoutEmoji(v)} ${sports.get(v) ?? v}`)}
+          />
+          {keys.map((k) => (
+            <Bar key={k} dataKey={k} stackId="load" fill={sportColor(k)} strokeWidth={2} className="stroke-white dark:stroke-[#0d1520]" />
+          ))}
+          <Bar dataKey="_hors" stackId="load" fill="#c7c7cc" strokeWidth={2} className="stroke-white dark:stroke-[#0d1520]" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// Bilan par sport : volume, charge, FC, récupération cardio, et tracé si GPS
+function SportTable({ workouts }: { workouts: Workout[] }) {
+  if (workouts.length === 0) return null;
+  const bySport = new Map<string, Workout[]>();
+  for (const w of workouts) {
+    const k = normalizeWorkoutType(w.type);
+    bySport.set(k, [...(bySport.get(k) ?? []), w]);
+  }
+  const rows = [...bySport.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  return (
+    <ChartCard title="Par sport">
+      <div className="space-y-3">
+        {rows.map(([key, ws]) => {
+          const color = sportColor(key);
+          const minutes = ws.reduce((a, w) => a + (w.duration_min ?? 0), 0);
+          const load = avgOf(ws.map((w) => w.cardio_load));
+          const hr = avgOf(ws.map((w) => w.avg_hr_bpm));
+          const drop = avgOf(ws.map((w) => w.hr_drop_1min));
+          const dist = ws.reduce((a, w) => a + Number(w.distance_km ?? 0), 0);
+          const vmax = Math.max(0, ...ws.map((w) => Number(w.max_speed_kmh ?? 0)));
+          return (
+            <div
+              key={key}
+              className="rounded-[var(--radius-md)] border p-3"
+              style={{ background: tintedBackground(color, 0.7), borderColor: tint(color, 0.25) }}
+            >
+              <p className="flex items-center gap-2 text-sm text-[var(--color-heading)] dark:text-white">
+                <span aria-hidden>{workoutEmoji(ws[0].type)}</span>
+                {workoutDisplayLabel(ws[0].type)}
+                <span className="text-[var(--color-body)]">
+                  · {ws.length} séance{ws.length > 1 ? "s" : ""} · {fmtHM(minutes)}
+                </span>
+              </p>
+              <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
+                <Mini label="Charge moy." value={load != null ? String(Math.round(load)) : "—"} />
+                <Mini label="FC moy." value={hr != null ? `${Math.round(hr)} bpm` : "—"} />
+                <Mini
+                  label="Récup. 1 min"
+                  value={drop != null ? `${drop >= 0 ? "−" : "+"}${Math.abs(Math.round(drop))} bpm` : "—"}
+                />
+                {dist > 0 && <Mini label="Distance" value={`${fr1(dist)} km`} />}
+                {vmax > 0 && <Mini label="Vitesse max" value={`${fr1(vmax)} km/h`} />}
               </div>
-            );
-          })()}
+            </div>
+          );
+        })}
+        <p className="text-[10px] text-[var(--color-body)]">
+          Récup. 1 min : baisse de FC dans la minute après la séance. À comparer d&apos;une période à l&apos;autre pour un même
+          sport : une baisse plus forte signe une meilleure forme cardio.
+        </p>
+      </div>
+    </ChartCard>
+  );
+}
 
-          {/* Contenu par tab */}
-          {activeTab === "resume" && (
-            <PeriodSummary data={data} period={period} offset={offset} />
-          )}
+function Mini({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] text-[var(--color-body)]">{label}</p>
+      <p className="text-[var(--color-heading)] dark:text-white tabular-nums">{value}</p>
+    </div>
+  );
+}
 
-          {activeTab === "correlations" && (
-            <AiCorrelations />
-          )}
+// ── Récupération et nuit ─────────────────────────────────────────────────
 
-          {activeTab === "recovery" && (
-            <>
-              <RecoveryChart
-                metrics={data.dailyMetrics}
-                previousMetrics={data.previousPeriod.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-              <HrvChart
-                metrics={data.dailyMetrics}
-                previousMetrics={data.previousPeriod.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-              <RespiratoryChart
-                metrics={data.dailyMetrics}
-                previousMetrics={data.previousPeriod.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-            </>
-          )}
+function RecoveryTab({ data }: { data: StatsPayload }) {
+  const m = data.dailyMetrics;
+  const recovery = m.filter((d) => d.recovery_score != null).map((d) => ({ date: d.date, value: Number(d.recovery_score) }));
+  const nights = m.filter((d) => d.sleep_total_min != null);
+  const target = data.sleepTargetMin;
+  const durations = nights.map((n) => n.sleep_total_min!);
+  const deep = avgOf(nights.map((n) => n.sleep_deep_pct));
+  const rem = avgOf(nights.map((n) => n.sleep_rem_pct));
 
-          {activeTab === "sommeil" && (
-            <>
-              <SleepChart
-                metrics={data.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-              <DaylightChart
-                metrics={data.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-              <SpO2Chart
-                metrics={data.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-            </>
-          )}
+  // Régularité : écart-type de l'heure de coucher (23h et 1h restent voisins)
+  const bedMinutes = m
+    .map((d) => d.sleep_start)
+    .filter((s): s is string => s != null)
+    .map((iso) => {
+      const [h, min] = new Date(iso)
+        .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: data.tz, hour12: false })
+        .split(":")
+        .map(Number);
+      const v = h * 60 + min;
+      return v < 12 * 60 ? v + 24 * 60 : v;
+    });
+  const bedAvg = avgOf(bedMinutes);
+  const bedSd =
+    bedMinutes.length >= 3 && bedAvg != null
+      ? Math.sqrt(bedMinutes.reduce((a, v) => a + (v - bedAvg) ** 2, 0) / bedMinutes.length)
+      : null;
+  const clock = (v: number) => {
+    const x = Math.round(v) % (24 * 60);
+    return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`;
+  };
 
-          {activeTab === "activite" && (
-            <>
-              <LoadCharts series={data.loadSeries ?? []} period={period} />
-              {data.workouts.length > 0 && (
-                <WorkoutsSummary workouts={data.workouts} />
-              )}
-              <ZonesChart workouts={data.workouts} period={period} />
-              <StrainChart
-                metrics={data.dailyMetrics}
-                strainByDate={data.strainByDate}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-              <ActivityChart
-                metrics={data.dailyMetrics}
-                startDate={data.startDate}
-                endDate={data.endDate}
-                period={period}
-              />
-            </>
-          )}
-
-          {activeTab === "corps" && data.bodyComposition.length > 0 && (
-            <WeightChart bodyComposition={data.bodyComposition} />
-          )}
-
-          {activeTab === "journal" && (
-            <>
-              <JournalStatsSection
-                entries={data.journalEntries ?? []}
-                averages={data.journalAverages ?? { mood: null, energy: null, stress: null, entryCount: 0 }}
-                prevAverages={data.previousPeriod.journalAverages}
-              />
-              <JournalImpactSection
-                journalEntries={data.journalEntries ?? []}
-                dailyMetrics={data.dailyMetrics}
-              />
-            </>
-          )}
-        </div>
+  return (
+    <>
+      {recovery.length > 0 && (
+        <ChartCard title="Score de récupération">
+          <ZonedLineChart kind="recovery" points={recovery} />
+        </ChartCard>
       )}
 
-      {!loading && !data && (
-        <div className="text-center text-sm text-zinc-500 py-12">
-          Erreur de chargement.
+      <ChartCard title="Mesures de la nuit · dans ta plage habituelle">
+        <div className="space-y-5">
+          {data.nightMetrics.map((nm) => (
+            <NightMetricRow key={nm.key} metric={nm} data={data} />
+          ))}
         </div>
+      </ChartCard>
+
+      {nights.length > 0 && (
+        <ChartCard title="Sommeil">
+          <HistoryChart
+            mode="bar"
+            height={200}
+            points={nights.map((n) => ({ date: n.date, value: r1(n.sleep_total_min! / 60) }))}
+            unit="h"
+            decimals={1}
+            target={{ value: target / 60, label: `objectif ${fmtHM(target)}` }}
+          />
+          <div className="mt-4">
+            <StatGrid
+              cols={4}
+              items={[
+                { label: "Moyenne", value: fmtHM(avgOf(durations)!) },
+                { label: "Objectif atteint", value: `${durations.filter((d) => d >= target).length}/${durations.length}`, sub: "nuits" },
+                { label: "Profond moy.", value: deep != null ? `${Math.round(deep)} %` : "—", sub: "vise ≥ 15 %" },
+                { label: "REM moy.", value: rem != null ? `${Math.round(rem)} %` : "—", sub: "vise ≥ 20 %" },
+              ]}
+            />
+          </div>
+          {bedAvg != null && (
+            <p className="text-xs text-[var(--color-body)] mt-3">
+              Coucher moyen {clock(bedAvg)}
+              {bedSd != null ? ` · régularité ±${Math.round(bedSd)} min (${bedSd < 30 ? "régulier" : "irrégulier"})` : ""} ·{" "}
+              {bedMinutes.length} nuit{bedMinutes.length > 1 ? "s" : ""} avec horaires
+            </p>
+          )}
+        </ChartCard>
       )}
+    </>
+  );
+}
+
+// Une mesure de la nuit : moyenne, nuits dans la plage, courbe sur la plage actuelle
+function NightMetricRow({ metric, data }: { metric: NightMetric; data: StatsPayload }) {
+  const def = BODY_METRICS_BY_KEY.get(metric.key)!;
+  const points = metric.points.filter((p) => inPeriod(p.date, data.startDate, data.endDate));
+  if (points.length === 0) return null;
+  const withRange = points.filter((p) => p.status != null);
+  const inRange = withRange.filter((p) => p.status === "in").length;
+  const favorableOut = withRange.filter((p) => p.status !== "in" && isFavorable(def, p.status) === true).length;
+  const last = [...points].reverse().find((p) => p.low != null && p.high != null);
+  const avg = avgOf(points.map((p) => p.value))!;
+  const share = withRange.length > 0 ? (inRange + favorableOut) / withRange.length : null;
+  const color = share == null ? VIVID.gray : share >= 0.8 ? VIVID.green : share >= 0.6 ? VIVID.yellow : VIVID.orange;
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-sm text-[var(--color-heading)] dark:text-white">
+          {def.label}{" "}
+          <span className="text-[var(--color-body)]">
+            · moy. {formatMetric(def, avg)} {def.unit}
+          </span>
+        </p>
+        <Link href={`/mesure/${def.key}`} className="text-xs text-[var(--color-brand-purple)] shrink-0">
+          Détail ›
+        </Link>
+      </div>
+      <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-body)] mt-0.5">
+        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+        {withRange.length > 0
+          ? `${inRange}/${withRange.length} nuits dans ta plage${favorableOut > 0 ? `, ${favorableOut} hors plage dans le bon sens` : ""}`
+          : `plage en cours de calcul (${def.minHistory} nuits nécessaires)`}
+      </p>
+      <HistoryChart
+        height={140}
+        points={points.map((p) => ({ date: p.date, value: p.value }))}
+        unit={def.unit}
+        decimals={def.decimals}
+        band={last ? { low: last.low!, high: last.high! } : null}
+      />
     </div>
   );
 }
@@ -516,682 +915,6 @@ function ChartCard({
   );
 }
 
-// ── Nombre de ticks adapté à la période ──────────────────────────────────
-
-function tickInterval(period: Period): number {
-  switch (period) {
-    case "week":
-      return 0; // tous les jours
-    case "month":
-      return 4; // ~1 tick tous les 5 jours
-    case "year":
-      return 29; // ~1 tick par mois
-  }
-}
-
-// ── Recovery Score ───────────────────────────────────────────────────────
-
-function RecoveryChart({
-  metrics,
-  previousMetrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  previousMetrics?: PrevPeriodMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(
-    metrics.map((m) => ({
-      date: m.date,
-      value: m.recovery_score,
-    })),
-    startDate,
-    endDate,
-  );
-
-  const prevValues = previousMetrics?.map((m) => m.recovery_score) ?? [];
-
-  const chartData = filled.map((d, i) => ({
-    label: shortDateLabel(d.date),
-    date: d.date,
-    score: d.value ?? null,
-    prev: prevValues[i] ?? null,
-  }));
-
-  return (
-    <ChartCard title="Score de récupération">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            domain={[0, 10]}
-            ticks={[0, 2.5, 5, 7.5, 10]}
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={30}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val) => [`${val}/10`, "Score"]}
-          />
-          {/* Zones colorées de référence */}
-          <ReferenceLine y={7.5} stroke={C.green} strokeDasharray="4 4" strokeOpacity={0.5} />
-          <ReferenceLine y={5} stroke={C.yellow} strokeDasharray="4 4" strokeOpacity={0.5} />
-          <ReferenceLine y={2.5} stroke={C.red} strokeDasharray="4 4" strokeOpacity={0.5} />
-          {prevValues.length > 0 && (
-            <Line
-              type="monotone"
-              dataKey="prev"
-              stroke={C.zinc400}
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              strokeOpacity={0.4}
-              dot={false}
-              connectNulls={false}
-            />
-          )}
-          <Line
-            type="monotone"
-            dataKey="score"
-            stroke={C.blue}
-            strokeWidth={2}
-            dot={{ r: period === "week" ? 4 : 0 }}
-            activeDot={{ r: 5, fill: C.blue }}
-            connectNulls={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── HRV ──────────────────────────────────────────────────────────────────
-
-function HrvChart({
-  metrics,
-  previousMetrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  previousMetrics?: PrevPeriodMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(
-    metrics.map((m) => ({ date: m.date, value: m.hrv_ms })),
-    startDate,
-    endDate,
-  );
-
-  const prevValues = previousMetrics?.map((m) => m.hrv_ms) ?? [];
-  const withAvg = computeMovingAverage(filled, 7);
-
-  const chartData = withAvg.map((d, i) => ({
-    label: shortDateLabel(d.date),
-    hrv: d.value,
-    avg7: d.avg,
-    prev: prevValues[i] ?? null,
-  }));
-
-  return (
-    <ChartCard title="HRV (ms)">
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={chartData}>
-          <defs>
-            <linearGradient id="hrvGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={C.purple} stopOpacity={0.3} />
-              <stop offset="95%" stopColor={C.purple} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={35}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val, name) => [
-              `${Math.round(val as number)} ms`,
-              name === "hrv" ? "HRV" : "Moy. 7j",
-            ]}
-          />
-          {prevValues.length > 0 && (
-            <Line
-              type="monotone"
-              dataKey="prev"
-              stroke={C.zinc400}
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              strokeOpacity={0.4}
-              dot={false}
-              connectNulls={false}
-            />
-          )}
-          <Area
-            type="monotone"
-            dataKey="hrv"
-            stroke={C.purple}
-            fill="url(#hrvGrad)"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="avg7"
-            stroke={C.orange}
-            strokeWidth={2}
-            strokeDasharray="5 3"
-            dot={false}
-            connectNulls
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── Fréq. respiratoire ──────────────────────────────────────────────────
-
-function RespiratoryChart({
-  metrics,
-  previousMetrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  previousMetrics?: PrevPeriodMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(
-    metrics.map((m) => ({ date: m.date, value: m.respiratory_rate })),
-    startDate,
-    endDate,
-  );
-
-  if (filled.every((d) => d.value == null)) return null;
-
-  const prevValues = previousMetrics?.map((m) => m.respiratory_rate) ?? [];
-  const withAvg = computeMovingAverage(filled, 7);
-
-  const chartData = withAvg.map((d, i) => ({
-    label: shortDateLabel(d.date),
-    respi: d.value,
-    avg7: d.avg,
-    prev: prevValues[i] ?? null,
-  }));
-
-  return (
-    <ChartCard title="Fréq. respiratoire (/min)">
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={chartData}>
-          <defs>
-            <linearGradient id="respiGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={C.cyan} stopOpacity={0.3} />
-              <stop offset="95%" stopColor={C.cyan} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.5} />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={35}
-            domain={["dataMin - 1", "dataMax + 1"]}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val, name) => [
-              `${Math.round((val as number) * 10) / 10} /min`,
-              name === "respi" ? "Respi" : name === "avg7" ? "Moy. 7j" : "Préc.",
-            ]}
-          />
-          {prevValues.length > 0 && (
-            <Line
-              type="monotone"
-              dataKey="prev"
-              stroke={C.zinc400}
-              strokeWidth={1.5}
-              strokeDasharray="4 3"
-              strokeOpacity={0.4}
-              dot={false}
-              connectNulls={false}
-            />
-          )}
-          <Area
-            type="monotone"
-            dataKey="respi"
-            stroke={C.cyan}
-            fill="url(#respiGrad)"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="avg7"
-            stroke={C.orange}
-            strokeWidth={2}
-            strokeDasharray="5 3"
-            dot={false}
-            connectNulls
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── Sommeil ──────────────────────────────────────────────────────────────
-
-function SleepChart({
-  metrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(metrics, startDate, endDate);
-
-  const chartData = filled.map((d) => {
-    const total = d.sleep_total_min ?? 0;
-    const remPct = d.sleep_rem_pct ?? 0;
-    const deepPct = d.sleep_deep_pct ?? 0;
-    const awakePct = d.sleep_awake_pct ?? 0;
-    const lightPct = Math.max(0, 100 - remPct - deepPct - awakePct);
-
-    const totalH = total / 60;
-    return {
-      label: shortDateLabel(d.date),
-      deep: total > 0 ? Math.round((deepPct / 100) * totalH * 10) / 10 : null,
-      rem: total > 0 ? Math.round((remPct / 100) * totalH * 10) / 10 : null,
-      light: total > 0 ? Math.round((lightPct / 100) * totalH * 10) / 10 : null,
-      awake: total > 0 && awakePct > 0 ? Math.round((awakePct / 100) * totalH * 10) / 10 : null,
-    };
-  });
-
-  return (
-    <ChartCard title="Sommeil (heures)">
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={30}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val, name) => {
-              const labels: Record<string, string> = {
-                deep: "Profond",
-                rem: "REM",
-                light: "Léger",
-                awake: "Éveillé",
-              };
-              return [`${val}h`, labels[name as string] ?? name];
-            }}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: 11 }}
-            formatter={(value: string) => {
-              const labels: Record<string, string> = {
-                deep: "Profond",
-                rem: "REM",
-                light: "Léger",
-                awake: "Éveillé",
-              };
-              return labels[value] ?? value;
-            }}
-          />
-          <ReferenceLine
-            y={7.5}
-            stroke={C.green}
-            strokeDasharray="4 4"
-            strokeOpacity={0.6}
-            label={{ value: "7h30", position: "right", fontSize: 10, fill: C.zinc400 }}
-          />
-          <Bar dataKey="deep" stackId="sleep" fill={C.blue} radius={[0, 0, 0, 0]} />
-          <Bar dataKey="rem" stackId="sleep" fill={C.cyan} radius={[0, 0, 0, 0]} />
-          <Bar dataKey="light" stackId="sleep" fill="#94a3b8" radius={[0, 0, 0, 0]} />
-          <Bar dataKey="awake" stackId="sleep" fill="#f97316" radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── Lumière du jour ─────────────────────────────────────────────────────
-
-function DaylightChart({
-  metrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(
-    metrics.map((m) => ({ date: m.date, value: m.daylight_min })),
-    startDate,
-    endDate,
-  );
-
-  if (filled.every((d) => d.value == null)) return null;
-
-  const chartData = filled.map((d) => ({
-    label: shortDateLabel(d.date),
-    daylight: d.value != null && d.value > 0 ? Math.round((d.value / 60) * 10) / 10 : null,
-  }));
-
-  return (
-    <ChartCard title="Lumière du jour (heures)">
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={30}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val) => [`${val}h`, "Lumière"]}
-          />
-          <Bar dataKey="daylight" fill="#facc15" radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── SpO2 ────────────────────────────────────────────────────────────────
-
-function SpO2Chart({
-  metrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(
-    metrics.map((m) => ({ date: m.date, value: m.spo2_pct })),
-    startDate,
-    endDate,
-  );
-
-  if (filled.every((d) => d.value == null)) return null;
-
-  const withAvg = computeMovingAverage(filled, 7);
-
-  const chartData = withAvg.map((d) => ({
-    label: shortDateLabel(d.date),
-    spo2: d.value,
-    avg7: d.avg,
-  }));
-
-  return (
-    <ChartCard title="SpO₂ (%)">
-      <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={chartData}>
-          <defs>
-            <linearGradient id="spo2Grad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={C.blue} stopOpacity={0.25} />
-              <stop offset="95%" stopColor={C.blue} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.5} />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={35}
-            domain={[92, 100]}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val, name) => [
-              `${Math.round((val as number) * 10) / 10}%`,
-              name === "spo2" ? "SpO₂" : "Moy. 7j",
-            ]}
-          />
-          <ReferenceLine
-            y={94}
-            stroke={C.red}
-            strokeDasharray="4 3"
-            strokeOpacity={0.5}
-            label={{
-              value: "94%",
-              position: "right",
-              fill: C.red,
-              fontSize: 9,
-            }}
-          />
-          <Area
-            type="monotone"
-            dataKey="spo2"
-            stroke={C.blue}
-            fill="url(#spo2Grad)"
-            strokeWidth={2}
-            dot={false}
-            connectNulls={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="avg7"
-            stroke={C.orange}
-            strokeWidth={2}
-            strokeDasharray="5 3"
-            dot={false}
-            connectNulls
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── Activité (pas) ───────────────────────────────────────────────────────
-
-function ActivityChart({
-  metrics,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const filled = fillMissingDays(
-    metrics.map((m) => ({ date: m.date, steps: m.steps })),
-    startDate,
-    endDate,
-  );
-
-  const chartData = filled.map((d) => ({
-    label: shortDateLabel(d.date),
-    steps: d.steps ?? null,
-  }));
-
-  return (
-    <ChartCard title="Pas / jour">
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={40}
-            tickFormatter={(v: number) =>
-              v >= 1000 ? `${Math.round(v / 1000)}k` : String(v)
-            }
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val) => [
-              (val as number).toLocaleString("fr-FR"),
-              "Pas",
-            ]}
-          />
-          <ReferenceLine
-            y={10000}
-            stroke={C.green}
-            strokeDasharray="4 4"
-            strokeOpacity={0.6}
-            label={{ value: "10k", position: "right", fontSize: 10, fill: C.zinc400 }}
-          />
-          <Bar dataKey="steps" fill={C.orange} radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── Zones de fréquence cardiaque ─────────────────────────────────────────
-
-// Zones partagées avec la page de séance
-const ZONES = HR_ZONES;
-
 // Lundi de la semaine d'une date YYYY-MM-DD
 function mondayOf(date: string): string {
   const d = new Date(`${date}T12:00:00Z`);
@@ -1208,12 +931,12 @@ function fmtMinutes(min: number): string {
 
 // Temps passé dans chaque zone pendant les séances (FC minute par minute).
 // Par jour en vue semaine, par semaine en vue mois et année.
-function ZonesChart({ workouts, period }: { workouts: Workout[]; period: Period }) {
+function ZonesChart({ workouts, period, tz }: { workouts: Workout[]; period: Period; tz: string }) {
   const measured = workouts.filter((w) => Array.isArray(w.hr_zone_min) && w.hr_zone_min.length === 5);
   const totals = [0, 0, 0, 0, 0];
   const buckets = new Map<string, number[]>();
   for (const w of measured) {
-    const day = dateInTz(w.started_at);
+    const day = dateInTz(w.started_at, tz);
     const key = period === "week" ? day : mondayOf(day);
     const b = buckets.get(key) ?? [0, 0, 0, 0, 0];
     w.hr_zone_min!.forEach((m, i) => {
@@ -1316,214 +1039,6 @@ function ZonesChart({ workouts, period }: { workouts: Workout[]; period: Period 
       <p className="text-[10px] text-[var(--color-body)] mt-2">
         Minutes passées pendant les séances, en % de la FC max. La FC hors séance n&apos;est pas comptée.
       </p>
-    </ChartCard>
-  );
-}
-
-// ── Charge cardio et équilibre de charge ─────────────────────────────────
-
-// Couleurs : moyenne 7 j = le signal (bleu), moyenne 28 j = la référence
-// (gris foncé en pointillés, nommée en légende), barres du jour discrètes.
-const LOAD_COLORS = { bar: "#b7d3f6", acute: "#2a78d6", chronic: "#64748d" };
-
-
-function LoadCharts({
-  series,
-  period,
-}: {
-  series: StatsPayload["loadSeries"];
-  period: Period;
-}) {
-  if (!series.some((d) => d.load != null)) return null;
-
-  const chartData = series.map((d) => ({ ...d, label: shortDateLabel(d.date) }));
-  const ratios = series.map((d) => d.ratio).filter((v): v is number => v != null);
-  const yMax = Math.max(2, Math.ceil((Math.max(0, ...ratios) + 0.1) * 10) / 10);
-
-  const tooltipStyle = {
-    backgroundColor: C.zinc800,
-    border: "none",
-    borderRadius: 8,
-    color: "#fff",
-    fontSize: 12,
-  };
-
-  return (
-    <>
-      <ChartCard title="Charge cardio">
-        {/* Légende : 3 séries, identifiées sans dépendre de la seule couleur */}
-        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-3 text-[11px] text-[var(--color-body)]">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: LOAD_COLORS.bar }} />
-            charge du jour
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-4 h-0.5" style={{ backgroundColor: LOAD_COLORS.acute }} />
-            charge aiguë (7 j)
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-4 border-t-2 border-dashed" style={{ borderColor: LOAD_COLORS.chronic }} />
-            charge chronique (42 j)
-          </span>
-        </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.5} vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 11, fill: C.zinc400 }}
-              interval={tickInterval(period)}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis tick={{ fontSize: 11, fill: C.zinc400 }} axisLine={false} tickLine={false} width={36} />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              formatter={(val, name) => {
-                const labels: Record<string, string> = { load: "Charge du jour", acute: "Charge aiguë (7 j)", chronic: "Charge chronique (42 j)" };
-                return [val as number, labels[String(name)] ?? String(name)];
-              }}
-            />
-            <Bar dataKey="load" fill={LOAD_COLORS.bar} radius={[3, 3, 0, 0]} />
-            <Line dataKey="acute" stroke={LOAD_COLORS.acute} strokeWidth={2} dot={false} connectNulls={false} />
-            <Line
-              dataKey="chronic"
-              stroke={LOAD_COLORS.chronic}
-              strokeWidth={2}
-              strokeDasharray="5 4"
-              dot={false}
-              connectNulls={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-        <p className="text-[10px] text-[var(--color-body)] mt-2">
-          Chaque minute au-dessus de 50 % de ta FC max compte, de 1 point (zone 1, facile) à 5 (zone 5, maximum).
-          Une heure de surf vaut en général 150 à 250. Charges aiguë et chronique : moyennes pondérées (les jours
-          récents comptent plus). Le jour en cours est partiel.
-        </p>
-      </ChartCard>
-
-      <ChartCard title="Équilibre de charge">
-        <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-            {/* Zones colorées en fond, libellées */}
-            {BALANCE_ZONES.map((z) => (
-              <ReferenceArea
-                key={z.label}
-                y1={z.from}
-                y2={Math.min(z.to, yMax)}
-                fill={z.color}
-                fillOpacity={0.1}
-                ifOverflow="hidden"
-                label={{ value: z.label, position: "insideLeft", fontSize: 10, fill: z.color }}
-              />
-            ))}
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.4} vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fontSize: 11, fill: C.zinc400 }}
-              interval={tickInterval(period)}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              domain={[0, yMax]}
-              ticks={[0, 0.8, 1.3, 1.5, ...(yMax > 2 ? [yMax] : [2])]}
-              tick={{ fontSize: 11, fill: C.zinc400 }}
-              axisLine={false}
-              tickLine={false}
-              width={36}
-            />
-            <Tooltip
-              contentStyle={tooltipStyle}
-              formatter={(val) => {
-                const r = val as number;
-                return [`${r.toFixed(2)} · ${balanceZone(r).label}`, "Équilibre"];
-              }}
-            />
-            <Line dataKey="ratio" stroke="#0d366b" strokeWidth={2} dot={false} connectNulls={false} />
-          </LineChart>
-        </ResponsiveContainer>
-        <p className="text-[10px] text-[var(--color-body)] mt-2">
-          Charge aiguë (moyenne pondérée des 7 derniers jours) divisée par la charge chronique (42 jours). Vert :
-          charge qui progresse sans à-coup. Orange et rouge : hausse brutale, le risque de blessure augmente. Gris :
-          moins que d&apos;habitude.
-        </p>
-      </ChartCard>
-    </>
-  );
-}
-
-// ── Strain ──────────────────────────────────────────────────────────────
-
-function StrainChart({
-  metrics,
-  strainByDate,
-  startDate,
-  endDate,
-  period,
-}: {
-  metrics: DailyMetric[];
-  strainByDate: Record<string, number>;
-  startDate: string;
-  endDate: string;
-  period: Period;
-}) {
-  const dailyStrain = computeDailyStrain(metrics, strainByDate);
-  const filled = fillMissingDays(
-    dailyStrain.map((d) => ({ date: d.date, value: d.strain })),
-    startDate,
-    endDate,
-  );
-
-  const chartData = filled.map((d) => ({
-    label: shortDateLabel(d.date),
-    strain: d.value ?? null,
-  }));
-
-  return (
-    <ChartCard title="Strain quotidien">
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            interval={tickInterval(period)}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            domain={[0, 10]}
-            ticks={[0, 3, 6, 8, 10]}
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={30}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val) => [`${val}/10`, "Strain"]}
-          />
-          <ReferenceLine y={6} stroke={C.orange} strokeDasharray="4 4" strokeOpacity={0.5} />
-          <ReferenceLine y={3} stroke={C.green} strokeDasharray="4 4" strokeOpacity={0.5} />
-          <Bar
-            dataKey="strain"
-            radius={[3, 3, 0, 0]}
-            fill={C.orange}
-          />
-        </BarChart>
-      </ResponsiveContainer>
     </ChartCard>
   );
 }
@@ -1649,645 +1164,3 @@ function WeightChart({
     </ChartCard>
   );
 }
-
-// ── Récap par type (pills) ───────────────────────────────────────────────
-
-function WorkoutTypePills({ workouts }: { workouts: Workout[] }) {
-  const byType = new Map<string, { icon: string; label: string; count: number }>();
-  for (const w of workouts) {
-    const { label, icon } = formatWorkoutType(w.type);
-    const existing = byType.get(label) ?? { icon, label, count: 0 };
-    existing.count += 1;
-    byType.set(label, existing);
-  }
-  const rows = Array.from(byType.values()).sort((a, b) => b.count - a.count);
-
-  return (
-    <div className="flex flex-wrap gap-1.5 mb-3">
-      {rows.map((s) => (
-        <span
-          key={s.label}
-          className="inline-flex items-center gap-1 text-[11px] bg-[var(--color-border)]/40 dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 rounded-[var(--radius-sm)] px-2 py-0.5 text-[var(--color-label)] dark:text-white/70"
-        >
-          {s.icon} {s.label}
-          <span className="text-[var(--color-body)]">×{s.count}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// ── Résumé workouts ──────────────────────────────────────────────────────
-
-function WorkoutsSummary({ workouts }: { workouts: Workout[] }) {
-  const sorted = [...workouts].sort((a, b) => b.started_at.localeCompare(a.started_at));
-
-  return (
-    <ChartCard title={`Entraînements (${workouts.length})`}>
-      <WorkoutTypePills workouts={workouts} />
-      <div className="divide-y divide-[var(--color-border)] dark:divide-white/10">
-        {sorted.map((w, i) => {
-          const { label, icon } = formatWorkoutType(w.type);
-          const d = new Date(w.started_at);
-          const dateLabel = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-          const durMin = w.duration_min ?? 0;
-          const durH = Math.floor(durMin / 60);
-          const durM = Math.round(durMin % 60);
-          const durationLabel = `${durH}h${durM.toString().padStart(2, "0")}`;
-
-          return (
-            <div key={i} className="flex items-center justify-between py-2.5 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{icon}</span>
-                <span className="font-normal text-[var(--color-heading)] dark:text-white">{label}</span>
-              </div>
-              <div className="text-right text-xs text-[var(--color-body)] tabular-nums space-x-3">
-                <span className="capitalize">{dateLabel}</span>
-                <span>{durationLabel}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </ChartCard>
-  );
-}
-
-// ── Résumé de période ────────────────────────────────────────────────────
-
-function avgOf(vals: (number | null)[]): number | null {
-  const f = vals.filter((v): v is number => v != null);
-  return f.length > 0 ? f.reduce((a, b) => a + b, 0) / f.length : null;
-}
-
-function Sparkline({ values, color }: { values: (number | null)[]; color: string }) {
-  const valid = values.map((v, i) => (v != null ? { i, v } : null)).filter(Boolean) as { i: number; v: number }[];
-  if (valid.length < 2) return null;
-
-  const min = Math.min(...valid.map((p) => p.v));
-  const max = Math.max(...valid.map((p) => p.v));
-  const range = max - min || 1;
-  const w = 80;
-  const h = 28;
-  const step = w / (values.length - 1);
-
-  const points = valid.map((p) => `${p.i * step},${h - ((p.v - min) / range) * (h - 4) - 2}`).join(" ");
-
-  return (
-    <svg width={w} height={h} className="block">
-      <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  unit,
-  delta,
-  sparkValues,
-  sparkColor,
-  valueColor,
-  record,
-  subLine,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  unit?: string;
-  delta?: string;
-  sparkValues: (number | null)[];
-  sparkColor: string;
-  valueColor?: string;
-  record?: string | null;
-  subLine?: string | null;
-}) {
-  const deltaColor = delta
-    ? delta.startsWith("+") ? "text-[#108c3d]" : delta.startsWith("-") ? "text-[#ea2261]" : "text-[var(--color-body)]"
-    : "";
-
-  return (
-    <div
-      className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-3.5"
-      style={{ boxShadow: "var(--shadow-ambient)" }}
-    >
-      <div className="flex items-start justify-between mb-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-sm">{icon}</span>
-          <span className="text-[10px] uppercase tracking-wide text-[var(--color-body)]">{label}</span>
-        </div>
-        {delta && (
-          <span className={`text-[10px] tabular-nums font-normal ${deltaColor}`}>{delta}</span>
-        )}
-      </div>
-      <div className="flex items-end justify-between">
-        <div>
-          <span className={`text-xl font-light tabular-nums ${valueColor ?? "text-[var(--color-heading)] dark:text-white"}`}>
-            {value}
-          </span>
-          {unit && <span className="text-xs text-[var(--color-body)] ml-0.5">{unit}</span>}
-        </div>
-        <Sparkline values={sparkValues} color={sparkColor} />
-      </div>
-      {subLine && (
-        <p className="text-[10px] text-[var(--color-body)] mt-1">{subLine}</p>
-      )}
-      {record && (
-        <div className="mt-1.5 flex items-center gap-1">
-          <span className="text-[10px]">🏆</span>
-          <span className="text-[10px] text-[var(--color-body)]">{record}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PeriodSummary({
-  data,
-  offset,
-}: {
-  data: StatsPayload;
-  period: Period;
-  offset: number;
-}) {
-  const m = data.dailyMetrics;
-  const pm = data.previousPeriod.dailyMetrics;
-
-  const avgRecovery = avgOf(m.map((d) => d.recovery_score));
-  const avgHrv = avgOf(m.map((d) => d.hrv_ms));
-  const avgSleepMin = avgOf(m.map((d) => d.sleep_total_min));
-  const avgSteps = avgOf(m.map((d) => d.steps));
-
-  const prevAvgRecovery = avgOf(pm.map((d) => d.recovery_score));
-  const prevAvgHrv = avgOf(pm.map((d) => d.hrv_ms));
-  const prevAvgSleepMin = avgOf(pm.map((d) => d.sleep_total_min));
-  const prevAvgSteps = avgOf(pm.map((d) => d.steps));
-
-  const avgSleepH = avgSleepMin ? Math.floor(avgSleepMin / 60) : null;
-  const avgSleepM = avgSleepMin ? Math.round(avgSleepMin % 60) : null;
-
-  const recoveryColor =
-    avgRecovery == null ? undefined
-      : avgRecovery >= 7 ? "text-[#108c3d]"
-      : avgRecovery >= 5 ? "text-[#9b6829]"
-      : "text-[#ea2261]";
-
-  const recoveryVals = m.map((d) => d.recovery_score);
-  const hrvVals = m.map((d) => d.hrv_ms);
-  const sleepVals = m.map((d) => d.sleep_total_min != null ? Math.round(d.sleep_total_min / 6) / 10 : null);
-  const stepsVals = m.map((d) => d.steps);
-
-  const bestRecovery = maxOf(m.map((d) => d.recovery_score));
-  const bestHrv = maxOf(m.map((d) => d.hrv_ms));
-  const bestSleep = maxOf(m.map((d) => d.sleep_total_min));
-  const bestSteps = maxOf(m.map((d) => d.steps));
-
-  // Strain
-  const dailyStrain = computeDailyStrain(m, data.strainByDate);
-  const strainVals = dailyStrain.map((d) => d.strain);
-  const avgStrain = avgOf(strainVals);
-  const prevDailyStrain = computeDailyStrain(pm, data.strainByDate);
-  const prevAvgStrain = avgOf(prevDailyStrain.map((d) => d.strain));
-  const bestStrain = maxOf(strainVals);
-  const avgStrainColor = avgStrain == null ? undefined
-    : avgStrain >= 8 ? "text-[#ea2261]"
-    : avgStrain >= 6 ? "text-[#f97316]"
-    : avgStrain >= 3 ? "text-[#9b6829]"
-    : "text-[#108c3d]";
-
-  // Active kcal
-  const avgActiveKcal = avgOf(m.map((d) => d.active_kcal));
-  const prevAvgActiveKcal = avgOf(pm.map((d) => d.active_kcal));
-  const activeKcalVals = m.map((d) => d.active_kcal);
-
-  // Fréq. respiratoire
-  const avgRespi = avgOf(m.map((d) => d.respiratory_rate));
-  const prevAvgRespi = avgOf(pm.map((d) => d.respiratory_rate));
-  const respiVals = m.map((d) => d.respiratory_rate);
-
-  // SpO2
-  const avgSpo2 = avgOf(m.map((d) => d.spo2_pct));
-  const prevAvgSpo2 = avgOf(pm.map((d) => d.spo2_pct));
-  const spo2Vals = m.map((d) => d.spo2_pct);
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <KpiCard
-          icon="❤️"
-          label="Recovery"
-          value={avgRecovery != null ? `${Math.round(avgRecovery * 10) / 10}` : "—"}
-          unit="/10"
-          valueColor={recoveryColor}
-          delta={deltaStr(avgRecovery, prevAvgRecovery)}
-          sparkValues={recoveryVals}
-          sparkColor={C.green}
-          record={bestRecovery != null ? `Best : ${Math.round(bestRecovery * 10) / 10}/10` : null}
-          subLine={arrowSubLine(avgRecovery, prevAvgRecovery, (v) => `${Math.round(v * 10) / 10}`)}
-        />
-        <KpiCard
-          icon="💓"
-          label="HRV"
-          value={avgHrv != null ? `${Math.round(avgHrv)}` : "—"}
-          unit="ms"
-          delta={deltaStr(avgHrv, prevAvgHrv, 0)}
-          sparkValues={hrvVals}
-          sparkColor={C.purple}
-          record={bestHrv != null ? `Best : ${Math.round(bestHrv)} ms` : null}
-          subLine={arrowSubLine(avgHrv, prevAvgHrv, (v) => `${Math.round(v)} ms`, 1)}
-        />
-        <KpiCard
-          icon="💤"
-          label="Sommeil"
-          value={avgSleepH != null ? `${avgSleepH}h${avgSleepM!.toString().padStart(2, "0")}` : "—"}
-          delta={
-            avgSleepMin != null && prevAvgSleepMin != null
-              ? deltaStr(Math.round(avgSleepMin / 6) / 10, Math.round(prevAvgSleepMin / 6) / 10, 1, "h")
-              : undefined
-          }
-          sparkValues={sleepVals}
-          sparkColor={C.cyan}
-          record={bestSleep != null ? `Best : ${Math.floor(bestSleep / 60)}h${Math.round(bestSleep % 60).toString().padStart(2, "0")}` : null}
-          subLine={arrowSubLine(avgSleepMin, prevAvgSleepMin, (v) => `${Math.floor(v / 60)}h${Math.round(v % 60).toString().padStart(2, "0")}`, 10)}
-        />
-        <KpiCard
-          icon="👟"
-          label="Pas/jour"
-          value={avgSteps != null ? `${(avgSteps / 1000).toFixed(1)}k` : "—"}
-          delta={
-            avgSteps != null && prevAvgSteps != null
-              ? deltaStr(Math.round(avgSteps / 100) / 10, Math.round(prevAvgSteps / 100) / 10, 1, "k")
-              : undefined
-          }
-          sparkValues={stepsVals}
-          sparkColor={C.orange}
-          record={bestSteps != null ? `Best : ${bestSteps.toLocaleString("fr-FR")} pas` : null}
-          subLine={arrowSubLine(avgSteps, prevAvgSteps, (v) => `${(v / 1000).toFixed(1)}k`, 300)}
-        />
-        <KpiCard
-          icon="⚡"
-          label="Strain"
-          value={avgStrain != null ? `${Math.round(avgStrain * 10) / 10}` : "—"}
-          unit="/10"
-          valueColor={avgStrainColor}
-          delta={deltaStr(avgStrain, prevAvgStrain)}
-          sparkValues={strainVals}
-          sparkColor={C.orange}
-          record={bestStrain != null ? `Max : ${Math.round(bestStrain * 10) / 10}/10` : null}
-          subLine={arrowSubLine(avgStrain, prevAvgStrain, (v) => `${Math.round(v * 10) / 10}`)}
-        />
-        <KpiCard
-          icon="🔥"
-          label="Kcal actives"
-          value={avgActiveKcal != null ? `${Math.round(avgActiveKcal)}` : "—"}
-          unit="/j"
-          delta={deltaStr(avgActiveKcal, prevAvgActiveKcal, 0)}
-          sparkValues={activeKcalVals}
-          sparkColor={C.red}
-          subLine={arrowSubLine(avgActiveKcal, prevAvgActiveKcal, (v) => `${Math.round(v)}`, 20)}
-        />
-        {avgRespi != null && (
-          <KpiCard
-            icon="🫁"
-            label="Respi"
-            value={`${Math.round(avgRespi * 10) / 10}`}
-            unit="/min"
-            delta={deltaStr(avgRespi, prevAvgRespi)}
-            sparkValues={respiVals}
-            sparkColor={C.cyan}
-            subLine={arrowSubLine(avgRespi, prevAvgRespi, (v) => `${Math.round(v * 10) / 10}/min`, 0.2)}
-          />
-        )}
-        {avgSpo2 != null && (
-          <KpiCard
-            icon="🩸"
-            label="SpO₂"
-            value={`${Math.round(avgSpo2 * 10) / 10}`}
-            unit="%"
-            delta={deltaStr(avgSpo2, prevAvgSpo2)}
-            sparkValues={spo2Vals}
-            sparkColor={C.blue}
-            subLine={arrowSubLine(avgSpo2, prevAvgSpo2, (v) => `${Math.round(v * 10) / 10}%`, 0.2)}
-          />
-        )}
-      </div>
-
-      {data.workouts.length > 0 && (() => {
-        // Pour la période en cours (offset=0), comparer sur la même fenêtre temporelle
-        const isCurrentPeriod = offset === 0;
-        let prevComparable = data.previousPeriod.workouts.length;
-        let showDelta = data.previousPeriod.workouts.length > 0;
-
-        if (isCurrentPeriod && showDelta) {
-          const startMs = new Date(`${data.startDate}T00:00:00Z`).getTime();
-          const nowMs = Date.now();
-          const elapsedDays = Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
-          const prevStartMs = new Date(`${data.previousPeriod.startDate}T00:00:00Z`).getTime();
-          const prevCutoff = new Date(prevStartMs + elapsedDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-          prevComparable = data.previousPeriod.workouts.filter(
-            (w) => w.started_at.slice(0, 10) < prevCutoff,
-          ).length;
-        }
-
-        const sessionsLabel = isCurrentPeriod
-          ? `${data.workouts.length} séances (en cours)`
-          : `${data.workouts.length} séances`;
-
-        const sorted = [...data.workouts].sort((a, b) => b.started_at.localeCompare(a.started_at));
-
-        return (
-        <div
-          className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-3.5"
-          style={{ boxShadow: "var(--shadow-ambient)" }}
-        >
-          <div className="flex items-center gap-2 text-xs text-[var(--color-body)] mb-2">
-            <span className="text-sm">💪</span>
-            <span className="text-[10px] uppercase tracking-wide">{sessionsLabel}</span>
-            {showDelta && (
-              <DeltaBadge
-                current={data.workouts.length}
-                previous={prevComparable}
-                suffix={isCurrentPeriod ? " (même fenêtre)" : undefined}
-              />
-            )}
-          </div>
-          <WorkoutTypePills workouts={data.workouts} />
-          <div className="divide-y divide-[var(--color-border)] dark:divide-white/10">
-            {sorted.map((w, i) => {
-              const { label, icon } = formatWorkoutType(w.type);
-              const d = new Date(w.started_at);
-              const dateLabel = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-              const durMin = w.duration_min ?? 0;
-              const durH = Math.floor(durMin / 60);
-              const durM = Math.round(durMin % 60);
-              const durationLabel = `${durH}h${durM.toString().padStart(2, "0")}`;
-
-              return (
-                <div key={i} className="flex items-center justify-between py-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span>{icon}</span>
-                    <span className="font-normal text-[var(--color-heading)] dark:text-white text-xs">{label}</span>
-                  </div>
-                  <div className="text-right text-[11px] text-[var(--color-body)] tabular-nums space-x-2">
-                    <span className="capitalize">{dateLabel}</span>
-                    <span>{durationLabel}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        );
-      })()}
-    </div>
-  );
-}
-
-// Strain des jours affichés, tel que calculé par le serveur (référence 30j
-// glissante par jour, identique à l'accueil). Jours sans valeur ignorés.
-function computeDailyStrain(
-  metrics: { date: string }[],
-  strainByDate: Record<string, number>,
-): { date: string; strain: number }[] {
-  return metrics
-    .filter((m) => strainByDate[m.date] != null)
-    .map((m) => ({ date: m.date, strain: strainByDate[m.date] }));
-}
-
-function maxOf(vals: (number | null)[]): number | null {
-  const f = vals.filter((v): v is number => v != null);
-  return f.length > 0 ? Math.max(...f) : null;
-}
-
-function deltaStr(
-  current: number | null,
-  previous: number | null,
-  decimals = 1,
-  suffix = "",
-): string | undefined {
-  if (current == null || previous == null) return undefined;
-  const diff = current - previous;
-  if (Math.abs(diff) < 0.05) return undefined;
-  const sign = diff > 0 ? "+" : "";
-  return `${sign}${diff.toFixed(decimals)}${suffix}`;
-}
-
-function arrowSubLine(
-  current: number | null,
-  previous: number | null,
-  format: (v: number) => string,
-  threshold = 0.3,
-): string | null {
-  if (current == null || previous == null) return null;
-  const arrow = current >= previous + threshold ? "↑" : current <= previous - threshold ? "↓" : "≈";
-  return `${arrow} moy ${format(previous)}`;
-}
-
-function DeltaBadge({
-  current,
-  previous,
-  suffix,
-}: {
-  current: number;
-  previous: number;
-  suffix?: string;
-}) {
-  const diff = current - previous;
-  if (diff === 0) return null;
-  const color =
-    diff > 0
-      ? "text-[#108c3d]"
-      : "text-[#ea2261]";
-  return (
-    <span className={`text-[10px] font-normal ${color}`}>
-      {diff > 0 ? "+" : ""}
-      {diff} vs précédent{suffix ?? ""}
-    </span>
-  );
-}
-
-
-// ── Journal Stats ───────────────────────────────────────────────────────
-
-const MOOD_EMOJIS = ["", "😞", "😕", "😐", "🙂", "😄"];
-const ENERGY_EMOJIS = ["", "🪫", "😴", "⚡", "💪", "🔥"];
-const STRESS_EMOJIS = ["", "🧘", "😌", "😤", "😰", "🤯"];
-
-function JournalStatsSection({
-  entries,
-  averages,
-  prevAverages,
-}: {
-  entries: JournalEntry[];
-  averages: JournalAverages;
-  prevAverages?: JournalAverages;
-}) {
-  const filledEntries = entries.filter(
-    (e) => e.mood != null || e.energy != null || e.stress != null || e.notes || e.gratitude,
-  ).sort((a, b) => b.date.localeCompare(a.date));
-
-  return (
-    <section
-      className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-4 sm:p-5"
-      style={{ boxShadow: "var(--shadow-ambient)" }}
-    >
-      <h2 className="text-xs font-normal uppercase tracking-wide text-[var(--color-body)] mb-4">
-        Journal ({averages.entryCount ?? filledEntries.length} entrées)
-      </h2>
-
-      {/* Moyennes */}
-      <div className="grid grid-cols-3 gap-4 mb-5">
-        <JournalAvgCell
-          label="Humeur"
-          value={averages.mood}
-          prev={prevAverages?.mood}
-          emojis={MOOD_EMOJIS}
-          positiveIsGood
-        />
-        <JournalAvgCell
-          label="Énergie"
-          value={averages.energy}
-          prev={prevAverages?.energy}
-          emojis={ENERGY_EMOJIS}
-          positiveIsGood
-        />
-        <JournalAvgCell
-          label="Stress"
-          value={averages.stress}
-          prev={prevAverages?.stress}
-          emojis={STRESS_EMOJIS}
-          positiveIsGood={false}
-        />
-      </div>
-
-      {/* Entrées */}
-      {filledEntries.length > 0 && (
-        <div className="space-y-2 border-t border-[var(--color-border)] dark:border-white/10 pt-4">
-          {filledEntries.map((entry) => (
-            <JournalEntryRow key={entry.date} entry={entry} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function JournalAvgCell({
-  label,
-  value,
-  prev,
-  emojis,
-  positiveIsGood,
-}: {
-  label: string;
-  value: number | null;
-  prev: number | null | undefined;
-  emojis: string[];
-  positiveIsGood: boolean;
-}) {
-  const emoji = value != null ? emojis[Math.round(value)] ?? "" : "";
-  const delta = value != null && prev != null ? value - prev : null;
-
-  let deltaStr = "";
-  let deltaColor = "";
-  if (delta != null && Math.abs(delta) >= 0.1) {
-    deltaStr = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
-    const good = positiveIsGood ? delta > 0 : delta < 0;
-    deltaColor = good ? "text-[#108c3d]" : "text-[#ea2261]";
-  }
-
-  return (
-    <div className="text-center">
-      <div className="text-xl mb-0.5">{emoji || "—"}</div>
-      <div className="text-base font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-        {value != null ? value.toFixed(1) : "—"}
-        <span className="text-xs text-[var(--color-body)]">/5</span>
-      </div>
-      <div className="text-[10px] uppercase tracking-wide text-[var(--color-body)] mt-0.5">
-        {label}
-      </div>
-      {deltaStr && (
-        <div className={`text-[10px] tabular-nums font-normal mt-0.5 ${deltaColor}`}>
-          {deltaStr} vs préc.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function JournalImpactSection({
-  journalEntries,
-  dailyMetrics,
-}: {
-  journalEntries: JournalEntry[];
-  dailyMetrics: DailyMetric[];
-}) {
-  const impact = computeJournalImpact(
-    journalEntries.map((e) => ({ date: e.date, mood: e.mood, energy: e.energy, stress: e.stress })),
-    dailyMetrics.map((m) => ({ date: m.date, recovery_score: m.recovery_score })),
-  );
-
-  if (impact.length === 0) return null;
-
-  return (
-    <section
-      className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-4 sm:p-5"
-      style={{ boxShadow: "var(--shadow-ambient)" }}
-    >
-      <h2 className="text-xs font-normal uppercase tracking-wide text-[var(--color-body)] mb-3">
-        Impact journal → recovery J+1
-      </h2>
-      <div className="space-y-2">
-        {impact.map((f) => (
-          <div key={f.label} className="flex items-center gap-2 text-sm">
-            <span>{f.emoji}</span>
-            <span className="text-[var(--color-body)] flex-1">{f.label}</span>
-            <span className={`font-normal tabular-nums ${
-              f.direction === "positive" ? "text-[#108c3d]" :
-              f.direction === "negative" ? "text-[#ea2261]" :
-              "text-[var(--color-body)]"
-            }`}>
-              {f.impact > 0 ? "+" : ""}{f.impact} pts
-            </span>
-            <span className="text-[10px] text-[var(--color-body)]/50">
-              ({f.sampleSize}j)
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="text-[10px] text-[var(--color-body)]/60 mt-2">
-        Delta recovery moyen entre jours haut vs bas sur la période
-      </p>
-    </section>
-  );
-}
-
-function JournalEntryRow({ entry }: { entry: JournalEntry }) {
-  const d = new Date(`${entry.date}T12:00:00Z`);
-  const label = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
-
-  return (
-    <div className="rounded-[var(--radius-md)] bg-[var(--color-border)]/30 dark:bg-white/3 p-3">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-normal text-[var(--color-heading)] dark:text-white capitalize">
-          {label}
-        </span>
-        <div className="flex gap-2 text-sm">
-          {entry.mood != null && <span title="Humeur">{MOOD_EMOJIS[entry.mood]}</span>}
-          {entry.energy != null && <span title="Énergie">{ENERGY_EMOJIS[entry.energy]}</span>}
-          {entry.stress != null && <span title="Stress">{STRESS_EMOJIS[entry.stress]}</span>}
-        </div>
-      </div>
-      {entry.notes && (
-        <p className="text-xs text-[var(--color-body)] leading-relaxed">{entry.notes}</p>
-      )}
-      {entry.gratitude && (
-        <p className="text-xs text-[var(--color-brand-purple)] leading-relaxed mt-1">
-          🙏 {entry.gratitude}
-        </p>
-      )}
-    </div>
-  );
-}
-

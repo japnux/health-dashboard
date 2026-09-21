@@ -36,7 +36,9 @@ export function HistoryChart({
   target = null,
   mode = "line",
   valueSuffix = "",
+  height = 240,
 }: {
+  height?: number;
   points: Point[];
   unit: string;
   decimals?: number;
@@ -58,7 +60,7 @@ export function HistoryChart({
   const lastIndex = data.length - 1;
 
   return (
-    <ResponsiveContainer width="100%" height={240}>
+    <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 22, right: 16, left: 0, bottom: 0 }}>
         {band && mode === "line" && (
           <ReferenceArea
