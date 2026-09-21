@@ -8,8 +8,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
   BarChart,
   Bar,
   XAxis,
@@ -30,6 +28,9 @@ import { VIVID, sportColor, tint, tintedBackground } from "@/lib/palette";
 import { ZonedLineChart } from "@/components/charts/ZonedLineChart";
 import { HistoryChart } from "@/components/charts/HistoryChart";
 import { Delta, StatGrid } from "@/components/detail/DetailBits";
+import { BodyTrendChart } from "@/components/charts/BodyTrendChart";
+import { CompositionBar } from "@/components/body/CompositionBits";
+import { FAT_COLOR, LEAN_COLOR, latestComposition } from "@/lib/body-composition";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -286,10 +287,15 @@ export function StatsCharts() {
           {activeTab === "corps" &&
             (data.bodyComposition.length > 0 ? (
               <>
-                <WeightChart bodyComposition={data.bodyComposition} />
-                <Link href="/biologie" className="block text-sm text-[var(--color-brand-purple)] hover:underline">
-                  Voir tes analyses de biologie ›
-                </Link>
+                <BodyStats bodies={data.bodyComposition} />
+                <div className="flex justify-between text-sm">
+                  <Link href="/corps" className="text-[var(--color-brand-purple)] hover:underline">
+                    Détail et verdict ›
+                  </Link>
+                  <Link href="/biologie" className="text-[var(--color-brand-purple)] hover:underline">
+                    Biologie ›
+                  </Link>
+                </div>
               </>
             ) : (
               <p className="text-sm text-[var(--color-body)]">Pas de pesée sur cette période.</p>
@@ -1043,124 +1049,83 @@ function ZonesChart({ workouts, period, tz }: { workouts: Workout[]; period: Per
   );
 }
 
-// ── Poids / Body Fat ─────────────────────────────────────────────────────
+// ── Corps ────────────────────────────────────────────────────────────────
 
-function WeightChart({
-  bodyComposition,
-}: {
-  bodyComposition: BodyComp[];
-}) {
-  const hasLean = bodyComposition.some((b) => b.lean_mass_kg != null);
-  const chartData = bodyComposition.map((b) => ({
-    label: shortDateLabel(b.measured_at),
-    poids: b.weight_kg,
-    fat: b.body_fat_pct,
-    lean: b.lean_mass_kg,
-  }));
+// Pente de la tendance (régression) en unité par semaine
+function slopePerWeek(points: { date: string; value: number }[]): number | null {
+  if (points.length < 3) return null;
+  const xs = points.map((p) => Date.parse(`${p.date}T12:00:00Z`) / 86_400_000);
+  const mx = xs.reduce((a, b) => a + b, 0) / xs.length;
+  const my = points.reduce((a, p) => a + p.value, 0) / points.length;
+  let num = 0;
+  let den = 0;
+  xs.forEach((x, i) => {
+    num += (x - mx) * (points[i].value - my);
+    den += (x - mx) ** 2;
+  });
+  return den > 0 ? (num / den) * 7 : null;
+}
 
+// Sens d'une variation : couleur + mot (le poids seul ne dit pas si c'est bien)
+function changeWord(change: number, better: "up" | "down" | "none"): React.ReactNode {
+  if (Math.abs(change) < 0.2) return "stable";
+  if (better === "none") return change > 0 ? "en hausse" : "en baisse";
+  const good = (better === "up") === change > 0;
   return (
-    <ChartCard title="Poids & composition">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="var(--color-zinc-200, #e4e4e7)"
-            opacity={0.5}
-          />
-          <XAxis
-            dataKey="label"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            yAxisId="kg"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={35}
-            domain={["dataMin - 1", "dataMax + 1"]}
-          />
-          <YAxis
-            yAxisId="pct"
-            orientation="right"
-            tick={{ fontSize: 11, fill: C.zinc400 }}
-            axisLine={false}
-            tickLine={false}
-            width={35}
-            domain={["dataMin - 1", "dataMax + 1"]}
-            tickFormatter={(v: number) => `${v}%`}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
-            formatter={(val, name) => {
-              if (name === "poids") return [`${val} kg`, "Poids"];
-              if (name === "lean") return [`${val} kg`, "Masse maigre"];
-              return [`${val}%`, "Body fat"];
-            }}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: 11 }}
-            formatter={(v: string) => {
-              if (v === "poids") return "Poids (kg)";
-              if (v === "lean") return "Masse maigre (kg)";
-              return "Body fat (%)";
-            }}
-          />
-          <Line
-            yAxisId="kg"
-            type="monotone"
-            dataKey="poids"
-            stroke={C.blue}
-            strokeWidth={2}
-            dot={{ r: 3 }}
-            connectNulls
-          />
-          {hasLean && (
-            <Line
-              yAxisId="kg"
-              type="monotone"
-              dataKey="lean"
-              stroke={C.green}
-              strokeWidth={2}
-              dot={{ r: 3 }}
-              connectNulls
-            />
-          )}
-          <Line
-            yAxisId="pct"
-            type="monotone"
-            dataKey="fat"
-            stroke={C.orange}
-            strokeWidth={2}
-            dot={{ r: 3 }}
-            connectNulls
-          />
-        </LineChart>
-      </ResponsiveContainer>
+    <span className="inline-flex items-center gap-1">
+      <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: good ? VIVID.green : VIVID.red }} />
+      {good ? "dans le bon sens" : "dans le mauvais sens"}
+    </span>
+  );
+}
 
-      {bodyComposition.length >= 2 && (() => {
-        const first = bodyComposition[0];
-        const last = bodyComposition[bodyComposition.length - 1];
-        const dW = last.weight_kg != null && first.weight_kg != null ? +(last.weight_kg - first.weight_kg).toFixed(1) : null;
-        const dF = last.body_fat_pct != null && first.body_fat_pct != null ? +(last.body_fat_pct - first.body_fat_pct).toFixed(1) : null;
-        const dL = last.lean_mass_kg != null && first.lean_mass_kg != null ? +(last.lean_mass_kg - first.lean_mass_kg).toFixed(1) : null;
-        const fmt = (v: number, u: string) => `${v > 0 ? "+" : ""}${v} ${u}`;
+// Poids, masse grasse et masse maigre : un graphique chacun (pas de double
+// échelle), avec la tendance et la variation qu'elle donne sur la période
+function BodyStats({ bodies }: { bodies: BodyComp[] }) {
+  const pts = (key: "weight_kg" | "body_fat_pct" | "lean_mass_kg") =>
+    bodies.filter((b) => b[key] != null).map((b) => ({ date: b.measured_at.slice(0, 10), value: Number(b[key]) }));
+  const last = latestComposition(bodies);
+  const metrics = [
+    { title: "Poids", key: "weight_kg" as const, unit: "kg", color: VIVID.blue, better: "none" as const, changeUnit: "kg" },
+    { title: "Masse grasse", key: "body_fat_pct" as const, unit: "%", color: FAT_COLOR, better: "down" as const, changeUnit: "pt" },
+    { title: "Masse maigre", key: "lean_mass_kg" as const, unit: "kg", color: LEAN_COLOR, better: "up" as const, changeUnit: "kg" },
+  ];
+  return (
+    <>
+      {last.leanKg && last.fatKg && (
+        <ChartCard title={`Répartition · impédance du ${shortDateLabel(last.leanKg.date)}`}>
+          <CompositionBar leanKg={last.leanKg.value} fatKg={last.fatKg.value} />
+        </ChartCard>
+      )}
+      {metrics.map((m) => {
+        const points = pts(m.key);
+        const slope = slopePerWeek(points);
+        const span =
+          points.length >= 2
+            ? (Date.parse(`${points[points.length - 1].date}T12:00:00Z`) - Date.parse(`${points[0].date}T12:00:00Z`)) / 86_400_000
+            : 0;
+        const change = slope != null ? (slope * span) / 7 : null;
         return (
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-[var(--color-body)]">
-            <span>Variation sur la période :</span>
-            {dW != null && <span className={dW < 0 ? "text-[#15be53]" : dW > 0 ? "text-[#f97316]" : ""}>{fmt(dW, "kg")}</span>}
-            {dF != null && <span className={dF < 0 ? "text-[#15be53]" : dF > 0 ? "text-[#f97316]" : ""}>{fmt(dF, "% MG")}</span>}
-            {dL != null && <span className={dL > 0 ? "text-[#15be53]" : dL < 0 ? "text-[#f97316]" : ""}>{fmt(dL, "kg maigre")}</span>}
-          </div>
+          <ChartCard key={m.key} title={m.title}>
+            <BodyTrendChart points={points} unit={m.unit} color={m.color} />
+            {points.length > 0 && (
+              <div className="mt-3">
+                <StatGrid
+                  items={[
+                    { label: "Dernière", value: `${fr1(points[points.length - 1].value)} ${m.unit}` },
+                    {
+                      label: "Variation (tendance)",
+                      value: change != null ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${fr1(Math.abs(change))} ${m.changeUnit}` : "—",
+                      sub: change != null ? changeWord(change, m.better) : "3 mesures minimum",
+                    },
+                    { label: "Mesures", value: String(points.length) },
+                  ]}
+                />
+              </div>
+            )}
+          </ChartCard>
         );
-      })()}
-    </ChartCard>
+      })}
+    </>
   );
 }

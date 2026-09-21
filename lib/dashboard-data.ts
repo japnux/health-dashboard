@@ -9,6 +9,7 @@ import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
 import { computeDayStrain, type StrainResult } from "@/lib/strain-score";
 import { computeTrend, type BodyTrend } from "@/lib/body-trend";
+import { BODY_TREND_WINDOW, latestComposition, type CompositionSnapshot } from "@/lib/body-composition";
 import {
   parseObjective,
   computeBaseTargets,
@@ -48,6 +49,8 @@ export type DashboardSnapshot = {
   lastBodyComposition: BodyCompositionRow | null;
   prevBodyComposition: BodyCompositionRow | null;
   bodyCompositionAgeDays: number | null;
+  // Dernières valeurs (poids ; gras et maigre de la dernière impédance)
+  composition: CompositionSnapshot;
   bodyTrends: {
     weight: BodyTrend | null;
     fat: BodyTrend | null;
@@ -234,9 +237,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     supabase
       .from("body_composition")
       .select("*")
-
       .order("measured_at", { ascending: false })
-      .limit(40),
+      .limit(150),
     supabase.from("protein_logs").select("grams").eq("date", date),
     supabase.from("dashboard_config").select("*").eq("id", 1).single(),
     supabase
@@ -340,13 +342,13 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     ? diffDaysIso(date, lastBodyComposition.measured_at)
     : null;
 
-  // Tendances par régression linéaire sur fenêtre 60j (lisse le bruit point-à-point).
-  const TREND_WINDOW = 60;
+  // Tendances par régression linéaire sur 90 j (lisse le bruit point à point)
   const bodyTrends = {
-    weight: computeTrend(bodies ?? [], "weight_kg", TREND_WINDOW, tz),
-    fat: computeTrend(bodies ?? [], "body_fat_pct", TREND_WINDOW, tz),
-    lean: computeTrend(bodies ?? [], "lean_mass_kg", TREND_WINDOW, tz),
+    weight: computeTrend(bodies ?? [], "weight_kg", BODY_TREND_WINDOW, tz),
+    fat: computeTrend(bodies ?? [], "body_fat_pct", BODY_TREND_WINDOW, tz),
+    lean: computeTrend(bodies ?? [], "lean_mass_kg", BODY_TREND_WINDOW, tz),
   };
+  const composition = latestComposition(bodies ?? []);
 
   const proteinTotalToday = (proteinRows ?? []).reduce(
     (sum, r) => sum + r.grams,
@@ -499,6 +501,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     prevBodyComposition,
     bodyCompositionAgeDays,
     bodyTrends,
+    composition,
     proteinTotalToday,
     macrosToday,
     macrosTargets,

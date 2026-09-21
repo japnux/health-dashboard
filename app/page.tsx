@@ -9,7 +9,8 @@ import { Reservations } from "@/components/Reservations";
 import { AiAnalysis } from "@/components/AiAnalysis";
 import { AiTrends, AiWorkoutSuggestion } from "@/components/AiInsights";
 import { PlannedActivities } from "@/components/PlannedActivities";
-import { TodayHero, WorkoutsToday, TrainingBalance, BodyMetricsRow } from "@/components/home/TodaySections";
+import { TodayHero, WorkoutsToday, TrainingBalance, BodyMetricsRow, SectionTitle } from "@/components/home/TodaySections";
+import { BodyCompositionTile } from "@/components/body/CompositionBits";
 
 export const dynamic = "force-dynamic";
 
@@ -160,26 +161,18 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* ── Body Composition ── */}
-      {snap.lastBodyComposition &&
-        snap.bodyCompositionAgeDays != null &&
-        snap.bodyCompositionAgeDays <= 14 && (
-          <Card>
-            <div className="flex items-baseline justify-between mb-3">
-              <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
-                Composition corporelle
-              </h2>
-              <span className="text-[10px] text-[var(--color-body)]/60 tabular-nums capitalize">
-                {new Date(snap.lastBodyComposition.measured_at).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
-              </span>
-            </div>
-            <BodyCompositionCard
-              current={snap.lastBodyComposition}
-              previous={snap.prevBodyComposition}
-              trends={snap.bodyTrends}
-            />
-          </Card>
-        )}
+      {/* ── Composition corporelle : tuile vers la page de détail ── */}
+      {snap.composition.weight && (
+        <>
+          <SectionTitle>Composition corporelle</SectionTitle>
+          <BodyCompositionTile
+            composition={snap.composition}
+            trends={snap.bodyTrends}
+            objective={snap.objective}
+            today={snap.date}
+          />
+        </>
+      )}
 
       {/* ── Journal ── */}
       {JOURNAL_ENABLED && <JournalDashboard date={snap.date} impact={snap.journalImpact} />}
@@ -196,17 +189,6 @@ export default async function Home() {
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────
-
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <section
-      className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
-      style={{ boxShadow: "var(--shadow-ambient)" }}
-    >
-      {children}
-    </section>
-  );
-}
 
 function QuickStat({
   icon,
@@ -231,160 +213,6 @@ function QuickStat({
       </div>
       {sub && (
         <div className="text-[10px] text-[var(--color-body)] mt-0.5">{sub}</div>
-      )}
-    </div>
-  );
-}
-
-type BodyCompRow = {
-  measured_at: string;
-  weight_kg: number;
-  body_fat_pct: number | null;
-  lean_mass_kg: number | null;
-};
-
-function bodyAnalysis(current: BodyCompRow, previous: BodyCompRow): string | null {
-  const weightDiff = +(current.weight_kg - previous.weight_kg).toFixed(1);
-  // Période de la comparaison, sinon "+1.3 kg" ne dit pas depuis quand
-  const gapDays = diffDaysIso(current.measured_at.slice(0, 10), previous.measured_at.slice(0, 10));
-  const since = `en ${gapDays} j`;
-  const hasFat = current.body_fat_pct != null && previous.body_fat_pct != null;
-  const hasLean = current.lean_mass_kg != null && previous.lean_mass_kg != null;
-
-  if (!hasFat && !hasLean) {
-    if (Math.abs(weightDiff) < 0.3) return "Poids stable — continue à tracker pour voir la tendance.";
-    return weightDiff > 0
-      ? `+${weightDiff} kg ${since} — pèse-toi avec la balance impédancemètre pour voir la répartition.`
-      : `${weightDiff} kg ${since} — pèse-toi avec la balance impédancemètre pour voir la répartition.`;
-  }
-
-  const fatDiff = hasFat ? +(current.body_fat_pct! - previous.body_fat_pct!).toFixed(1) : 0;
-  const leanDiff = hasLean ? +(current.lean_mass_kg! - previous.lean_mass_kg!).toFixed(1) : 0;
-
-  if (Math.abs(weightDiff) < 0.3 && Math.abs(fatDiff) < 0.5) return "Composition stable — bonne constance.";
-  if (leanDiff > 0.2 && fatDiff < -0.3) return "🎯 Recomposition en cours — tu gagnes du muscle et perds du gras.";
-  if (leanDiff > 0.2 && fatDiff <= 0.3) return "💪 Prise de masse musculaire — le surplus calorique est bien utilisé.";
-  if (fatDiff < -0.5 && leanDiff >= -0.2) return "Sèche efficace — perte de gras avec maintien musculaire.";
-  if (fatDiff > 0.5 && leanDiff <= 0) return "⚠️ Prise de gras sans gain musculaire — ajuster les apports ou l'entraînement.";
-  if (weightDiff < -0.5 && leanDiff < -0.3) return "⚠️ Perte de muscle — vérifier les apports protéiques et le volume d'entraînement.";
-  if (weightDiff > 1.5) return "Prise de poids rapide — probablement de la rétention d'eau, à confirmer sur les prochains jours.";
-  if (weightDiff > 0.5 && leanDiff > 0) return `+${leanDiff} kg maigre — la prise de poids est en partie musculaire.`;
-  return "Évolution modérée — à surveiller sur la tendance.";
-}
-
-// Couleur d'une tendance selon l'objectif "recomp + prise de masse maigre" :
-//   - poids : flat/légère hausse OK (gain de muscle), grosse hausse orange, baisse OK aussi
-//   - fat   : baisse = vert, flat = neutre, hausse = rouge
-//   - lean  : hausse = vert, flat = neutre, baisse = rouge
-type TrendKind = "weight" | "fat" | "lean";
-function trendColor(kind: TrendKind, slope: number): string {
-  const abs = Math.abs(slope);
-  if (abs < 0.05) return "text-[var(--color-body)]"; // flat
-  if (kind === "fat") return slope < 0 ? "text-[#108c3d]" : "text-[#ea2261]";
-  if (kind === "lean") return slope > 0 ? "text-[#108c3d]" : "text-[#ea2261]";
-  // weight pour recomp : baisse douce ou hausse douce = vert ; >0.3 kg/sem hausse = orange
-  if (slope < 0) return "text-[#108c3d]";
-  if (slope > 0.3) return "text-[#c97a1a]";
-  return "text-[#108c3d]";
-}
-
-function trendArrow(direction: "down" | "up" | "flat"): string {
-  if (direction === "down") return "↘";
-  if (direction === "up") return "↗";
-  return "→";
-}
-
-function formatSlope(slope: number, unit: string): string {
-  // 2 décimales pour kg, 1 décimale pour %.
-  const dec = unit === "%" ? 1 : 2;
-  const sign = slope > 0 ? "+" : slope < 0 ? "" : "";
-  return `${sign}${slope.toFixed(dec)}${unit}/sem`;
-}
-
-function TrendLine({
-  kind,
-  unit,
-  trend,
-}: {
-  kind: TrendKind;
-  unit: string;
-  trend: import("@/lib/body-trend").BodyTrend | null;
-}) {
-  if (!trend) {
-    return (
-      <div className="text-[10px] text-[var(--color-body)]/60 mt-0.5">—</div>
-    );
-  }
-  return (
-    <div
-      className={`text-[10px] tabular-nums font-normal mt-0.5 ${trendColor(kind, trend.slopePerWeek)}`}
-      title={`${trend.samples} mesures · R² ${trend.r2.toFixed(2)} · sur ${trend.windowDays}j`}
-    >
-      {trendArrow(trend.direction)} {formatSlope(trend.slopePerWeek, unit)}
-    </div>
-  );
-}
-
-function BodyCompositionCard({
-  current,
-  previous,
-  trends,
-}: {
-  current: BodyCompRow;
-  previous: BodyCompRow | null;
-  trends: {
-    weight: import("@/lib/body-trend").BodyTrend | null;
-    fat: import("@/lib/body-trend").BodyTrend | null;
-    lean: import("@/lib/body-trend").BodyTrend | null;
-  };
-}) {
-  const analysis = previous ? bodyAnalysis(current, previous) : null;
-  const windowDays =
-    trends.weight?.windowDays ?? trends.fat?.windowDays ?? trends.lean?.windowDays ?? null;
-  const samples = Math.max(
-    trends.weight?.samples ?? 0,
-    trends.fat?.samples ?? 0,
-    trends.lean?.samples ?? 0,
-  );
-
-  return (
-    <div>
-      {windowDays != null && samples > 0 && (
-        <p className="text-[10px] text-[var(--color-body)] mb-3 text-right">
-          tendance {windowDays}j · {samples} mesure{samples > 1 ? "s" : ""}
-        </p>
-      )}
-      <div className="grid grid-cols-3 gap-4 text-center">
-        <div>
-          <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-            {current.weight_kg}
-          </div>
-          <div className="text-xs text-[var(--color-body)]">kg</div>
-          <TrendLine kind="weight" unit=" kg" trend={trends.weight} />
-        </div>
-        {current.body_fat_pct != null && (
-          <div>
-            <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-              {current.body_fat_pct}%
-            </div>
-            <div className="text-xs text-[var(--color-body)]">masse grasse</div>
-            <TrendLine kind="fat" unit="%" trend={trends.fat} />
-          </div>
-        )}
-        {current.lean_mass_kg != null && (
-          <div>
-            <div className="text-2xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">
-              {current.lean_mass_kg}
-            </div>
-            <div className="text-xs text-[var(--color-body)]">kg maigre</div>
-            <TrendLine kind="lean" unit=" kg" trend={trends.lean} />
-          </div>
-        )}
-      </div>
-      {analysis && (
-        <p className="text-xs text-[var(--color-body)] mt-3 pt-3 border-t border-[var(--color-border)] dark:border-white/10">
-          {analysis}
-        </p>
       )}
     </div>
   );
