@@ -181,11 +181,24 @@ export default async function Home() {
                 positiveIsGood
               />
             )}
+            {snap.watch.wristTempDeltaC != null && (
+              <MiniMetric
+                label="Temp. poignet"
+                value={`${snap.watch.wristTempDeltaC > 0 ? "+" : ""}${snap.watch.wristTempDeltaC.toFixed(1)} °C`}
+                sub="vs méd 60j"
+                delta={null}
+                positiveIsGood={false}
+              />
+            )}
           </div>
         </section>
 
         {/* Strain */}
-        <StrainCard strain={snap.strain} todayWorkouts={snap.recentWorkouts.filter((w) => w.started_at.startsWith(snap.date)).map((w) => ({ type: w.type }))} />
+        <StrainCard
+          strain={snap.strain}
+          todayWorkouts={snap.recentWorkouts.filter((w) => w.started_at.startsWith(snap.date)).map((w) => ({ type: w.type }))}
+          watch={snap.watch}
+        />
 
         {/* Sommeil — pleine largeur mobile, 1 col desktop */}
         <section
@@ -253,6 +266,7 @@ export default async function Home() {
               awakePct={snap.today.sleep_awake_pct ?? undefined}
             />
           )}
+          <SleepTiming watch={snap.watch} />
         </section>
       </div>
 
@@ -328,9 +342,6 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* ── Nuit & cardio (Apple Watch) ── */}
-      <WatchSection watch={snap.watch} />
-
       {/* ── Body Composition ── */}
       {snap.lastBodyComposition &&
         snap.bodyCompositionAgeDays != null &&
@@ -368,7 +379,15 @@ export default async function Home() {
 
 // ── Sub-components ───────────────────────────────────────────────────────
 
-function StrainCard({ strain, todayWorkouts }: { strain: StrainResult; todayWorkouts: { type: string | null }[] }) {
+function StrainCard({
+  strain,
+  todayWorkouts,
+  watch,
+}: {
+  strain: StrainResult;
+  todayWorkouts: { type: string | null }[];
+  watch: DashboardSnapshot["watch"];
+}) {
   const bgMap: Record<string, string> = {
     light: "from-[#15be53]/10 to-[#15be53]/3 border-[#15be53]/20",
     moderate: "from-[#eab308]/10 to-[#eab308]/3 border-[#eab308]/20",
@@ -387,7 +406,83 @@ function StrainCard({ strain, todayWorkouts }: { strain: StrainResult; todayWork
       </p>
       <StrainGauge strain={strain} />
       <WorkoutBadges workouts={todayWorkouts} />
+      <CardioMetrics watch={watch} />
     </section>
+  );
+}
+
+// Indicateurs cardio sous le Strain : effort du jour (FC max, FC en marche)
+// puis forme de fond (VO2 max, récup cardio) quand la montre les a mesurés.
+function CardioMetrics({ watch }: { watch: DashboardSnapshot["watch"] }) {
+  const items: { label: string; value: string; sub?: string }[] = [];
+  if (watch.hrMaxBpm != null) {
+    items.push({ label: "FC max", value: `${watch.hrMaxBpm} bpm`, sub: "aujourd'hui" });
+  }
+  if (watch.walkingHrBpm != null) {
+    items.push({
+      label: "FC marche",
+      value: `${watch.walkingHrBpm} bpm`,
+      sub: watch.walkingHr7dAvg != null ? `moy 7j ${watch.walkingHr7dAvg}` : undefined,
+    });
+  }
+  if (watch.vo2Max) {
+    items.push({ label: "VO2 max", value: `${watch.vo2Max.value}`, sub: `le ${shortDate(watch.vo2Max.date)}` });
+  }
+  if (watch.cardioRecoveryBpm) {
+    items.push({
+      label: "Récup cardio",
+      value: `-${watch.cardioRecoveryBpm.value} bpm`,
+      sub: `1 min, le ${shortDate(watch.cardioRecoveryBpm.date)}`,
+    });
+  }
+  if (items.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-sm">
+      {items.map((i) => (
+        <MiniMetric key={i.label} label={i.label} value={i.value} sub={i.sub} delta={null} positiveIsGood />
+      ))}
+    </div>
+  );
+}
+
+// Horaires sous la carte Sommeil : coucher → lever, régularité, respiration.
+function SleepTiming({ watch }: { watch: DashboardSnapshot["watch"] }) {
+  const bedtime = formatHourParis(watch.bedtime);
+  const wake = formatHourParis(watch.wakeTime);
+  if (!bedtime && watch.breathingDisturbances == null) return null;
+
+  return (
+    <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-sm">
+      {bedtime && (
+        <div className="col-span-2">
+          <MiniMetric
+            label="Coucher → lever"
+            value={wake ? `${bedtime} → ${wake}` : bedtime}
+            delta={null}
+            positiveIsGood
+          />
+        </div>
+      )}
+      {watch.bedtimeSpreadMin != null && (
+        <MiniMetric
+          label="Régularité"
+          value={`±${watch.bedtimeSpreadMin} min`}
+          sub="coucher, 7 nuits"
+          delta={null}
+          positiveIsGood
+        />
+      )}
+      {watch.breathingDisturbances != null && (
+        <MiniMetric
+          label="Troubles resp."
+          value={`${watch.breathingDisturbances}`}
+          sub="nuit dernière"
+          delta={null}
+          positiveIsGood={false}
+        />
+      )}
+    </div>
   );
 }
 
@@ -461,87 +556,6 @@ function formatHourParis(iso: string | null): string | null {
 // "2026-09-18" → "18/09"
 function shortDate(isoDate: string): string {
   return `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}`;
-}
-
-function WatchSection({ watch }: { watch: DashboardSnapshot["watch"] }) {
-  const tiles: { icon: string; label: string; value: string; sub?: string }[] = [];
-
-  const bedtime = formatHourParis(watch.bedtime);
-  if (bedtime) {
-    const wake = formatHourParis(watch.wakeTime);
-    const spread = watch.bedtimeSpreadMin != null ? `±${watch.bedtimeSpreadMin} min/7j` : null;
-    tiles.push({
-      icon: "🛏️",
-      label: "Coucher",
-      value: bedtime,
-      sub: [wake ? `lever ${wake}` : null, spread].filter(Boolean).join(" · ") || undefined,
-    });
-  }
-  if (watch.wristTempDeltaC != null) {
-    const d = watch.wristTempDeltaC;
-    tiles.push({
-      icon: "🌡️",
-      label: "Temp. poignet",
-      value: `${d > 0 ? "+" : ""}${d.toFixed(2)} °C`,
-      sub: "vs médiane 60j",
-    });
-  }
-  if (watch.breathingDisturbances != null) {
-    tiles.push({
-      icon: "🫁",
-      label: "Troubles resp.",
-      value: `${watch.breathingDisturbances}`,
-      sub: "nuit dernière",
-    });
-  }
-  if (watch.walkingHrBpm != null) {
-    tiles.push({
-      icon: "🚶",
-      label: "FC marche",
-      value: `${watch.walkingHrBpm} bpm`,
-      sub: watch.walkingHr7dAvg != null ? `moy 7j ${watch.walkingHr7dAvg}` : undefined,
-    });
-  }
-  if (watch.hrMaxBpm != null && watch.hrMinBpm != null) {
-    tiles.push({
-      icon: "📈",
-      label: "FC max / min",
-      value: `${watch.hrMaxBpm} / ${watch.hrMinBpm}`,
-      sub: "aujourd'hui",
-    });
-  }
-  if (watch.vo2Max) {
-    tiles.push({
-      icon: "🫀",
-      label: "VO2 max",
-      value: `${watch.vo2Max.value}`,
-      sub: `mesure du ${shortDate(watch.vo2Max.date)}`,
-    });
-  }
-  if (watch.cardioRecoveryBpm) {
-    tiles.push({
-      icon: "💓",
-      label: "Récup cardio",
-      value: `${watch.cardioRecoveryBpm.value} bpm`,
-      sub: `1 min, ${shortDate(watch.cardioRecoveryBpm.date)}`,
-    });
-  }
-
-  // Rien à afficher tant que les colonnes ne sont pas alimentées
-  if (tiles.length === 0) return null;
-
-  return (
-    <div>
-      <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal mb-2">
-        Nuit & cardio
-      </p>
-      <div className="grid grid-cols-3 gap-3">
-        {tiles.map((t) => (
-          <QuickStat key={t.label} icon={t.icon} label={t.label} value={t.value} sub={t.sub} />
-        ))}
-      </div>
-    </div>
-  );
 }
 
 function QuickStat({
