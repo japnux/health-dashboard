@@ -61,7 +61,7 @@ export default async function Home() {
     : null;
 
   return (
-    <main className="mx-auto max-w-2xl p-4 sm:p-6 space-y-5">
+    <main className="mx-auto max-w-2xl p-4 pb-24 sm:p-6 sm:pb-24 space-y-5">
       <header className="pt-3 pb-1">
         <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
           Brief du jour
@@ -110,8 +110,8 @@ export default async function Home() {
         </div>
       )}
 
-      {/* ── Recovery + Strain + Sommeil ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      {/* ── Recovery + Strain + Sommeil : empilées sur mobile, 3 colonnes au-delà ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Recovery */}
         <section
           className={`relative overflow-hidden rounded-[var(--radius-lg)] border bg-gradient-to-br ${recoveryBg[color]} p-5`}
@@ -211,9 +211,9 @@ export default async function Home() {
           watch={snap.watch}
         />
 
-        {/* Sommeil — pleine largeur mobile, 1 col desktop */}
+        {/* Sommeil */}
         <section
-          className="col-span-2 sm:col-span-1 rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
+          className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
           style={{ boxShadow: "var(--shadow-ambient)" }}
         >
           <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] mb-1 font-normal">
@@ -466,7 +466,7 @@ function SleepTiming({ watch }: { watch: DashboardSnapshot["watch"] }) {
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-sm">
       {bedtime && (
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <MiniMetric
             label="Coucher → lever"
             value={wake ? `${bedtime} → ${wake}` : bedtime}
@@ -528,13 +528,15 @@ function MiniMetric({
   }
 
   return (
-    <div>
-      <div className="text-xs text-[var(--color-body)]">{label}</div>
-      <div className="font-normal tabular-nums text-[var(--color-heading)] dark:text-white">{value}</div>
-      <div className="flex items-center gap-1">
-        {sub && <span className="text-[10px] text-[var(--color-body)]">{sub}</span>}
+    <div className="min-w-0">
+      <div className="text-xs text-[var(--color-body)] whitespace-nowrap">{label}</div>
+      <div className="text-lg sm:text-base font-normal tabular-nums text-[var(--color-heading)] dark:text-white whitespace-nowrap">
+        {value}
+      </div>
+      <div className="flex items-center gap-1 whitespace-nowrap">
+        {sub && <span className="text-[11px] sm:text-[10px] text-[var(--color-body)]">{sub}</span>}
         {deltaStr && (
-          <span className={`text-[10px] tabular-nums font-normal ${deltaColor}`}>
+          <span className={`text-[11px] sm:text-[10px] tabular-nums font-normal ${deltaColor}`}>
             {deltaStr}
           </span>
         )}

@@ -184,7 +184,7 @@ export function AiAnalysis() {
         )}
         <button
           onClick={() => setOpen((o) => !o)}
-          className="w-14 h-14 rounded-full bg-[var(--color-brand-purple)] text-white flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+          className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[var(--color-brand-purple)] text-white flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
           style={{
             boxShadow: "rgba(50,50,93,0.25) 0px 13px 27px -5px, rgba(0,0,0,0.1) 0px 8px 16px -8px",
           }}
