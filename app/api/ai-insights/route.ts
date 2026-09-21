@@ -8,9 +8,10 @@ import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
-import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
+import { getDashboardSnapshot } from "@/lib/dashboard-data";
+import { INDICATOR_RULES, dashboardIndicators } from "@/lib/ai-indicators";
 import {
   DEFAULT_SLOTS,
   DEFAULT_PROFILES,
@@ -94,10 +95,11 @@ FORMAT :
 
 3. SUGGESTION WORKOUT : l'utilisateur décide de son plan, tu adaptes son exécution.
    - Si remainingPlanned n'est PAS vide → type = la prochaine activité de remainingPlanned.
-     Tu ajustes intensity et duration selon recovery, HRV, sommeil et strain
+     Tu ajustes intensity et duration selon indicators (récupération, équilibre de charge, forme, mesures de la nuit)
      (ex : session plus courte, rythme tranquille). Un plan de 2 séances le même jour est un choix de l'utilisateur, pas une erreur.
+   - indicators.loadBalance.level "rising" (ratio 1,3-1,5) → intensité modérée ; "spike" (≥ 1,5) → séance courte et facile.
    - Tu ne remplaces une activité planifiée par Repos QUE sur un signal d'alerte :
-     recovery < 5, SpO2 < 94 %, ou respiration > moyenne 7j + 1,5/min.
+     indicators.recovery.score < 5, SpO2 < 95 %, ou respiration "au-dessus de la plage" (indicators.bodyMetrics).
      Dans ce cas, la reason le dit explicitement : "Plan : <activité>. Déconseillé aujourd'hui car <signal>."
    - Si hasPlannedActivities=true ET remainingPlanned vide → tout est fait → suggère Repos/Mobilité.
      Si strain ≥ 6 ET tout est fait → repos/récupération active obligatoire.
@@ -114,9 +116,7 @@ RÈGLES :
 - Workout suggestion et tendances doivent être cohérentes entre elles.
 - Sauna = récupération (pas un entraînement intense), effet positif sur recovery.
 ${N ? "- Meal slots : utilise mealSlots, remainingMacros et dayProfile pour des recos nutrition concrètes (quel slot, quoi manger, combien de P/G/L)." : ""}
-- Respi élevée ou SpO2 < 95% → baisser intensité workout, signaler en tendance recovery.
-- Charge d'entraînement : strain.score (0-10) et strain.cardioLoad comparé à strain.baselineAvg (moyenne 30j des jours actifs) sont la référence. NE recalcule JAMAIS de moyenne de charge toi-même depuis dailyMetrics (les jours de repos à 0 fausseraient la moyenne).
-- FC repos du jour : Apple l'actualise pendant la journée et elle monte après une séance. Un jour où une séance a déjà eu lieu, ne la traite pas comme un signal de fatigue à elle seule.
+${INDICATOR_RULES}
 
 JSON uniquement, sans markdown :
 {
@@ -172,13 +172,13 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     await Promise.all([
       supabase
         .from("daily_metrics")
-        .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
+        .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
         .gte("date", sevenDaysAgo)
         .lte("date", today)
         .order("date", { ascending: true }),
       supabase
         .from("workouts")
-        .select("started_at, type, duration_min, kcal")
+        .select("started_at, type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_recovery")
         .gte("started_at", localMidnightUtcIso(sevenDaysAgo, tz))
         .order("started_at", { ascending: true }),
       supabase
@@ -280,18 +280,10 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
   const sleepTargetM = sleepTarget % 60;
   const sleepTargetLabel = sleepTargetM > 0 ? `${sleepTargetH}h${sleepTargetM.toString().padStart(2, "0")}` : `${sleepTargetH}h`;
 
-  // Strain du jour — baseline sur 30j
-  const todayMetrics = (metricsRes.data ?? []).find((m) => m.date === today);
-  const { data: past30Data } = await supabase
-    .from("daily_metrics")
-    .select("active_kcal, cardio_load")
-    .gte("date", thirtyDaysAgo)
-    .lt("date", today);
-  const activeKcalToday = todayMetrics?.active_kcal ?? 0;
-  const strain = computeDayStrain(
-    { active_kcal: activeKcalToday, cardio_load: todayMetrics?.cardio_load ?? null },
-    past30Data ?? [],
-  );
+  // Indicateurs de l'accueil (même calcul que l'écran, strain compris)
+  const snap = await getDashboardSnapshot();
+  const strain = snap.strain;
+  const activeKcalToday = strain.activeKcalToday;
 
   // Sommeil lisible pour chaque jour
   const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => {
@@ -423,13 +415,20 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
       // Moyenne 30j des jours actifs, dans l'unité du mode (charge ou kcal)
       baselineAvg: strain.baselineAvg,
     },
+    indicators: dashboardIndicators(snap, workoutsRes.data ?? []),
     objective,
     isTrainingDay,
     currentHour,
     dailyMetrics: metricsWithReadableSleep,
     workoutsByDayAndType,
+    // Sans la courbe de récupération brute (déjà résumée dans indicators.todayWorkouts)
     workouts: (workoutsRes.data ?? []).map((w) => ({
-      ...w,
+      started_at: w.started_at,
+      type: w.type,
+      duration_min: w.duration_min,
+      kcal: w.kcal,
+      avg_hr_bpm: w.avg_hr_bpm,
+      cardio_load: w.cardio_load != null ? Math.round(Number(w.cardio_load)) : null,
       typeNormalized: normalizeWorkoutType(w.type ?? ""),
     })),
     bodyComposition: bodyRes.data ?? [],

@@ -56,14 +56,8 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
     drop1: mean(same.map((o) => heartRateRecoveryDrop(o.hr_recovery as RecoveryPoint[] | null)?.drop1 ?? null)),
   };
   const hrr = heartRateRecoveryDrop(w.hr_recovery as RecoveryPoint[] | null);
-  const hrrLevel =
-    hrr?.drop1 == null
-      ? null
-      : hrr.drop1 >= 20
-        ? { label: "bonne", color: "#15be53" }
-        : hrr.drop1 >= 12
-          ? { label: "correcte", color: "#eab308" }
-          : { label: "faible", color: "#ea2261" };
+  // Baisse de FC signée : une FC qui remonte après l'arrêt s'affiche en "+"
+  const fmtDrop = (v: number) => (v >= 0 ? `−${Math.round(v)}` : `+${Math.round(-v)}`);
   const fmtKm = (v: number) => (v < 10 ? v.toFixed(2) : v.toFixed(1)).replace(".", ",");
   const label = workoutDisplayLabel(w.type ?? "Séance");
   const start = new Date(w.started_at);
@@ -200,25 +194,20 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
               { label: "FC à l'arrêt", value: `${hrr.endHr} bpm` },
               {
                 label: "Après 1 min",
-                value: hrr.drop1 != null ? `−${hrr.drop1} bpm` : "—",
-                sub: (
-                  <>
-                    {hrrLevel && <span style={{ color: hrrLevel.color }}>{hrrLevel.label}</span>}
-                    {ref.drop1 != null && (
-                      <span className="text-[var(--color-body)]/70">
-                        {hrrLevel ? " · " : ""}moy. {label} −{Math.round(ref.drop1)}
-                      </span>
-                    )}
-                  </>
-                ),
+                value: hrr.drop1 != null ? `${fmtDrop(hrr.drop1)} bpm` : "—",
+                sub:
+                  ref.drop1 != null ? (
+                    <span className="text-[var(--color-body)]/70">moy. {label} {fmtDrop(ref.drop1)} bpm</span>
+                  ) : null,
               },
-              { label: "Après 2 min", value: hrr.drop2 != null ? `−${hrr.drop2} bpm` : "—" },
+              { label: "Après 2 min", value: hrr.drop2 != null ? `${fmtDrop(hrr.drop2)} bpm` : "—" },
             ]}
           />
           <p className="text-[11px] text-[var(--color-body)] mt-4 leading-relaxed">
-            Vitesse à laquelle ton cœur redescend quand tu t&apos;arrêtes : plus la baisse est forte, meilleure est ta
-            forme cardio. En 1 minute, moins de 12 bpm est faible, 12 à 20 correct, plus de 20 bon. Elle dépend aussi de la
-            façon dont tu termines : un arrêt après un effort calme baisse moins.
+            Vitesse à laquelle ton cœur redescend après la fin de la séance : plus la baisse est forte, meilleure est ta
+            forme cardio. Après un effort soutenu suivi d&apos;un arrêt complet, on attend plus de 12 bpm en 1 minute (plus
+            de 20 est bon). Si tu bouges encore après avoir arrêté la montre (sortie de l&apos;eau, marche), la baisse est
+            plus faible : compare-la surtout à tes séances du même sport.
           </p>
         </DetailCard>
       )}

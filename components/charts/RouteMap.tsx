@@ -41,9 +41,12 @@ export function RouteMap({ route }: { route: RoutePoint[] }) {
         if (cancelled || !ref.current) return;
         // scrollWheelZoom désactivé : la molette fait défiler la page, pas la carte
         map = L.map(ref.current, { scrollWheelZoom: false, attributionControl: true });
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-          maxZoom: 20,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        // Tuiles OpenStreetMap (sans clé), passées en gris pour que le tracé bleu
+        // reste lisible, y compris sur la mer
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          className: "route-map-tiles",
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         }).addTo(map);
 
         const latlngs = route.map(([lat, lon]) => L.latLng(lat, lon));
@@ -74,6 +77,7 @@ export function RouteMap({ route }: { route: RoutePoint[] }) {
 
   return (
     <div>
+      <style>{`.route-map-tiles { filter: grayscale(1) contrast(0.9) brightness(1.05); }`}</style>
       <div ref={ref} className="h-72 sm:h-80 w-full rounded-[var(--radius-md)] overflow-hidden z-0" role="img" aria-label="Tracé GPS de la séance" />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[11px] text-[var(--color-body)]">
         <span>Vitesse (km/h)</span>

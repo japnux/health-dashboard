@@ -9,7 +9,8 @@ import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
-import { computeDayStrain } from "@/lib/strain-score";
+import { getDashboardSnapshot } from "@/lib/dashboard-data";
+import { INDICATOR_RULES, dashboardIndicators } from "@/lib/ai-indicators";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import {
@@ -51,11 +52,10 @@ Règles :
 - Si une tendance est préoccupante, signale-la clairement dans le champ alert.
 - Utilise les unités du dashboard : HRV en ms, FC en bpm, sommeil TOUJOURS en XhYY (ex: 6h44, 7h30, jamais en minutes brutes), poids en kg.
 ${NUTRITION_RULES}
-- Le strain score (0-10) et strain.cardioLoad comparé à strain.baselineAvg (moyenne 30j des jours actifs) sont la référence de charge. Ne recalcule pas de moyenne toi-même.
-- Le strain score (0-10) indique la charge du jour. Tiens-en compte.
+${INDICATOR_RULES}
 - Activités prévues : compare plannedActivities avec workouts réalisés. completedToday = fait, remainingPlanned = à venir.
 
-- RESPIRATION & SpO2 : les daily_metrics incluent respiratory_rate (/min) et spo2_pct (%). Une fréq. respi élevée par rapport à la moyenne des jours précédents indique du stress, une congestion ou une récupération incomplète. Une SpO2 < 95% est inhabituelle. Intègre ces signaux dans ton analyse recovery/sommeil. Corrèle avec HRV et FC repos (respi haute + HRV basse = stress sympathique). Si SpO2 < 93%, signale-le dans l'alerte.
+- RESPIRATION & SpO2 : une respiration au-dessus de ta plage habituelle (indicators.bodyMetrics) peut signaler stress, congestion ou récupération incomplète. Corrèle avec HRV et FC de sommeil (respi haute + HRV basse = stress sympathique). Pour l'historique, dailyMetrics donne les valeurs jour par jour.
 - BIOLOGIE : si bloodTests est présent et non vide, intègre les marqueurs hors plage optimale dans ton analyse. Marqueurs critiques à surveiller : ApoB, HbA1c, Vitamine D, B12, Ferritine, hsCRP, Homocystéine, Testostérone, DHEA. Si le bilan est ancien (>90j), mentionne qu'un nouveau bilan serait utile. Relie les carences aux symptômes observés (ex: ferritine basse + fatigue, B12 basse + recovery).
 
 Emojis : commence chaque insight et recommandation par un emoji pertinent pour le sujet :
@@ -96,6 +96,7 @@ Règles :
 - Pas de généralités médicales ni de disclaimers.
 - Utilise les unités : HRV en ms, FC en bpm, sommeil en XhYY, poids en kg.
 ${NUTRITION_ENABLED ? "- Si la question porte sur la nutrition, utilise les targets et les données de meal slots fournis." : "- Le suivi nutrition est désactivé : aucune donnée de repas n'est fournie. Si on te pose une question dessus, dis-le simplement."}
+${INDICATOR_RULES}
 - Sois concis : 3-5 phrases max sauf si la question demande plus de détail.
 - Ne réponds PAS en JSON. Réponds en texte normal.`;
 
@@ -226,14 +227,14 @@ async function fetchHealthData(days: number) {
       supabase
         .from("daily_metrics")
         .select(
-          "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score",
+          "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score",
         )
         .gte("date", startDate)
         .lte("date", today)
         .order("date", { ascending: true }),
       supabase
         .from("workouts")
-        .select("started_at, type, duration_min, kcal")
+        .select("started_at, type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_recovery")
         .gte("started_at", localMidnightUtcIso(startDate, tz))
         .order("started_at", { ascending: true }),
       supabase
@@ -334,20 +335,10 @@ async function fetchHealthData(days: number) {
   const computedLipides = baseTargets.lipides_g;
   const computedGlucides = baseTargets.glucides_g;
 
-  // Strain
-  const todayMetrics = (metricsRes.data ?? []).find((m) => m.date === today);
-  const activeKcalToday = todayMetrics?.active_kcal ?? 0;
-  // Référence 30 jours, comme l'accueil (avant : la fenêtre d'analyse, 1 ou
-  // 7 jours, qui faisait retomber sur une baseline kcal par défaut)
-  const { data: strainHistory } = await supabase
-    .from("daily_metrics")
-    .select("active_kcal, cardio_load")
-    .gte("date", isoDaysAgo(30, tz))
-    .lt("date", today);
-  const strain = computeDayStrain(
-    { active_kcal: activeKcalToday, cardio_load: todayMetrics?.cardio_load ?? null },
-    strainHistory ?? [],
-  );
+  // Indicateurs de l'accueil (même calcul que l'écran, strain compris)
+  const snap = await getDashboardSnapshot();
+  const strain = snap.strain;
+  const activeKcalToday = strain.activeKcalToday;
 
   // Targets ajustés temps réel
   const adjusted = computeAdjustedTargets({
@@ -464,10 +455,17 @@ async function fetchHealthData(days: number) {
           estimatedRemainingKcal,
         }
       : {}),
+    indicators: dashboardIndicators(snap, workoutsRes.data ?? []),
     period: { start: startDate, end: today, days },
     dailyMetrics: metricsWithReadableSleep,
+    // Sans la courbe de récupération brute (résumée dans indicators.todayWorkouts)
     workouts: allWorkouts.map((w) => ({
-      ...w,
+      started_at: w.started_at,
+      type: w.type,
+      duration_min: w.duration_min,
+      kcal: w.kcal,
+      avg_hr_bpm: w.avg_hr_bpm,
+      cardio_load: w.cardio_load != null ? Math.round(Number(w.cardio_load)) : null,
       typeNormalized: normalizeWorkoutType(w.type ?? ""),
     })),
     bodyComposition: bodyRes.data ?? [],
