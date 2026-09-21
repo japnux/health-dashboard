@@ -10,6 +10,7 @@ import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
+import { NUTRITION_ENABLED } from "@/lib/features";
 import {
   DEFAULT_SLOTS,
   DEFAULT_PROFILES,
@@ -33,6 +34,12 @@ async function isAuthenticated(): Promise<boolean> {
 
 // ─── Prompts ────────────────────────────────────────────────────────────
 
+// Partie nutrition masquée : l'IA ne parle ni de repas ni de macros.
+const NUTRITION_RULES = NUTRITION_ENABLED
+  ? `- Nutrition : utilise les "targets" fournis dans les données (calories, protéines, glucides, lipides). Ne hardcode pas de valeurs.
+- MEAL SLOTS : la journée est découpée en créneaux repas. "mealSlots" contient l'état de chaque slot. "remainingMacros" = macros restantes à consommer. Utilise ces données pour des recos nutrition concrètes.`
+  : `- Nutrition : l'utilisateur ne suit pas son alimentation. AUCUN insight ni recommandation sur les repas, calories ou macros.`;
+
 const WEEKLY_SYSTEM_PROMPT = `Tu es un coach santé et performance personnel. Tu analyses les données biologiques et d'activité de l'utilisateur pour donner des insights concrets et actionnables.
 
 Règles :
@@ -42,8 +49,8 @@ Règles :
 - Pas de généralités médicales ni de disclaimers.
 - Si une tendance est préoccupante, signale-la clairement dans le champ alert.
 - Utilise les unités du dashboard : HRV en ms, FC en bpm, sommeil TOUJOURS en XhYY (ex: 6h44, 7h30, jamais en minutes brutes), poids en kg.
-- Nutrition : utilise les "targets" fournis dans les données (calories, protéines, glucides, lipides). Ne hardcode pas de valeurs.
-- MEAL SLOTS : la journée est découpée en créneaux repas. "mealSlots" contient l'état de chaque slot. "remainingMacros" = macros restantes à consommer. Utilise ces données pour des recos nutrition concrètes.
+${NUTRITION_RULES}
+- Le strain score (0-10) et strain.cardioLoad comparé à strain.baselineAvg (moyenne 30j des jours actifs) sont la référence de charge. Ne recalcule pas de moyenne toi-même.
 - Le strain score (0-10) indique la charge du jour. Tiens-en compte.
 - Activités prévues : compare plannedActivities avec workouts réalisés. completedToday = fait, remainingPlanned = à venir.
 
@@ -51,13 +58,13 @@ Règles :
 - BIOLOGIE : si bloodTests est présent et non vide, intègre les marqueurs hors plage optimale dans ton analyse. Marqueurs critiques à surveiller : ApoB, HbA1c, Vitamine D, B12, Ferritine, hsCRP, Homocystéine, Testostérone, DHEA. Si le bilan est ancien (>90j), mentionne qu'un nouveau bilan serait utile. Relie les carences aux symptômes observés (ex: ferritine basse + fatigue, B12 basse + recovery).
 
 Emojis : commence chaque insight et recommandation par un emoji pertinent pour le sujet :
-😴 sommeil, 💚 HRV/recovery, ❤️ FC repos, 🏄 surf, 🏋️ muscu, 🏃 activité/pas, 🍽️ nutrition/calories, 🥩 protéines, 🧈 lipides, ⚖️ poids/composition, 🫁 respiration/SpO2, 🔥 strain/charge, 📊 tendance générale, ⚡ énergie, 🧠 mental/stress, 🧬 biologie/sang, 💊 vitamines/minéraux, 🥵 sauna.
+😴 sommeil, 💚 HRV/recovery, ❤️ FC repos, 🏄 surf, 🏋️ muscu, 🏃 activité/pas,${NUTRITION_ENABLED ? " 🍽️ nutrition/calories, 🥩 protéines, 🧈 lipides," : ""} ⚖️ poids/composition, 🫁 respiration/SpO2, 🔥 strain/charge, 📊 tendance générale, ⚡ énergie, 🧠 mental/stress, 🧬 biologie/sang, 💊 vitamines/minéraux, 🥵 sauna.
 
 Tu dois répondre UNIQUEMENT en JSON valide, sans markdown ni backticks, avec cette structure exacte :
 {
   "summary": "Résumé en 1-2 phrases de l'état général",
   "insights": ["😴 insight sommeil", "💚 insight HRV", ...],
-  "recommendations": ["🏄 reco 1", "🍽️ reco 2"],
+  "recommendations": ["🏄 reco 1", "😴 reco 2"],
   "alert": "message d'alerte si tendance préoccupante, sinon null"
 }`;
 
@@ -87,7 +94,7 @@ Règles :
 - Utilise les données fournies pour répondre de manière spécifique et personnalisée.
 - Pas de généralités médicales ni de disclaimers.
 - Utilise les unités : HRV en ms, FC en bpm, sommeil en XhYY, poids en kg.
-- Si la question porte sur la nutrition, utilise les targets et les données de meal slots fournis.
+${NUTRITION_ENABLED ? "- Si la question porte sur la nutrition, utilise les targets et les données de meal slots fournis." : "- Le suivi nutrition est désactivé : aucune donnée de repas n'est fournie. Si on te pose une question dessus, dis-le simplement."}
 - Sois concis : 3-5 phrases max sauf si la question demande plus de détail.
 - Ne réponds PAS en JSON. Réponds en texte normal.`;
 
@@ -416,24 +423,37 @@ async function fetchHealthData(days: number) {
     today,
     currentHour,
     targets: {
-      calories: baseTargets.calories,
-      adjustedCalories: adjustedCalTarget,
-      proteines_g: proteinTarget,
-      glucides_g: computedGlucides,
-      adjustedGlucides_g: adjustedGlu,
-      lipides_g: computedLipides,
       sleepMin: (config.sleep_target_min ?? 450) as number,
       steps: (config.steps_target ?? 10000) as number,
     },
     strain: {
       score: strain.score,
       level: strain.label,
+      // "hr" : charge cardio (FC) ; "kcal" : repli sur les kcal actives
+      mode: strain.mode,
+      cardioLoad: strain.cardioLoad,
       activeKcalToday: strain.activeKcalToday,
+      // Moyenne 30j des jours actifs, dans l'unité du mode
       baselineAvg: strain.baselineAvg,
     },
-    dayProfile,
-    mealSlots: mealSlotsForAi,
-    remainingMacros,
+    // Données nutrition envoyées seulement si la partie est active
+    ...(NUTRITION_ENABLED
+      ? {
+          nutritionTargets: {
+            calories: baseTargets.calories,
+            adjustedCalories: adjustedCalTarget,
+            proteines_g: proteinTarget,
+            glucides_g: computedGlucides,
+            adjustedGlucides_g: adjustedGlu,
+            lipides_g: computedLipides,
+          },
+          dayProfile,
+          mealSlots: mealSlotsForAi,
+          remainingMacros,
+          nutritionByDay: Object.fromEntries(nutritionByDay),
+          estimatedRemainingKcal,
+        }
+      : {}),
     period: { start: startDate, end: today, days },
     dailyMetrics: metricsWithReadableSleep,
     workouts: allWorkouts.map((w) => ({
@@ -441,11 +461,9 @@ async function fetchHealthData(days: number) {
       typeNormalized: normalizeWorkoutType(w.type ?? ""),
     })),
     bodyComposition: bodyRes.data ?? [],
-    nutritionByDay: Object.fromEntries(nutritionByDay),
     plannedActivities: planned,
     completedToday,
     remainingPlanned,
-    estimatedRemainingKcal,
     journal: journalRes.data ?? [],
     bloodTests: (bloodTestsRes.data ?? []).map((t: Record<string, unknown>) => ({
       test_date: t.test_date,

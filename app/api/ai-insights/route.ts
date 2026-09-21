@@ -9,6 +9,7 @@ import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
+import { NUTRITION_ENABLED } from "@/lib/features";
 import {
   DEFAULT_SLOTS,
   DEFAULT_PROFILES,
@@ -62,6 +63,13 @@ export type AiInsightsContent = {
   generatedAt: string;
 };
 
+// Partie nutrition masquée : l'IA ne parle ni de repas ni de macros.
+const N = NUTRITION_ENABLED;
+const CATEGORIES_TRENDS = N ? `"sommeil"|"récupération"|"activité"|"nutrition"` : `"sommeil"|"récupération"|"activité"`;
+const CATEGORIES_RECOS = N
+  ? `"sommeil"|"récupération"|"activité"|"nutrition"|"général"`
+  : `"sommeil"|"récupération"|"activité"|"général"`;
+
 const SYSTEM_PROMPT = `Tu es un coach santé et performance. Brief concis basé sur les données.
 
 INTERDICTIONS ABSOLUES (violation = réponse rejetée) :
@@ -69,7 +77,7 @@ INTERDICTIONS ABSOLUES (violation = réponse rejetée) :
 2. JAMAIS écrire "après jour off" ou "après repos" si un workout existe la veille (course, natation, surf = vrais entraînements).
 3. JAMAIS inventer un objectif. Le champ "objective" des données est la vérité. Si objective="recomposition", écris "recomposition", pas "lean bulk" ni autre chose.
 4. JAMAIS écrire "sous objectif" sans vérifier : compare valeur RÉELLE vs target FOURNI. Ex: 495min de sommeil > 450min target = AU-DESSUS.
-5. Reco sur un repas/aliment/macros → category "nutrition", JAMAIS "sommeil".
+5. ${N ? `Reco sur un repas/aliment/macros → category "nutrition", JAMAIS "sommeil".` : `JAMAIS de tendance ni de recommandation sur l'alimentation, les repas, les calories ou les macros : l'utilisateur ne suit pas sa nutrition.`}
 6. Nombre de séances : TOUJOURS utiliser workoutsByDayAndType (pré-calculé, source de vérité). NE JAMAIS compter soi-même depuis le tableau workouts. NE PAS confondre plannedActivities.count (=objectif) avec les séances réelles.
 7. Le title DOIT être cohérent avec les bullets. AVANT d'écrire le title, VÉRIFIE chaque bullet :
    - Valeur ≥ target ou norme → NE PAS écrire "faible", "insuffisant", "bas" pour cette métrique.
@@ -77,11 +85,11 @@ INTERDICTIONS ABSOLUES (violation = réponse rejetée) :
    Ex: REM 32% > norme 20-25% = REM élevé/bon, PAS "REM faible". Deep 5% < norme 15-20% = deep faible = OK.
 
 FORMAT :
-1. TENDANCES (exactement 3) : observations sur données MESURÉES (sommeil, HRV, strain, nutrition). Pas de tendance sur le planning.
-   { title (max 4 mots), emoji, category: "sommeil"|"récupération"|"activité"|"nutrition", bullets (2 max, 10 mots max), comparison: "↑ vs moy 7j"|null, confidence: "haute"(5j+)|"moyenne"(3-4j)|"basse", type: "positive"|"warning"|"info" }
+1. TENDANCES (exactement 3) : observations sur données MESURÉES (sommeil, HRV, strain${N ? ", nutrition" : ""}). Pas de tendance sur le planning.
+   { title (max 4 mots), emoji, category: ${CATEGORIES_TRENDS}, bullets (2 max, 10 mots max), comparison: "↑ vs moy 7j"|null, confidence: "haute"(5j+)|"moyenne"(3-4j)|"basse", type: "positive"|"warning"|"info" }
 
 2. RECOMMANDATIONS (exactement 3) : 1 phrase max 15 mots, priorité P1/P2/P3.
-   { emoji, text, priority, category: "sommeil"|"récupération"|"activité"|"nutrition"|"général" }
+   { emoji, text, priority, category: ${CATEGORIES_RECOS} }
 
 3. SUGGESTION WORKOUT : l'utilisateur décide de son plan, tu adaptes son exécution.
    - Si remainingPlanned n'est PAS vide → type = la prochaine activité de remainingPlanned.
@@ -104,7 +112,7 @@ RÈGLES :
 - Ne pas répéter dans les recos ce qui est dans les tendances.
 - Workout suggestion et tendances doivent être cohérentes entre elles.
 - Sauna = récupération (pas un entraînement intense), effet positif sur recovery.
-- Meal slots : utilise mealSlots, remainingMacros et dayProfile pour des recos nutrition concrètes (quel slot, quoi manger, combien de P/G/L).
+${N ? "- Meal slots : utilise mealSlots, remainingMacros et dayProfile pour des recos nutrition concrètes (quel slot, quoi manger, combien de P/G/L)." : ""}
 - Respi élevée ou SpO2 < 95% → baisser intensité workout, signaler en tendance recovery.
 - Charge d'entraînement : strain.score (0-10) et strain.cardioLoad comparé à strain.baselineAvg (moyenne 30j des jours actifs) sont la référence. NE recalcule JAMAIS de moyenne de charge toi-même depuis dailyMetrics (les jours de repos à 0 fausseraient la moyenne).
 - FC repos du jour : Apple l'actualise pendant la journée et elle monte après une séance. Un jour où une séance a déjà eu lieu, ne la traite pas comme un signal de fatigue à elle seule.
@@ -376,19 +384,32 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     workoutsByDayAndType[date][normalized] = (workoutsByDayAndType[date][normalized] ?? 0) + 1;
   }
 
+  // Données nutrition envoyées à l'IA seulement si la partie est active
+  const nutritionContext = NUTRITION_ENABLED
+    ? {
+        nutritionTargets: {
+          calories: baseTargets.calories,
+          adjustedCalories: adjustedCalTarget,
+          proteines_g: proteinTarget,
+          glucides_g: computedGlucides,
+          adjustedGlucides_g: adjustedGlu,
+          lipides_g: computedLipides,
+        },
+        dayProfile,
+        mealSlots: mealSlotsForAi,
+        remainingMacros,
+        nutritionByDay: Object.fromEntries(nutritionByDay),
+      }
+    : {};
+
   return {
     today,
     targets: {
-      calories: baseTargets.calories,
-      adjustedCalories: adjustedCalTarget,
-      proteines_g: proteinTarget,
-      glucides_g: computedGlucides,
-      adjustedGlucides_g: adjustedGlu,
-      lipides_g: computedLipides,
       sleepMin: sleepTarget,
       sleepLabel: sleepTargetLabel,
       steps: stepsTarget,
     },
+    ...nutritionContext,
     strain: {
       score: strain.score,
       level: strain.label,
@@ -401,9 +422,6 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     },
     objective,
     isTrainingDay,
-    dayProfile,
-    mealSlots: mealSlotsForAi,
-    remainingMacros,
     currentHour,
     dailyMetrics: metricsWithReadableSleep,
     workoutsByDayAndType,
@@ -412,7 +430,6 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
       typeNormalized: normalizeWorkoutType(w.type ?? ""),
     })),
     bodyComposition: bodyRes.data ?? [],
-    nutritionByDay: Object.fromEntries(nutritionByDay),
     plannedActivities: plannedRes.data ?? [],
     hasPlannedActivities: (plannedRes.data ?? []).length > 0,
     completedToday,

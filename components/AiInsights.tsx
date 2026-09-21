@@ -1,5 +1,6 @@
 "use client";
 
+import { NUTRITION_ENABLED } from "@/lib/features";
 import { useEffect, useState } from "react";
 import { MusculationBookButton } from "./MusculationBookButton";
 
@@ -159,7 +160,11 @@ export function AiTrends() {
   if (!data || data.trends.length === 0) return null;
 
   const recos = data.recommendations ?? [];
-  const categories = ["récupération", "sommeil", "activité", "nutrition", "général"] as const;
+  // Partie nutrition masquée : on n'affiche pas cette catégorie, même si
+  // une ancienne réponse en cache en contient encore.
+  const categories = (["récupération", "sommeil", "activité", "nutrition", "général"] as const).filter(
+    (c) => NUTRITION_ENABLED || c !== "nutrition",
+  );
 
   const grouped = categories
     .map((cat) => ({
