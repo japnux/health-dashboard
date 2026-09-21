@@ -17,6 +17,20 @@ function extractHour(dateStr: string): number {
   return m ? parseInt(m[1], 10) : -1;
 }
 
+// Date de la nuit pour les mesures nocturnes : Health Auto Export date la
+// température du poignet et les troubles respiratoires au soir du coucher
+// ("2026-09-20 23:00" pour la nuit du 20 au 21). Le sommeil et la HRV de
+// cette nuit sont rangés au jour du réveil : un échantillon daté de l'après-midi
+// ou du soir est donc reporté au lendemain.
+function nightDate(dateStr: string): string {
+  const date = extractDate(dateStr);
+  const h = extractHour(dateStr);
+  if (h < 12) return date;
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // "2026-09-19 23:50:38 +0200" → ISO 8601 ("2026-09-19T23:50:38+02:00").
 // Retourne null si la date est absente ou illisible.
 function toIso(dateStr: unknown): string | null {
@@ -294,13 +308,13 @@ export async function POST(request: Request) {
           if (!isNaN(val) && val > 0) {
             const units = String(metric.units ?? "degC").toLowerCase();
             const celsius = units.includes("f") ? (val - 32) / 1.8 : val;
-            getDay(date).wrist_temp_c = r2(celsius);
+            getDay(nightDate(dateStr)).wrist_temp_c = r2(celsius);
           }
           break;
         }
         case "breathing": {
           const val = Number(point.qty);
-          if (!isNaN(val) && val >= 0) getDay(date).breathing_disturbances = r1(val);
+          if (!isNaN(val) && val >= 0) getDay(nightDate(dateStr)).breathing_disturbances = r1(val);
           break;
         }
         case "vo2max": {
@@ -434,18 +448,32 @@ export async function POST(request: Request) {
     const respiValues = (past ?? []).map((r) => r.respiratory_rate).filter((v): v is number => v != null);
     const respiAvg = respiValues.length > 0 ? respiValues.reduce((a, b) => a + b, 0) / respiValues.length : null;
 
+    // Le score se calcule sur la journée complète : un envoi peut ne contenir
+    // qu'une partie des données d'un jour (ex. seulement la température de la
+    // nuit). On complète donc avec ce qui est déjà en base, sinon le score
+    // serait recalculé sur des données partielles et écraserait le bon.
+    const { data: existing, error: existingError } = await supabase
+      .from("daily_metrics")
+      .select("hrv_ms, resting_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct")
+      .eq("date", date)
+      .maybeSingle();
+    if (existingError) {
+      results.push(`daily_metrics ${date}: erreur lecture existant ${existingError.message}`);
+      continue;
+    }
+
     const prevDayHr = (past ?? []).find((r) => r.resting_hr_bpm != null)?.resting_hr_bpm ?? null;
-    const effectiveHr = day.resting_hr_bpm ?? prevDayHr;
+    const effectiveHr = day.resting_hr_bpm ?? existing?.resting_hr_bpm ?? prevDayHr;
 
     const recovery = computeRecoveryScore({
-      hrvMs: day.hrv_ms,
+      hrvMs: day.hrv_ms ?? existing?.hrv_ms ?? null,
       hrv7dAvgMs: hrvAvg,
       restingHrBpm: effectiveHr,
       restingHr7dAvgBpm: hrAvg,
-      sleepTotalMin: day.sleep_total_min,
-      sleepRemPct: day.sleep_rem_pct,
-      sleepDeepPct: day.sleep_deep_pct,
-      respiratoryRate: day.respiratory_rate,
+      sleepTotalMin: day.sleep_total_min ?? existing?.sleep_total_min ?? null,
+      sleepRemPct: day.sleep_rem_pct ?? existing?.sleep_rem_pct ?? null,
+      sleepDeepPct: day.sleep_deep_pct ?? existing?.sleep_deep_pct ?? null,
+      respiratoryRate: day.respiratory_rate ?? existing?.respiratory_rate ?? null,
       respiratoryRate7dAvg: respiAvg,
     });
 
