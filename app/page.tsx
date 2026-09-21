@@ -1,4 +1,4 @@
-import { getDashboardSnapshot } from "@/lib/dashboard-data";
+import { getDashboardSnapshot, type DashboardSnapshot } from "@/lib/dashboard-data";
 import { formatFrLong } from "@/lib/dates";
 import { recoveryColor } from "@/lib/recovery-score";
 import { NutritionTracker } from "@/components/NutritionTracker";
@@ -328,6 +328,8 @@ export default async function Home() {
         </div>
       </div>
 
+      {/* ── Nuit & cardio (Apple Watch) ── */}
+      <WatchSection watch={snap.watch} />
 
       {/* ── Body Composition ── */}
       {snap.lastBodyComposition &&
@@ -439,6 +441,104 @@ function MiniMetric({
             {deltaStr}
           </span>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Heure locale Paris "23:50" à partir d'un ISO
+function formatHourParis(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+// "2026-09-18" → "18/09"
+function shortDate(isoDate: string): string {
+  return `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}`;
+}
+
+function WatchSection({ watch }: { watch: DashboardSnapshot["watch"] }) {
+  const tiles: { icon: string; label: string; value: string; sub?: string }[] = [];
+
+  const bedtime = formatHourParis(watch.bedtime);
+  if (bedtime) {
+    const wake = formatHourParis(watch.wakeTime);
+    const spread = watch.bedtimeSpreadMin != null ? `±${watch.bedtimeSpreadMin} min/7j` : null;
+    tiles.push({
+      icon: "🛏️",
+      label: "Coucher",
+      value: bedtime,
+      sub: [wake ? `lever ${wake}` : null, spread].filter(Boolean).join(" · ") || undefined,
+    });
+  }
+  if (watch.wristTempDeltaC != null) {
+    const d = watch.wristTempDeltaC;
+    tiles.push({
+      icon: "🌡️",
+      label: "Temp. poignet",
+      value: `${d > 0 ? "+" : ""}${d.toFixed(2)} °C`,
+      sub: "vs médiane 60j",
+    });
+  }
+  if (watch.breathingDisturbances != null) {
+    tiles.push({
+      icon: "🫁",
+      label: "Troubles resp.",
+      value: `${watch.breathingDisturbances}`,
+      sub: "nuit dernière",
+    });
+  }
+  if (watch.walkingHrBpm != null) {
+    tiles.push({
+      icon: "🚶",
+      label: "FC marche",
+      value: `${watch.walkingHrBpm} bpm`,
+      sub: watch.walkingHr7dAvg != null ? `moy 7j ${watch.walkingHr7dAvg}` : undefined,
+    });
+  }
+  if (watch.hrMaxBpm != null && watch.hrMinBpm != null) {
+    tiles.push({
+      icon: "📈",
+      label: "FC max / min",
+      value: `${watch.hrMaxBpm} / ${watch.hrMinBpm}`,
+      sub: "aujourd'hui",
+    });
+  }
+  if (watch.vo2Max) {
+    tiles.push({
+      icon: "🫀",
+      label: "VO2 max",
+      value: `${watch.vo2Max.value}`,
+      sub: `mesure du ${shortDate(watch.vo2Max.date)}`,
+    });
+  }
+  if (watch.cardioRecoveryBpm) {
+    tiles.push({
+      icon: "💓",
+      label: "Récup cardio",
+      value: `${watch.cardioRecoveryBpm.value} bpm`,
+      sub: `1 min, ${shortDate(watch.cardioRecoveryBpm.date)}`,
+    });
+  }
+
+  // Rien à afficher tant que les colonnes ne sont pas alimentées
+  if (tiles.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal mb-2">
+        Nuit & cardio
+      </p>
+      <div className="grid grid-cols-3 gap-3">
+        {tiles.map((t) => (
+          <QuickStat key={t.label} icon={t.icon} label={t.label} value={t.value} sub={t.sub} />
+        ))}
       </div>
     </div>
   );

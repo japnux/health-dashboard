@@ -17,6 +17,18 @@ function extractHour(dateStr: string): number {
   return m ? parseInt(m[1], 10) : -1;
 }
 
+// "2026-09-19 23:50:38 +0200" → ISO 8601 ("2026-09-19T23:50:38+02:00").
+// Retourne null si la date est absente ou illisible.
+function toIso(dateStr: unknown): string | null {
+  if (typeof dateStr !== "string" || !dateStr) return null;
+  const normalized = dateStr
+    .trim()
+    .replace(" ", "T")
+    .replace(/ ?([+-]\d{2})(\d{2})$/, "$1:$2");
+  const d = new Date(normalized);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 const METRIC_KEYS: Record<string, string> = {
   heart_rate_variability: "hrv",
   heart_rate_variability_sdnn: "hrv",
@@ -40,6 +52,20 @@ const METRIC_KEYS: Record<string, string> = {
   blood_oxygen_saturation: "spo2",
   oxygen_saturation: "spo2",
   spo2: "spo2",
+  // Cardio journalier
+  walking_heart_rate_average: "walking_hr",
+  heart_rate: "heart_rate",
+  // Nuit. Noms Health Auto Export relevés dans du code tiers, à confirmer sur
+  // un vrai envoi : les alias couvrent les variantes plausibles.
+  apple_sleeping_wrist_temperature: "wrist_temp",
+  sleeping_wrist_temperature: "wrist_temp",
+  breathing_disturbances: "breathing",
+  apple_sleeping_breathing_disturbances: "breathing",
+  sleeping_breathing_disturbances: "breathing",
+  // Forme de fond
+  vo2_max: "vo2max",
+  cardio_recovery: "cardio_recovery",
+  heart_rate_recovery_one_minute: "cardio_recovery",
 };
 
 type DayBucket = {
@@ -58,6 +84,15 @@ type DayBucket = {
   steps: number | null;
   active_kcal: number | null;
   daylight_min: number | null;
+  sleep_start: string | null;
+  sleep_end: string | null;
+  walking_hr_avg_bpm: number | null;
+  hr_max_bpm: number | null;
+  hr_min_bpm: number | null;
+  wrist_temp_c: number | null;
+  breathing_disturbances: number | null;
+  vo2_max: number | null;
+  cardio_recovery_bpm: number | null;
 };
 
 type BodyCompBucket = {
@@ -83,6 +118,15 @@ function emptyDay(): DayBucket {
     steps: null,
     active_kcal: null,
     daylight_min: null,
+    sleep_start: null,
+    sleep_end: null,
+    walking_hr_avg_bpm: null,
+    hr_max_bpm: null,
+    hr_min_bpm: null,
+    wrist_temp_c: null,
+    breathing_disturbances: null,
+    vo2_max: null,
+    cardio_recovery_bpm: null,
   };
 }
 
@@ -220,7 +264,53 @@ export async function POST(request: Request) {
             if (awakeMin != null && day.sleep_total_min > 0) {
               day.sleep_awake_pct = r1((awakeMin / day.sleep_total_min) * 100);
             }
+
+            // Heures de coucher / lever pour la régularité du sommeil
+            day.sleep_start = toIso(p.sleepStart ?? p.inBedStart);
+            day.sleep_end = toIso(p.sleepEnd ?? p.inBedEnd);
           }
+          break;
+        }
+        case "walking_hr": {
+          const val = Number(point.qty);
+          if (!isNaN(val) && val > 0) getDay(date).walking_hr_avg_bpm = Math.round(val);
+          break;
+        }
+        case "heart_rate": {
+          // Points horaires { Avg, Max, Min } : on garde les extrêmes du jour
+          const max = Number(point.Max);
+          const min = Number(point.Min);
+          const day = getDay(date);
+          if (!isNaN(max) && max > 0) {
+            day.hr_max_bpm = Math.max(day.hr_max_bpm ?? 0, Math.round(max));
+          }
+          if (!isNaN(min) && min > 0) {
+            day.hr_min_bpm = Math.min(day.hr_min_bpm ?? Infinity, Math.round(min));
+          }
+          break;
+        }
+        case "wrist_temp": {
+          const val = Number(point.qty);
+          if (!isNaN(val) && val > 0) {
+            const units = String(metric.units ?? "degC").toLowerCase();
+            const celsius = units.includes("f") ? (val - 32) / 1.8 : val;
+            getDay(date).wrist_temp_c = r2(celsius);
+          }
+          break;
+        }
+        case "breathing": {
+          const val = Number(point.qty);
+          if (!isNaN(val) && val >= 0) getDay(date).breathing_disturbances = r1(val);
+          break;
+        }
+        case "vo2max": {
+          const val = Number(point.qty);
+          if (!isNaN(val) && val > 0) getDay(date).vo2_max = r1(val);
+          break;
+        }
+        case "cardio_recovery": {
+          const val = Number(point.qty);
+          if (!isNaN(val) && val > 0) getDay(date).cardio_recovery_bpm = Math.round(val);
           break;
         }
         case "steps": {

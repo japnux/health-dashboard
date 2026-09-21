@@ -88,6 +88,22 @@ export type DashboardSnapshot = {
   } | null;
   bloodTestAgeDays: number | null;
   lastSyncAt: string | null;
+  watch: WatchInsights;
+};
+
+// Données Apple Watch complémentaires (sommeil, cardio, nuit).
+export type WatchInsights = {
+  bedtime: string | null; // ISO, coucher de la nuit dernière
+  wakeTime: string | null; // ISO, lever
+  bedtimeSpreadMin: number | null; // écart-type de l'heure de coucher sur 7 nuits
+  wristTempDeltaC: number | null; // écart vs médiane 60j
+  breathingDisturbances: number | null;
+  vo2Max: { value: number; date: string } | null; // dernière mesure connue
+  cardioRecoveryBpm: { value: number; date: string } | null; // dernière mesure connue
+  walkingHrBpm: number | null;
+  walkingHr7dAvg: number | null;
+  hrMaxBpm: number | null;
+  hrMinBpm: number | null;
 };
 
 const DEFAULTS = {
@@ -154,7 +170,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, wrist_temp_c, vo2_max, cardio_recovery_bpm")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -422,7 +438,86 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       ? diffDaysIso(bloodTests[0].test_date, date)
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
+    watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
   };
+}
+
+type BaselineRow = {
+  date: string;
+  wrist_temp_c: number | null;
+  vo2_max: number | null;
+  cardio_recovery_bpm: number | null;
+};
+
+function computeWatchInsights(
+  today: DailyMetricsRow | null,
+  yesterdayMetrics: DailyMetricsRow | null,
+  recent: DailyMetricsRow[],
+  baseline60: BaselineRow[],
+): WatchInsights {
+  // Régularité : écart-type de l'heure de coucher sur les 7 dernières nuits
+  const bedMinutes = recent
+    .map((r) => bedtimeMinutes(r.sleep_start))
+    .filter((v): v is number => v != null);
+  const bedtimeSpreadMin = bedMinutes.length >= 3 ? Math.round(stdDev(bedMinutes)) : null;
+
+  // Température : écart de la nuit vs médiane 60j (la valeur absolue parle peu)
+  const tempBaseline = med(baseline60.map((r) => r.wrist_temp_c));
+  const wristTempDeltaC =
+    today?.wrist_temp_c != null && tempBaseline != null
+      ? Math.round((today.wrist_temp_c - tempBaseline) * 100) / 100
+      : null;
+
+  // VO2 max et récup cardio ne sont pas mesurés chaque jour : dernière valeur connue
+  const all = [...recent, ...baseline60]; // recent inclut aujourd'hui, trié desc
+  const lastOf = (key: "vo2_max" | "cardio_recovery_bpm") => {
+    const row = all
+      .filter((r) => r[key] != null)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    return row ? { value: row[key] as number, date: row.date } : null;
+  };
+
+  const walkingHrToday = today?.walking_hr_avg_bpm ?? yesterdayMetrics?.walking_hr_avg_bpm ?? null;
+  const walking7d = avg(recent.map((r) => r.walking_hr_avg_bpm));
+
+  return {
+    bedtime: today?.sleep_start ?? null,
+    wakeTime: today?.sleep_end ?? null,
+    bedtimeSpreadMin,
+    wristTempDeltaC,
+    breathingDisturbances: today?.breathing_disturbances ?? null,
+    vo2Max: lastOf("vo2_max"),
+    cardioRecoveryBpm: lastOf("cardio_recovery_bpm"),
+    walkingHrBpm: walkingHrToday,
+    walkingHr7dAvg: walking7d != null ? Math.round(walking7d) : null,
+    hrMaxBpm: today?.hr_max_bpm ?? null,
+    hrMinBpm: today?.hr_min_bpm ?? null,
+  };
+}
+
+// Heure de coucher en minutes, décalée pour que 23h et 1h restent voisins :
+// tout ce qui précède 18h compte comme "après minuit" (+24h).
+function bedtimeMinutes(iso: string | null): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(d);
+  const h = Number(parts.find((p) => p.type === "hour")?.value);
+  const m = Number(parts.find((p) => p.type === "minute")?.value);
+  if (isNaN(h) || isNaN(m)) return null;
+  const minutes = h * 60 + m;
+  return minutes < 18 * 60 ? minutes + 24 * 60 : minutes;
+}
+
+function stdDev(values: number[]): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
 }
 
 function avg(values: (number | null)[]): number | null {
