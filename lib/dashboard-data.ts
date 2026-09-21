@@ -461,8 +461,10 @@ function computeWatchInsights(
     .filter((v): v is number => v != null);
   const bedtimeSpreadMin = bedMinutes.length >= 3 ? Math.round(stdDev(bedMinutes)) : null;
 
-  // Température : écart de la nuit vs médiane 60j (la valeur absolue parle peu)
-  const tempBaseline = med(baseline60.map((r) => r.wrist_temp_c));
+  // Température : écart de la nuit vs médiane 60j (la valeur absolue parle peu).
+  // Comme Apple, on attend 5 nuits de référence avant d'afficher un écart.
+  const tempValues = baseline60.map((r) => r.wrist_temp_c).filter((v): v is number => v != null);
+  const tempBaseline = tempValues.length >= 5 ? med(tempValues) : null;
   const wristTempDeltaC =
     today?.wrist_temp_c != null && tempBaseline != null
       ? Math.round((today.wrist_temp_c - tempBaseline) * 100) / 100
