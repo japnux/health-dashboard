@@ -5,6 +5,7 @@ import {
   getHrMax,
   localMidnightUtc,
   recomputeDailyLoad,
+  sleepingHrFromHourly,
   workoutLoad,
   type HrHourly,
 } from "@/lib/cardio-load";
@@ -115,6 +116,7 @@ type DayBucket = {
   vo2_max: number | null;
   cardio_recovery_bpm: number | null;
   hr_hourly: HrHourly | null; // FC moyenne horaire, pour la charge cardio hors séance
+  sleeping_hr_bpm: number | null; // plus basse moyenne horaire pendant le sommeil
 };
 
 type BodyCompBucket = {
@@ -150,6 +152,7 @@ function emptyDay(): DayBucket {
     vo2_max: null,
     cardio_recovery_bpm: null,
     hr_hourly: null,
+    sleeping_hr_bpm: null,
   };
 }
 
@@ -202,6 +205,8 @@ export async function POST(request: Request) {
 
   // HRV, respiration et SpO2 : rattachées à la nuit après lecture du sommeil
   const nightSamples: { kind: "hrv" | "respi" | "spo2"; dateStr: string; v: number }[] = [];
+  // FC moyenne horaire avec son instant de début, pour la FC de sommeil
+  const hourlyHr: { t: number; avg: number }[] = [];
 
   for (const m of metrics) {
     const metric = m as Record<string, unknown>;
@@ -313,6 +318,8 @@ export async function POST(request: Request) {
             if (!day.hr_hourly) day.hr_hourly = { start, avg: Array(24).fill(null) };
             day.hr_hourly.avg[hour] = r1(avg);
           }
+          const hourStartIso = toIso(dateStr);
+          if (!isNaN(avg) && avg > 0 && hourStartIso) hourlyHr.push({ t: Date.parse(hourStartIso), avg });
           break;
         }
         case "wrist_temp": {
@@ -396,6 +403,12 @@ export async function POST(request: Request) {
   const sleepWindows = [...days.entries()]
     .filter(([, d]) => d.sleep_start && d.sleep_end)
     .map(([date, d]) => ({ date, start: Date.parse(d.sleep_start!), end: Date.parse(d.sleep_end!) }));
+  // FC de sommeil de chaque nuit reçue (base du score de récupération)
+  for (const w of sleepWindows) {
+    const sleepingHr = sleepingHrFromHourly(w.start, w.end, hourlyHr);
+    if (sleepingHr != null) getDay(w.date).sleeping_hr_bpm = sleepingHr;
+  }
+
   for (const sample of nightSamples) {
     const iso = toIso(sample.dateStr);
     const t = iso ? Date.parse(iso) : NaN;
@@ -456,7 +469,7 @@ export async function POST(request: Request) {
 
     const { data: past } = await supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate")
+      .select("date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate")
       .gte("date", windowStart60)
       .lt("date", date)
       .order("date", { ascending: false });
@@ -487,7 +500,7 @@ export async function POST(request: Request) {
     // serait recalculé sur des données partielles et écraserait le bon.
     const { data: existing, error: existingError } = await supabase
       .from("daily_metrics")
-      .select("hrv_ms, resting_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct")
+      .select("hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct")
       .eq("date", date)
       .maybeSingle();
     if (existingError) {
@@ -502,6 +515,7 @@ export async function POST(request: Request) {
       {
         hrv_ms: day.hrv_ms ?? existing?.hrv_ms ?? null,
         resting_hr_bpm: day.resting_hr_bpm ?? existing?.resting_hr_bpm ?? null,
+        sleeping_hr_bpm: day.sleeping_hr_bpm ?? existing?.sleeping_hr_bpm ?? null,
         respiratory_rate: day.respiratory_rate ?? existing?.respiratory_rate ?? null,
         sleep_total_min: day.sleep_total_min ?? existing?.sleep_total_min ?? null,
         sleep_rem_pct: day.sleep_rem_pct ?? existing?.sleep_rem_pct ?? null,

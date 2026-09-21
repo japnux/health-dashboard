@@ -185,11 +185,16 @@ export function computeRecoveryScore(input: RecoveryInput): RecoveryResult {
 // Définition unique du calcul, partagée par l'import, l'accueil et le
 // recalcul de l'historique : ils ne peuvent plus diverger.
 // Références : HRV = médiane des 60 jours précédents (résiste aux pics),
-// FC repos et respiration = moyennes des 60 jours précédents.
+// FC et respiration = moyennes des 60 jours précédents.
+// FC : celle du sommeil (plus basse moyenne horaire entre coucher et lever)
+// dès qu'on a 7 nuits de référence. Contrairement à la FC repos d'Apple,
+// qu'Apple réévalue toute la journée (63 → 70 après une séance), elle est
+// figée une fois la nuit terminée : le score ne bouge plus dans la journée.
 
 export type RecoveryDayInput = {
   hrv_ms: number | null;
   resting_hr_bpm: number | null;
+  sleeping_hr_bpm?: number | null;
   respiratory_rate: number | null;
   sleep_total_min: number | null;
   sleep_rem_pct: number | null;
@@ -199,11 +204,12 @@ export type RecoveryDayInput = {
 export type RecoveryHistoryRow = {
   hrv_ms: number | null;
   resting_hr_bpm: number | null;
+  sleeping_hr_bpm?: number | null;
   respiratory_rate: number | null;
 };
 
 function presentValues(rows: RecoveryHistoryRow[], key: keyof RecoveryHistoryRow): number[] {
-  return rows.map((r) => r[key]).filter((v): v is number => v != null);
+  return rows.map((r) => r[key] ?? null).filter((v): v is number => v != null);
 }
 
 function meanOf(values: number[]): number | null {
@@ -219,12 +225,16 @@ function medianOf(values: number[]): number | null {
 
 // day : mesures de la journée uniquement (aucune valeur d'un autre jour).
 // past60 : les jours [J-60, J-1].
+const MIN_SLEEP_HR_NIGHTS = 7;
+
 export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow[]): RecoveryResult {
+  const sleepHrPast = presentValues(past60, "sleeping_hr_bpm");
+  const useSleepHr = day.sleeping_hr_bpm != null && sleepHrPast.length >= MIN_SLEEP_HR_NIGHTS;
   return computeRecoveryScore({
     hrvMs: day.hrv_ms,
     hrv7dAvgMs: medianOf(presentValues(past60, "hrv_ms")),
-    restingHrBpm: day.resting_hr_bpm,
-    restingHr7dAvgBpm: meanOf(presentValues(past60, "resting_hr_bpm")),
+    restingHrBpm: useSleepHr ? day.sleeping_hr_bpm! : day.resting_hr_bpm,
+    restingHr7dAvgBpm: useSleepHr ? meanOf(sleepHrPast) : meanOf(presentValues(past60, "resting_hr_bpm")),
     sleepTotalMin: day.sleep_total_min,
     sleepRemPct: day.sleep_rem_pct,
     sleepDeepPct: day.sleep_deep_pct,

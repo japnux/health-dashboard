@@ -60,6 +60,20 @@ export function localMidnightUtc(dateStr: string): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+// FC de sommeil : plus basse moyenne horaire parmi les heures passées au
+// moins 30 min dans la fenêtre de sommeil (coucher → lever). Null sous 3 heures.
+export function sleepingHrFromHourly(
+  windowStart: number,
+  windowEnd: number,
+  hourly: { t: number; avg: number }[],
+): number | null {
+  const inWindow = hourly.filter(
+    (h) => Math.min(windowEnd, h.t + HOUR_MS) - Math.max(windowStart, h.t) >= HOUR_MS / 2,
+  );
+  if (inWindow.length < 3) return null;
+  return Math.round(Math.min(...inWindow.map((h) => h.avg)));
+}
+
 export function backgroundLoad(hourly: HrHourly, busyHours: Set<number>, hrMax: number): number {
   let load = 0;
   hourly.avg.forEach((avg, h) => {

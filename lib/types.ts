@@ -35,6 +35,7 @@ export type Database = {
           cardio_recovery_bpm: number | null;
           hr_hourly: { start: string; avg: (number | null)[] } | null;
           cardio_load: number | null;
+          sleeping_hr_bpm: number | null;
           raw_payload: Record<string, unknown> | null;
           created_at: string;
           updated_at: string;
@@ -65,6 +66,7 @@ export type Database = {
           cardio_recovery_bpm?: number | null;
           hr_hourly?: { start: string; avg: (number | null)[] } | null;
           cardio_load?: number | null;
+          sleeping_hr_bpm?: number | null;
           raw_payload?: Record<string, unknown> | null;
         };
         Update: Partial<Database["public"]["Tables"]["daily_metrics"]["Insert"]>;

@@ -214,7 +214,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -257,6 +257,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     {
       hrv_ms: today?.hrv_ms ?? null,
       resting_hr_bpm: today?.resting_hr_bpm ?? null,
+      sleeping_hr_bpm: today?.sleeping_hr_bpm ?? null,
       respiratory_rate: today?.respiratory_rate ?? null,
       sleep_total_min: today?.sleep_total_min ?? null,
       sleep_rem_pct: today?.sleep_rem_pct ?? null,
