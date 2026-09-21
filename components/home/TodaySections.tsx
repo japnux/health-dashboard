@@ -38,6 +38,8 @@ const RECOVERY_TITLE: Record<string, string> = {
   gray: "Récupération inconnue",
 };
 
+const RECOVERY_LEVEL: Record<string, string> = { green: "Bonne", yellow: "Moyenne", red: "Faible", gray: "—" };
+
 function heroText(color: string, strain: DashboardSnapshot["strain"]): string {
   const today = strain.mode === "hr" ? (strain.cardioLoad ?? 0) : strain.activeKcalToday;
   const ratio = strain.hasBaseline && strain.baselineAvg > 0 ? today / strain.baselineAvg : null;
@@ -56,26 +58,99 @@ function heroText(color: string, strain: DashboardSnapshot["strain"]): string {
   return "Pas encore de données de nuit : le score arrivera avec la prochaine synchro.";
 }
 
+// Tuile de score : titre, anneau, statut (pastille + libellé, jamais la couleur seule)
+function ScoreTile({
+  href,
+  title,
+  ring,
+  status,
+  statusColor,
+  sub,
+}: {
+  href: string;
+  title: string;
+  ring: React.ReactNode;
+  status: string;
+  statusColor: string;
+  sub: string | null;
+}) {
+  return (
+    <Link href={href} className={`${CARD} !p-3 sm:!p-5 flex flex-col`} style={SHADOW}>
+      <div className="flex items-center justify-center sm:justify-between gap-1">
+        <p className="text-[10px] sm:text-xs uppercase sm:tracking-wide text-[var(--color-body)] truncate">{title}</p>
+        {/* Chevron masqué sur mobile : place pour le titre, la tuile entière reste cliquable */}
+        <span className="hidden sm:inline">
+          <Chevron />
+        </span>
+      </div>
+      <div className="flex justify-center mt-3">{ring}</div>
+      <p className="flex items-center justify-center gap-1.5 text-xs sm:text-sm text-[var(--color-heading)] dark:text-white mt-3 text-center">
+        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: statusColor }} />
+        {status}
+      </p>
+      {sub && <p className="text-[10px] sm:text-[11px] text-[var(--color-body)] mt-0.5 text-center leading-snug">{sub}</p>}
+    </Link>
+  );
+}
+
+const SLEEP_QUALITY: Record<number, string> = { 10: "Excellent", 7: "Bon", 4: "Moyen", 1: "Insuffisant" };
+const SLEEP_QUALITY_COLOR: Record<string, string> = { Excellent: "#15be53", Bon: "#15be53", Moyen: "#eab308", Insuffisant: "#ea2261" };
+
 export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const color = recoveryColor(snap.recovery.score);
+  const strain = snap.strain;
+  const workoutsToday = snap.recentWorkouts.filter((w) => dateInTz(w.started_at, snap.tz) === snap.date).length;
+
+  // Sommeil : anneau = durée rapportée à l'objectif, couleur = qualité
+  const t = snap.today;
+  const sleepMin = t?.sleep_total_min ?? null;
+  const sleepScore = snap.recovery.components.sleep.available ? snap.recovery.components.sleep.score : null;
+  const quality = sleepScore != null ? SLEEP_QUALITY[sleepScore] ?? null : null;
+  const sleepColor = quality ? SLEEP_QUALITY_COLOR[quality] : "#94a3b8";
+  const sleepLabel = sleepMin != null ? `${Math.floor(sleepMin / 60)}h${String(Math.round(sleepMin % 60)).padStart(2, "0")}` : "—";
+
   return (
-    <Link href="/recuperation" className={CARD} style={SHADOW}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-4 sm:gap-6">
-          <div className="text-center">
-            <ScoreRing score={snap.recovery.score} color={RECOVERY_RING[color]} label="Récupération" size={88} />
-            <p className="text-[11px] text-[var(--color-body)] mt-1.5">Récupération</p>
-          </div>
-          <div className="text-center">
-            <ScoreRing score={snap.strain.score} color={strainColor(snap.strain.score)} label="Strain" size={88} />
-            <p className="text-[11px] text-[var(--color-body)] mt-1.5">Strain</p>
-          </div>
-        </div>
-        <Chevron />
+    <>
+      <div>
+        <p className="text-lg text-[var(--color-heading)] dark:text-white">{RECOVERY_TITLE[color]}</p>
+        <p className="text-sm text-[var(--color-body)] mt-1 leading-relaxed">{heroText(color, strain)}</p>
       </div>
-      <p className="text-lg text-[var(--color-heading)] dark:text-white mt-4">{RECOVERY_TITLE[color]}</p>
-      <p className="text-sm text-[var(--color-body)] mt-1 leading-relaxed">{heroText(color, snap.strain)}</p>
-    </Link>
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <ScoreTile
+          href="/recuperation"
+          title="Récupération"
+          ring={<ScoreRing score={snap.recovery.score} color={RECOVERY_RING[color]} label="Récupération" size={76} />}
+          status={RECOVERY_LEVEL[color]}
+          statusColor={RECOVERY_RING[color]}
+          sub={snap.recovery.basis !== "full" ? `score ${snap.recovery.basis === "partial" ? "partiel" : "estimé"}` : "nuit dernière"}
+        />
+        <ScoreTile
+          href="/strain"
+          title="Strain"
+          ring={<ScoreRing score={strain.score} color={strainColor(strain.score)} label="Strain" size={76} />}
+          status={strain.label}
+          statusColor={strainColor(strain.score)}
+          sub={workoutsToday > 0 ? `${workoutsToday} séance${workoutsToday > 1 ? "s" : ""} aujourd'hui` : "aujourd'hui"}
+        />
+        <ScoreTile
+          href="/sommeil"
+          title="Sommeil"
+          ring={
+            <ScoreRing
+              score={null}
+              progress={sleepMin != null ? sleepMin / snap.sleepTargetMin : 0}
+              center={sleepLabel}
+              color={sleepColor}
+              label="Sommeil"
+              size={76}
+            />
+          }
+          status={quality ?? "—"}
+          statusColor={sleepColor}
+          sub={sleepMin != null ? `${Math.round((sleepMin / snap.sleepTargetMin) * 100)} % de l'objectif` : null}
+        />
+      </div>
+    </>
   );
 }
 
@@ -342,55 +417,6 @@ export function BodyMetricsRow({ snap }: { snap: DashboardSnapshot }) {
           );
         })}
       </div>
-    </>
-  );
-}
-
-// ── Sommeil ──
-
-const SLEEP_QUALITY: Record<number, string> = { 10: "Excellent", 7: "Bon", 4: "Moyen", 1: "Insuffisant" };
-
-export function SleepTile({ snap }: { snap: DashboardSnapshot }) {
-  const t = snap.today;
-  if (!t?.sleep_total_min) return null;
-  const sleepScore = snap.recovery.components.sleep.available ? snap.recovery.components.sleep.score : null;
-  const quality = sleepScore != null ? SLEEP_QUALITY[sleepScore] ?? "—" : "—";
-  const h = Math.floor(t.sleep_total_min / 60);
-  const m = Math.round(t.sleep_total_min % 60);
-  const deep = t.sleep_deep_pct ?? null;
-  const rem = t.sleep_rem_pct ?? null;
-  const light = deep != null && rem != null ? Math.max(0, 100 - deep - rem) : null;
-  return (
-    <>
-      <SectionTitle>Sommeil</SectionTitle>
-      <Link href="/sommeil" className={CARD} style={SHADOW}>
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-wide text-[var(--color-body)]">Nuit dernière</p>
-          <Chevron />
-        </div>
-        <div className="flex items-end justify-between gap-4 mt-2">
-          <div>
-            <p className="text-3xl font-light text-[var(--color-heading)] dark:text-white">{quality}</p>
-            <p className="text-sm text-[var(--color-body)] mt-1">
-              {h}h{String(m).padStart(2, "0")}
-            </p>
-          </div>
-          {deep != null && rem != null && light != null && (
-            <div className="w-[55%] max-w-[220px]">
-              <div className="flex h-8 rounded-[6px] overflow-hidden gap-[2px]" role="img" aria-label={`Profond ${Math.round(deep)} %, REM ${Math.round(rem)} %, léger ${Math.round(light)} %`}>
-                <div style={{ width: `${deep}%`, backgroundColor: "#6366f1" }} />
-                <div style={{ width: `${rem}%`, backgroundColor: "#06b6d4" }} />
-                <div style={{ width: `${light}%`, backgroundColor: "#93c5fd" }} />
-              </div>
-              <div className="flex justify-between text-[10px] text-[var(--color-body)] mt-1">
-                <span>profond {Math.round(deep)} %</span>
-                <span>REM {Math.round(rem)} %</span>
-                <span>léger {Math.round(light)} %</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </Link>
     </>
   );
 }

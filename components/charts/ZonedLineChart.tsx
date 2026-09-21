@@ -20,7 +20,7 @@ import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
 import { FORM_ZONES, formZone } from "@/lib/form";
 
 type Point = { date: string; value: number; load?: number };
-type Kind = "balance" | "form" | "recovery";
+type Kind = "balance" | "form" | "recovery" | "strain";
 
 // Zones du score de récupération (mêmes seuils que recoveryColor)
 const RECOVERY_ZONES = [
@@ -28,6 +28,14 @@ const RECOVERY_ZONES = [
   { level: "yellow", from: 5, to: 7, color: "#eab308", label: "moyenne" },
   { level: "green", from: 7, to: 10.01, color: "#15be53", label: "bonne" },
 ];
+// Zones du Strain (mêmes seuils que strainColor)
+const STRAIN_ZONES = [
+  { level: "light", from: 0, to: 3, color: "#15be53", label: "léger" },
+  { level: "moderate", from: 3, to: 6, color: "#eab308", label: "modéré" },
+  { level: "high", from: 6, to: 8, color: "#f97316", label: "élevé" },
+  { level: "very_high", from: 8, to: 10.01, color: "#ea2261", label: "très élevé" },
+];
+const strainZone = (v: number) => STRAIN_ZONES.find((z) => v < z.to) ?? STRAIN_ZONES[STRAIN_ZONES.length - 1];
 const recoveryZone = (v: number) => RECOVERY_ZONES.find((z) => v < z.to) ?? RECOVERY_ZONES[RECOVERY_ZONES.length - 1];
 
 const CONFIG = {
@@ -52,6 +60,13 @@ const CONFIG = {
     ticks: [0, 5, 7, 10],
     name: "Récupération",
   },
+  strain: {
+    zones: STRAIN_ZONES,
+    zoneOf: strainZone,
+    format: (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1).replace(".", ",")),
+    ticks: [0, 3, 6, 8, 10],
+    name: "Strain",
+  },
 } as const;
 
 function dayLabel(date: string, long: boolean): string {
@@ -68,7 +83,7 @@ export function ZonedLineChart({ points, kind }: { points: Point[]; kind: Kind }
   const [yMin, yMax] =
     kind === "balance"
       ? [0, Math.max(1.8, Math.ceil((Math.max(...values) + 0.15) * 10) / 10)]
-      : kind === "recovery"
+      : kind === "recovery" || kind === "strain"
         ? [0, 10]
         : [Math.min(-40, Math.floor(Math.min(...values) / 10) * 10 - 5), Math.max(35, Math.ceil(Math.max(...values) / 10) * 10 + 5)];
   const lastIndex = data.length - 1;

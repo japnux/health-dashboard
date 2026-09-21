@@ -9,12 +9,15 @@ type Props = {
   label: string; // pour les lecteurs d'écran, ex. "Récupération"
   size?: number;
   stroke?: number;
+  // Variante hors score /10 (ex. sommeil) : remplissage 0-1 et texte central libre
+  progress?: number;
+  center?: string;
 };
 
-export function ScoreRing({ score, color, label, size = 84, stroke = 8 }: Props) {
+export function ScoreRing({ score, color, label, size = 84, stroke = 8, progress, center }: Props) {
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
-  const pct = score != null ? Math.max(0, Math.min(1, score / 10)) : 0;
+  const pct = progress != null ? Math.max(0, Math.min(1, progress)) : score != null ? Math.max(0, Math.min(1, score / 10)) : 0;
   const whole = score != null ? Math.floor(score) : null;
   const decimal = score != null ? Math.round((score % 1) * 10) : 0;
 
@@ -23,7 +26,7 @@ export function ScoreRing({ score, color, label, size = 84, stroke = 8 }: Props)
       className="relative shrink-0"
       style={{ width: size, height: size }}
       role="img"
-      aria-label={score != null ? `${label} ${score} sur 10` : `${label} indisponible`}
+      aria-label={center != null ? `${label} ${center}` : score != null ? `${label} ${score} sur 10` : `${label} indisponible`}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
         {/* Piste : même teinte, en clair */}
@@ -49,6 +52,11 @@ export function ScoreRing({ score, color, label, size = 84, stroke = 8 }: Props)
           />
         )}
       </svg>
+      {center != null ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-base leading-none font-light text-[var(--color-heading)] dark:text-white">{center}</span>
+        </div>
+      ) : (
       <div className="absolute inset-0 flex items-baseline justify-center pt-[30%]">
         {whole != null ? (
           <>
@@ -65,6 +73,7 @@ export function ScoreRing({ score, color, label, size = 84, stroke = 8 }: Props)
           <span className="text-xl font-light text-[var(--color-body)]">—</span>
         )}
       </div>
+      )}
     </div>
   );
 }

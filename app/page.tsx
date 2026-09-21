@@ -9,7 +9,7 @@ import { Reservations } from "@/components/Reservations";
 import { AiAnalysis } from "@/components/AiAnalysis";
 import { AiTrends, AiWorkoutSuggestion } from "@/components/AiInsights";
 import { PlannedActivities } from "@/components/PlannedActivities";
-import { TodayHero, WorkoutsToday, TrainingBalance, BodyMetricsRow, SleepTile } from "@/components/home/TodaySections";
+import { TodayHero, WorkoutsToday, TrainingBalance, BodyMetricsRow } from "@/components/home/TodaySections";
 
 export const dynamic = "force-dynamic";
 
@@ -107,7 +107,6 @@ export default async function Home() {
       {/* ── Équilibre d'entraînement, mesures de la nuit, sommeil (détail au clic) ── */}
       <TrainingBalance snap={snap} />
       <BodyMetricsRow snap={snap} />
-      <SleepTile snap={snap} />
 
       {/* ── Tendances & Signaux (IA) + Score semaine ── */}
       <AiTrends />
