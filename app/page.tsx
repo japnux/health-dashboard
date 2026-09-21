@@ -85,6 +85,17 @@ export default async function Home() {
           </p>
         </div>
       )}
+      {snap.watch.breathingAlert && (
+        <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[#f97316]/10 border border-[#f97316]/20 px-3 py-2">
+          <span className="text-sm">🫁</span>
+          <p className="text-xs text-[#c2410c]">
+            Troubles respiratoires élevés cette nuit :{" "}
+            <span className="font-normal">{snap.watch.breathingAlert.value}</span> contre{" "}
+            {snap.watch.breathingAlert.baseline} habituellement (médiane 30 nuits). Une nuit isolée n'est pas
+            inquiétante ; si ça se répète, regarde Santé → Sommeil ou parles-en à un médecin.
+          </p>
+        </div>
+      )}
       {showStaleScale && (
         <StaleScaleNotice ageDays={snap.bodyCompositionAgeDays!} />
       )}
@@ -446,11 +457,11 @@ function CardioMetrics({ watch }: { watch: DashboardSnapshot["watch"] }) {
   );
 }
 
-// Horaires sous la carte Sommeil : coucher → lever, régularité, respiration.
+// Horaires sous la carte Sommeil : coucher → lever, régularité.
 function SleepTiming({ watch }: { watch: DashboardSnapshot["watch"] }) {
   const bedtime = formatHourParis(watch.bedtime);
   const wake = formatHourParis(watch.wakeTime);
-  if (!bedtime && watch.breathingDisturbances == null) return null;
+  if (!bedtime) return null;
 
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-sm">
@@ -471,15 +482,6 @@ function SleepTiming({ watch }: { watch: DashboardSnapshot["watch"] }) {
           sub="coucher, 7 nuits"
           delta={null}
           positiveIsGood
-        />
-      )}
-      {watch.breathingDisturbances != null && (
-        <MiniMetric
-          label="Troubles resp."
-          value={`${watch.breathingDisturbances}`}
-          sub="nuit dernière"
-          delta={null}
-          positiveIsGood={false}
         />
       )}
     </div>

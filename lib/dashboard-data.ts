@@ -98,6 +98,8 @@ export type WatchInsights = {
   bedtimeSpreadMin: number | null; // écart-type de l'heure de coucher sur 7 nuits
   wristTempDeltaC: number | null; // écart vs médiane 60j
   breathingDisturbances: number | null;
+  // Alerte si la nuit dernière dépasse nettement la médiane des 30 nuits précédentes
+  breathingAlert: { value: number; baseline: number } | null;
   vo2Max: { value: number; date: string } | null; // dernière mesure connue
   cardioRecoveryBpm: { value: number; date: string } | null; // dernière mesure connue
   walkingHrBpm: number | null;
@@ -170,7 +172,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, wrist_temp_c, vo2_max, cardio_recovery_bpm")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -445,6 +447,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
 type BaselineRow = {
   date: string;
   wrist_temp_c: number | null;
+  breathing_disturbances: number | null;
   vo2_max: number | null;
   cardio_recovery_bpm: number | null;
 };
@@ -470,6 +473,23 @@ function computeWatchInsights(
       ? Math.round((today.wrist_temp_c - tempBaseline) * 100) / 100
       : null;
 
+  // Troubles respiratoires : donnée de surveillance (base de la détection
+  // d'apnée d'Apple), pas de pilotage. Pas d'affichage au quotidien, seulement
+  // une alerte si la nuit dépasse 1.5x la médiane des 30 nuits précédentes,
+  // avec au moins 14 nuits d'historique pour éviter les fausses alertes.
+  const breathingHistory = [...baseline60]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map((r) => r.breathing_disturbances)
+    .filter((v): v is number => v != null)
+    .slice(0, 30);
+  const breathingBaseline = breathingHistory.length >= 14 ? med(breathingHistory) : null;
+  const breathingToday = today?.breathing_disturbances ?? null;
+  const breathingAlert =
+    breathingToday != null && breathingBaseline != null && breathingBaseline > 0 &&
+    breathingToday >= breathingBaseline * 1.5
+      ? { value: breathingToday, baseline: Math.round(breathingBaseline * 10) / 10 }
+      : null;
+
   // VO2 max et récup cardio ne sont pas mesurés chaque jour : dernière valeur connue
   const all = [...recent, ...baseline60]; // recent inclut aujourd'hui, trié desc
   const lastOf = (key: "vo2_max" | "cardio_recovery_bpm") => {
@@ -487,7 +507,8 @@ function computeWatchInsights(
     wakeTime: today?.sleep_end ?? null,
     bedtimeSpreadMin,
     wristTempDeltaC,
-    breathingDisturbances: today?.breathing_disturbances ?? null,
+    breathingDisturbances: breathingToday,
+    breathingAlert,
     vo2Max: lastOf("vo2_max"),
     cardioRecoveryBpm: lastOf("cardio_recovery_bpm"),
     walkingHrBpm: walkingHrToday,
