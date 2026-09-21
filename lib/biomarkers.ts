@@ -70,6 +70,7 @@ export const BIOMARKERS: BiomarkerDef[] = [
 
   // ─── Métabolique ───────────────────────────────────────
   { key: "fasting_glucose", label: "Glycémie à jeun", category: "metabolique", unit: "g/L", refMin: 0.75, refMax: 0.86, lowerIsBetter: true, desc: "Taux de sucre sanguin à jeun. Un des premiers marqueurs de résistance à l'insuline et de prédiabète." },
+  { key: "glucose", label: "Glycémie (non à jeun)", category: "metabolique", unit: "g/L", refMin: null, refMax: 1.4, lowerIsBetter: true, desc: "Glucose sanguin mesuré hors jeûne (après un repas ou en urgence). Se juge contre un seuil de 1,40 g/L (7,8 mmol/L), pas contre les normes à jeun." },
   { key: "hba1c", label: "HbA1c", category: "metabolique", unit: "%", refMin: 4, refMax: 5, lowerIsBetter: true, desc: "Moyenne de la glycémie sur 2-3 mois. Marqueur clé du contrôle glycémique et du risque de diabète." },
   { key: "homa_ir", label: "HOMA-IR", category: "metabolique", unit: "calc", refMin: null, refMax: 1.5, lowerIsBetter: true, desc: "Indice de résistance à l'insuline calculé à partir de la glycémie et de l'insuline à jeun." },
   { key: "insulin", label: "Insuline", category: "metabolique", unit: "µIU/mL", refMin: 2.6, refMax: 24.9, desc: "Hormone pancréatique qui régule la glycémie. Élevée des années avant que la glycémie ne monte." },

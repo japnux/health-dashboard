@@ -52,7 +52,8 @@ export const WORKOUT_TYPE_MAP: Record<string, string> = {
   // Skate / patinage
   skatingsports: "skate",
   "sports de patinage": "skate",
-  // Récupération
+  // Récupération. "Autre" sur la montre = sauna (convention de l'utilisateur,
+  // confirmée : 15-25 min, FC modérée)
   sauna: "sauna",
   autre: "sauna",
   other: "sauna",

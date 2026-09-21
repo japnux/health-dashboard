@@ -43,7 +43,8 @@ const results: Result[] = [
   { category: "ionogramme", biomarker_key: "protides", label: "Protides plasmatiques", value: 73, unit: "g/l", ref_min: 63, ref_max: 81 },
 
   // ── Métabolique ──
-  { category: "metabolique", biomarker_key: "fasting_glucose", label: "Glycémie", value: 1.20, unit: "g/L", ref_min: 0.74, ref_max: 1.01 },
+  // Prélèvement aux urgences, non à jeun : pas jugé contre les normes à jeun
+  { category: "metabolique", biomarker_key: "glucose", label: "Glycémie (non à jeun)", value: 1.20, unit: "g/L", ref_min: null, ref_max: 1.4 },
   { category: "metabolique", biomarker_key: "urea", label: "Urée", value: 0.300, unit: "g/L", ref_min: 0.19, ref_max: 0.44 },
 
   // ── Reins ──
