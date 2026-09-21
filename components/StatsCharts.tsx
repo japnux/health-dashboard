@@ -443,11 +443,11 @@ export function StatsCharts() {
 
           {activeTab === "activite" && (
             <>
+              <LoadCharts series={data.loadSeries ?? []} period={period} />
               {data.workouts.length > 0 && (
                 <WorkoutsSummary workouts={data.workouts} />
               )}
               <ZonesChart workouts={data.workouts} period={period} />
-              <LoadCharts series={data.loadSeries ?? []} period={period} />
               <StrainChart
                 metrics={data.dailyMetrics}
                 strainByDate={data.strainByDate}
@@ -1373,7 +1373,7 @@ function LoadCharts({
           </span>
         </div>
         <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={chartData}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.5} vertical={false} />
             <XAxis
               dataKey="label"
@@ -1410,7 +1410,7 @@ function LoadCharts({
 
       <ChartCard title="Équilibre de charge (7 j / 28 j)">
         <ResponsiveContainer width="100%" height={200}>
-          <LineChart data={chartData}>
+          <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
             {/* Zones colorées en fond, libellées */}
             {BALANCE_ZONES.map((z) => (
               <ReferenceArea
