@@ -7,7 +7,7 @@ import { logApiUsage } from "@/lib/api-usage";
 import { todayIso, isoDaysAgo } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
-import { computeStrainScore } from "@/lib/strain-score";
+import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
 import {
   DEFAULT_SLOTS,
@@ -152,7 +152,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     await Promise.all([
       supabase
         .from("daily_metrics")
-        .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, daylight_min, recovery_score")
+        .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
         .gte("date", sevenDaysAgo)
         .lte("date", today)
         .order("date", { ascending: true }),
@@ -262,14 +262,16 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
 
   // Strain du jour — baseline sur 30j
   const todayMetrics = (metricsRes.data ?? []).find((m) => m.date === today);
-  const activeKcalToday = todayMetrics?.active_kcal ?? 0;
   const { data: past30Data } = await supabase
     .from("daily_metrics")
-    .select("active_kcal")
+    .select("active_kcal, cardio_load")
     .gte("date", thirtyDaysAgo)
     .lt("date", today);
-  const past30Kcal = (past30Data ?? []).map((m) => m.active_kcal ?? 0);
-  const strain = computeStrainScore(activeKcalToday, past30Kcal);
+  const activeKcalToday = todayMetrics?.active_kcal ?? 0;
+  const strain = computeDayStrain(
+    { active_kcal: activeKcalToday, cardio_load: todayMetrics?.cardio_load ?? null },
+    past30Data ?? [],
+  );
 
   // Sommeil lisible pour chaque jour
   const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => {

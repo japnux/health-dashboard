@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     supabase
       .from("daily_metrics")
       .select(
-        "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, steps, active_kcal, daylight_min, recovery_score, recovery_score_basis",
+        "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score, recovery_score_basis",
       )
       .gte("date", current.start)
       .lte("date", current.end)
@@ -119,7 +119,7 @@ export async function GET(request: Request) {
     supabase
       .from("daily_metrics")
       .select(
-        "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, steps, active_kcal, daylight_min, recovery_score",
+        "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score",
       )
       .gte("date", prev.start)
       .lte("date", prev.end)

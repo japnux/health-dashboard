@@ -3,7 +3,7 @@ import { todayIso, isoDaysAgo, diffDaysIso } from "@/lib/dates";
 import { computeRecoveryScore, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
-import { computeStrainScore, type StrainResult } from "@/lib/strain-score";
+import { computeDayStrain, type StrainResult } from "@/lib/strain-score";
 import { computeTrend, type BodyTrend } from "@/lib/body-trend";
 import {
   parseObjective,
@@ -172,7 +172,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -347,10 +347,11 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
 
   // Strain score : charge du jour vs baseline 30j
   const thirtyDaysAgoDate = isoDaysAgo(30);
-  const strainBaseline = baseline60
-    .filter((r) => r.date >= thirtyDaysAgoDate)
-    .map((r) => r.active_kcal ?? 0);
-  const strain = computeStrainScore(activeKcalToday, strainBaseline);
+  const strainBaseline = baseline60.filter((r) => r.date >= thirtyDaysAgoDate);
+  const strain = computeDayStrain(
+    { active_kcal: activeKcalToday, cardio_load: today?.cardio_load ?? null },
+    strainBaseline,
+  );
 
   // ─── Slot actif du jour ──────────────────────────────────────
   const slotsConfig = (config as Record<string, unknown>).meal_slots_config as MealSlot[] | null ?? DEFAULT_SLOTS;

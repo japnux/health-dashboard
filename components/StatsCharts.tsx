@@ -23,7 +23,7 @@ import {
 } from "@/lib/stats-data";
 import { formatWorkoutType } from "@/lib/workout-recommendation";
 import { AiCorrelations } from "@/components/AiCorrelations";
-import { computeStrainScore } from "@/lib/strain-score";
+import { computeDayStrain, type StrainDay } from "@/lib/strain-score";
 import { computeJournalImpact } from "@/lib/journal-impact";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ type DailyMetric = {
   sleep_awake_pct: number | null;
   steps: number | null;
   active_kcal: number | null;
+  cardio_load?: number | null;
   daylight_min: number | null;
   recovery_score: number | null;
   recovery_score_basis: string | null;
@@ -73,6 +74,7 @@ type PrevPeriodMetric = {
   sleep_awake_pct: number | null;
   steps: number | null;
   active_kcal: number | null;
+  cardio_load?: number | null;
   daylight_min: number | null;
   recovery_score: number | null;
 };
@@ -1753,28 +1755,18 @@ function PeriodSummary({
   );
 }
 
-// Calcule le strain pour chaque jour à partir des active_kcal
-// Utilise les données de la période précédente + courante pour la baseline
+// Calcule le strain pour chaque jour (charge cardio, repli kcal actives).
+// Baseline : la période précédente, ou la période courante à défaut.
 function computeDailyStrain(
-  metrics: { date: string; active_kcal: number | null }[],
-  prevMetrics: { date: string; active_kcal: number | null }[],
+  metrics: ({ date: string } & StrainDay)[],
+  prevMetrics: ({ date: string } & StrainDay)[],
 ): { date: string; strain: number }[] {
-  // Baseline = avg active_kcal des 30 derniers jours précédents
-  const prevKcals = prevMetrics
-    .map((m) => m.active_kcal)
-    .filter((v): v is number => v != null && v > 0);
-  // Fallback sur la moyenne de la période courante si pas de données précédentes
-  const currentKcals = metrics
-    .map((m) => m.active_kcal)
-    .filter((v): v is number => v != null && v > 0);
-  const baseline = prevKcals.length >= 3
-    ? prevKcals
-    : currentKcals.length >= 3
-      ? currentKcals
-      : [];
+  const hasData = (days: StrainDay[]) =>
+    days.filter((d) => (d.active_kcal ?? 0) > 0 || (d.cardio_load ?? 0) > 0).length >= 3;
+  const baseline = hasData(prevMetrics) ? prevMetrics : hasData(metrics) ? metrics : [];
 
   return metrics.map((m) => {
-    const result = computeStrainScore(m.active_kcal ?? 0, baseline);
+    const result = computeDayStrain(m, baseline);
     return { date: m.date, strain: result.score };
   });
 }

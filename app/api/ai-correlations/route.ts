@@ -7,7 +7,7 @@ import { logApiUsage } from "@/lib/api-usage";
 import { todayIso, isoDaysAgo } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType } from "@/lib/workout-types";
-import { computeStrainScore } from "@/lib/strain-score";
+import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets } from "@/lib/nutrition-calc";
 
 async function isAuthenticated(): Promise<boolean> {
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
   const [metricsRes, workoutsRes, proteinRes, mealRes, journalRes, bodyRes, configRes, profile] = await Promise.all([
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, daylight_min, recovery_score")
+      .select("date, hrv_ms, resting_hr_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
       .gte("date", ninetyDaysAgo)
       .lte("date", today)
       .order("date", { ascending: true }),
@@ -184,10 +184,10 @@ export async function GET(request: Request) {
   }
 
   // Strain quotidien
-  const allKcals = (metricsRes.data ?? []).map((m) => m.active_kcal ?? 0);
-  const dailyStrain = (metricsRes.data ?? []).map((m, i) => {
-    const past = allKcals.slice(0, i).filter((v) => v > 0);
-    const result = computeStrainScore(m.active_kcal ?? 0, past);
+  const allDays = metricsRes.data ?? [];
+  const dailyStrain = allDays.map((m, i) => {
+    // Historique : les 30 jours précédents
+    const result = computeDayStrain(m, allDays.slice(Math.max(0, i - 30), i));
     return { date: m.date, score: result.score, level: result.level };
   });
 

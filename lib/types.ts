@@ -33,6 +33,8 @@ export type Database = {
           breathing_disturbances: number | null;
           vo2_max: number | null;
           cardio_recovery_bpm: number | null;
+          hr_hourly: { start: string; avg: (number | null)[] } | null;
+          cardio_load: number | null;
           raw_payload: Record<string, unknown> | null;
           created_at: string;
           updated_at: string;
@@ -61,6 +63,8 @@ export type Database = {
           breathing_disturbances?: number | null;
           vo2_max?: number | null;
           cardio_recovery_bpm?: number | null;
+          hr_hourly?: { start: string; avg: (number | null)[] } | null;
+          cardio_load?: number | null;
           raw_payload?: Record<string, unknown> | null;
         };
         Update: Partial<Database["public"]["Tables"]["daily_metrics"]["Insert"]>;
@@ -93,6 +97,10 @@ export type Database = {
           duration_min: number | null;
           kcal: number | null;
           source: string | null;
+          avg_hr_bpm: number | null;
+          max_hr_bpm: number | null;
+          cardio_load: number | null;
+          hr_zone_min: number[] | null;
           created_at: string;
         };
         Insert: {
@@ -102,6 +110,10 @@ export type Database = {
           duration_min?: number | null;
           kcal?: number | null;
           source?: string | null;
+          avg_hr_bpm?: number | null;
+          max_hr_bpm?: number | null;
+          cardio_load?: number | null;
+          hr_zone_min?: number[] | null;
         };
         Update: Partial<Database["public"]["Tables"]["workouts"]["Insert"]>;
         Relationships: [];

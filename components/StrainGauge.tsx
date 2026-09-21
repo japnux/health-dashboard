@@ -37,7 +37,11 @@ export function StrainGauge({ strain }: Props) {
           />
         </div>
         <div className="flex justify-between text-[10px] text-[var(--color-body)] mt-1">
-          <span>{strain.activeKcalToday} kcal actives</span>
+          {strain.mode === "hr" ? (
+            <span>Charge cardio {strain.cardioLoad}</span>
+          ) : (
+            <span>{strain.activeKcalToday} kcal actives</span>
+          )}
           {strain.hasBaseline && <span>moy {strain.baselineAvg}</span>}
         </div>
       </div>

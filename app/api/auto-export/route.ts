@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { computeRecoveryScore } from "@/lib/recovery-score";
+import {
+  getHrMax,
+  localMidnightUtc,
+  recomputeDailyLoad,
+  workoutLoad,
+  type HrHourly,
+} from "@/lib/cardio-load";
 
 function isAuthorized(request: Request): boolean {
   const key = process.env.AUTO_EXPORT_API_KEY;
@@ -107,6 +114,7 @@ type DayBucket = {
   breathing_disturbances: number | null;
   vo2_max: number | null;
   cardio_recovery_bpm: number | null;
+  hr_hourly: HrHourly | null; // FC moyenne horaire, pour la charge cardio hors séance
 };
 
 type BodyCompBucket = {
@@ -141,6 +149,7 @@ function emptyDay(): DayBucket {
     breathing_disturbances: null,
     vo2_max: null,
     cardio_recovery_bpm: null,
+    hr_hourly: null,
   };
 }
 
@@ -301,6 +310,14 @@ export async function POST(request: Request) {
           if (!isNaN(min) && min > 0) {
             day.hr_min_bpm = Math.min(day.hr_min_bpm ?? Infinity, Math.round(min));
           }
+          // Moyenne horaire, indexée par heure locale depuis minuit local
+          const avg = Number(point.Avg);
+          const hour = extractHour(dateStr);
+          const start = localMidnightUtc(dateStr);
+          if (!isNaN(avg) && avg > 0 && hour >= 0 && hour < 24 && start) {
+            if (!day.hr_hourly) day.hr_hourly = { start, avg: Array(24).fill(null) };
+            day.hr_hourly.avg[hour] = r1(avg);
+          }
           break;
         }
         case "wrist_temp": {
@@ -380,6 +397,10 @@ export async function POST(request: Request) {
 
   const supabase = createServiceClient();
   const results: string[] = [];
+  // FC max de référence pour la charge cardio (séances et fond)
+  const hrMax = await getHrMax(supabase);
+  // Jours dont la charge cardio doit être recalculée en fin de traitement
+  const loadDates = new Set<string>();
 
   // ── daily_metrics avec recovery score ──
   for (const [date, day] of days) {
@@ -499,6 +520,7 @@ export async function POST(request: Request) {
       results.push(`daily_metrics ${date}: erreur ${error.message}`);
     } else {
       results.push(`daily_metrics ${date}: ok (recovery ${recovery.score ?? "n/a"}/10)`);
+      if (day.hr_hourly) loadDates.add(date);
     }
   }
 
@@ -555,6 +577,22 @@ export async function POST(request: Request) {
       kcal = Math.round(Number(wo.activeEnergy));
     }
 
+    // FC de la séance. Health Auto Export renvoie parfois une séance sans ses
+    // données FC : on n'inclut ces champs que s'ils sont présents, pour ne pas
+    // effacer des valeurs déjà enregistrées.
+    const hrFields: Record<string, unknown> = {};
+    const hrObj = wo.heartRate as Record<string, Record<string, unknown>> | undefined;
+    const avgHr = Number((wo.avgHeartRate as Record<string, unknown> | undefined)?.qty ?? hrObj?.avg?.qty);
+    const maxHr = Number((wo.maxHeartRate as Record<string, unknown> | undefined)?.qty ?? hrObj?.max?.qty);
+    if (!isNaN(avgHr) && avgHr > 0) hrFields.avg_hr_bpm = Math.round(avgHr);
+    if (!isNaN(maxHr) && maxHr > 0) hrFields.max_hr_bpm = Math.round(maxHr);
+    const hrData = Array.isArray(wo.heartRateData) ? wo.heartRateData : [];
+    const wLoad = workoutLoad(hrData, hrMax);
+    if (wLoad) {
+      hrFields.cardio_load = wLoad.load;
+      hrFields.hr_zone_min = wLoad.zoneMin;
+    }
+
     const { error } = await supabase.from("workouts").upsert(
       {
         started_at: startedAt,
@@ -562,13 +600,22 @@ export async function POST(request: Request) {
         duration_min: durationMin,
         kcal,
         source: "auto-export",
+        ...hrFields,
       },
       { onConflict: "started_at,type" },
     );
-    if (!error) workoutCount++;
-    else results.push(`workout ${name}: erreur ${error.message}`);
+    if (!error) {
+      workoutCount++;
+      if (wLoad) loadDates.add(extractDate(startStr));
+    } else results.push(`workout ${name}: erreur ${error.message}`);
   }
   if (workoutCount > 0) results.push(`workouts: ${workoutCount} insérés`);
+
+  // ── Charge cardio des jours touchés (FC horaire + séances en base) ──
+  for (const date of loadDates) {
+    const line = await recomputeDailyLoad(supabase, date, hrMax);
+    if (line) results.push(line);
+  }
 
   const hasErrors = results.some((r) => r.includes("erreur"));
   const status = days.size === 0 && workoutCount === 0 ? "empty" : hasErrors ? "partial" : "ok";

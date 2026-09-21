@@ -8,7 +8,7 @@ import { BIOMARKERS_BY_KEY } from "@/lib/biomarkers";
 import { todayIso, isoDaysAgo } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
-import { computeStrainScore } from "@/lib/strain-score";
+import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/lib/nutrition-calc";
 import {
   DEFAULT_SLOTS,
@@ -216,7 +216,7 @@ async function fetchHealthData(days: number) {
       supabase
         .from("daily_metrics")
         .select(
-          "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, daylight_min, recovery_score",
+          "date, hrv_ms, resting_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score",
         )
         .gte("date", startDate)
         .lte("date", today)
@@ -327,10 +327,10 @@ async function fetchHealthData(days: number) {
   // Strain
   const todayMetrics = (metricsRes.data ?? []).find((m) => m.date === today);
   const activeKcalToday = todayMetrics?.active_kcal ?? 0;
-  const past7dKcal = (metricsRes.data ?? [])
-    .filter((m) => m.date !== today)
-    .map((m) => m.active_kcal ?? 0);
-  const strain = computeStrainScore(activeKcalToday, past7dKcal);
+  const strain = computeDayStrain(
+    { active_kcal: activeKcalToday, cardio_load: todayMetrics?.cardio_load ?? null },
+    (metricsRes.data ?? []).filter((m) => m.date !== today),
+  );
 
   // Targets ajustés temps réel
   const adjusted = computeAdjustedTargets({
