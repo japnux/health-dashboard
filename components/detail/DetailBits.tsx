@@ -78,6 +78,9 @@ export function PeriodSwitch({ base, current, periods = [7, 30, 90] }: { base: s
         <Link
           key={p}
           href={`${base}?p=${p}`}
+          // Garde la position de scroll et ne remplit pas l'historique à chaque changement de période
+          scroll={false}
+          replace
           className={`text-xs px-2.5 py-1 rounded-[var(--radius-sm)] ${
             p === current
               ? "bg-white dark:bg-white/10 text-[var(--color-heading)] dark:text-white shadow-sm"
