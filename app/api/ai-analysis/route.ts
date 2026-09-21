@@ -5,7 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
 import { BIOMARKERS_BY_KEY } from "@/lib/biomarkers";
-import { todayIso, isoDaysAgo } from "@/lib/dates";
+import { todayIso, isoDaysAgo, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
@@ -231,7 +231,7 @@ async function fetchHealthData(days: number) {
       supabase
         .from("workouts")
         .select("started_at, type, duration_min, kcal")
-        .gte("started_at", `${startDate}T00:00:00`)
+        .gte("started_at", localMidnightUtcIso(startDate))
         .order("started_at", { ascending: true }),
       supabase
         .from("body_composition")
@@ -301,7 +301,7 @@ async function fetchHealthData(days: number) {
 
   // Workouts et activités
   const allWorkouts = workoutsRes.data ?? [];
-  const todayWorkouts = allWorkouts.filter((w) => w.started_at.startsWith(today));
+  const todayWorkouts = allWorkouts.filter((w) => dateInTz(w.started_at) === today);
   const planned = plannedRes.data ?? [];
   const isTrainingDay = todayWorkouts.length > 0 || planned.length > 0;
 
@@ -334,9 +334,16 @@ async function fetchHealthData(days: number) {
   // Strain
   const todayMetrics = (metricsRes.data ?? []).find((m) => m.date === today);
   const activeKcalToday = todayMetrics?.active_kcal ?? 0;
+  // Référence 30 jours, comme l'accueil (avant : la fenêtre d'analyse, 1 ou
+  // 7 jours, qui faisait retomber sur une baseline kcal par défaut)
+  const { data: strainHistory } = await supabase
+    .from("daily_metrics")
+    .select("active_kcal, cardio_load")
+    .gte("date", isoDaysAgo(30))
+    .lt("date", today);
   const strain = computeDayStrain(
     { active_kcal: activeKcalToday, cardio_load: todayMetrics?.cardio_load ?? null },
-    (metricsRes.data ?? []).filter((m) => m.date !== today),
+    strainHistory ?? [],
   );
 
   // Targets ajustés temps réel

@@ -25,6 +25,7 @@ export const WORKOUT_TYPE_MAP: Record<string, string> = {
   swimming: "natation",
   "pool swim": "natation",
   "open water swim": "natation",
+  "eau libre nager": "natation",
   "piscine nager": "natation",
   natation: "natation",
   // Course / marche
@@ -35,9 +36,16 @@ export const WORKOUT_TYPE_MAP: Record<string, string> = {
   "intérieur course": "course",
   course: "course",
   walking: "marche",
+  "extérieur marcher": "marche",
+  "intérieur marcher": "marche",
   hiking: "rando",
+  randonnée: "rando",
   // Vélo
   cycling: "vélo",
+  "extérieur cyclisme": "vélo",
+  "intérieur cyclisme": "vélo",
+  // Tennis
+  tennis: "tennis",
   // Snowboard
   snowboarding: "snowboard",
   snowboard: "snowboard",
@@ -74,6 +82,7 @@ const WORKOUT_DISPLAY: Record<string, { label: string; emoji: string }> = {
   kickboxing: { label: "Kickboxing", emoji: "🥊" },
   football: { label: "Football", emoji: "⚽" },
   racquetball: { label: "Racquetball", emoji: "🎾" },
+  tennis: { label: "Tennis", emoji: "🎾" },
   sauna: { label: "Sauna", emoji: "🥵" },
 };
 

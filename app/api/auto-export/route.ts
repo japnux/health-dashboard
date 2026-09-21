@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { computeRecoveryScore } from "@/lib/recovery-score";
+import { recoveryForDay } from "@/lib/recovery-score";
 import {
   getHrMax,
   localMidnightUtc,
@@ -200,6 +200,9 @@ export async function POST(request: Request) {
     return bodyComp.get(date)!;
   }
 
+  // HRV, respiration et SpO2 : rattachées à la nuit après lecture du sommeil
+  const nightSamples: { kind: "hrv" | "respi" | "spo2"; dateStr: string; v: number }[] = [];
+
   for (const m of metrics) {
     const metric = m as Record<string, unknown>;
     const name = String(metric.name ?? "").toLowerCase().replace(/[\s-]/g, "_");
@@ -217,11 +220,7 @@ export async function POST(request: Request) {
       switch (key) {
         case "hrv": {
           const val = Number(point.qty);
-          const h = extractHour(dateStr);
-          // Fenêtre nocturne (00h–07h). Si h=-1 (pas d'heure, agrégat jour), on accepte.
-          if (!isNaN(val) && val > 0 && (h < 0 || h < 7)) {
-            getDay(date)._hrv_samples.push(r1(val));
-          }
+          if (!isNaN(val) && val > 0) nightSamples.push({ kind: "hrv", dateStr, v: r1(val) });
           break;
         }
         case "resting_hr": {
@@ -234,18 +233,12 @@ export async function POST(request: Request) {
         }
         case "respiratory_rate": {
           const val = Number(point.qty);
-          const hR = extractHour(dateStr);
-          if (!isNaN(val) && val > 0 && (hR < 0 || hR < 7)) {
-            getDay(date)._respi_samples.push(r1(val));
-          }
+          if (!isNaN(val) && val > 0) nightSamples.push({ kind: "respi", dateStr, v: r1(val) });
           break;
         }
         case "spo2": {
           const val = Number(point.qty);
-          const hS = extractHour(dateStr);
-          if (!isNaN(val) && val > 0 && (hS < 0 || hS < 7)) {
-            getDay(date)._spo2_samples.push(r1(val));
-          }
+          if (!isNaN(val) && val > 0) nightSamples.push({ kind: "spo2", dateStr, v: r1(val) });
           break;
         }
         case "sleep": {
@@ -267,6 +260,8 @@ export async function POST(request: Request) {
                   : null;
 
           if (rawTotal != null) {
+            // Les pourcentages se calculent sur le total exact, pas sur le total
+            // arrondi à la minute (REM 32,2 % au lieu de 32,3 % sinon)
             const totalMin = isHours ? rawTotal * 60 : rawTotal;
             day.sleep_total_min = Math.round(totalMin);
 
@@ -275,17 +270,17 @@ export async function POST(request: Request) {
             const remMin = !isNaN(remRaw) && remRaw > 0 ? (isHours ? remRaw * 60 : remRaw) : null;
             const deepMin = !isNaN(deepRaw) && deepRaw > 0 ? (isHours ? deepRaw * 60 : deepRaw) : null;
 
-            if (remMin != null && day.sleep_total_min > 0) {
-              day.sleep_rem_pct = r1((remMin / day.sleep_total_min) * 100);
+            if (remMin != null && totalMin > 0) {
+              day.sleep_rem_pct = r1((remMin / totalMin) * 100);
             }
-            if (deepMin != null && day.sleep_total_min > 0) {
-              day.sleep_deep_pct = r1((deepMin / day.sleep_total_min) * 100);
+            if (deepMin != null && totalMin > 0) {
+              day.sleep_deep_pct = r1((deepMin / totalMin) * 100);
             }
 
             const awakeRaw = Number(p.awake ?? p.sleepAwake ?? p.sleepWake);
             const awakeMin = !isNaN(awakeRaw) && awakeRaw > 0 ? (isHours ? awakeRaw * 60 : awakeRaw) : null;
-            if (awakeMin != null && day.sleep_total_min > 0) {
-              day.sleep_awake_pct = r1((awakeMin / day.sleep_total_min) * 100);
+            if (awakeMin != null && totalMin > 0) {
+              day.sleep_awake_pct = r1((awakeMin / totalMin) * 100);
             }
 
             // Heures de coucher / lever pour la régularité du sommeil
@@ -346,7 +341,7 @@ export async function POST(request: Request) {
         }
         case "steps": {
           const val = Number(point.qty);
-          if (!isNaN(val) && val > 0) getDay(date).steps = (getDay(date).steps ?? 0) + Math.round(val);
+          if (!isNaN(val) && val > 0) getDay(date).steps = (getDay(date).steps ?? 0) + val;
           break;
         }
         case "active_kcal": {
@@ -395,6 +390,30 @@ export async function POST(request: Request) {
     }
   }
 
+  // Fenêtre de sommeil réelle (coucher → lever) de chaque nuit reçue. Une mesure
+  // prise dans cette fenêtre compte pour la nuit, même datée de la veille au
+  // soir (23:50). Sans fenêtre connue pour ce jour, repli sur 00h–07h.
+  const sleepWindows = [...days.entries()]
+    .filter(([, d]) => d.sleep_start && d.sleep_end)
+    .map(([date, d]) => ({ date, start: Date.parse(d.sleep_start!), end: Date.parse(d.sleep_end!) }));
+  for (const sample of nightSamples) {
+    const iso = toIso(sample.dateStr);
+    const t = iso ? Date.parse(iso) : NaN;
+    const win = !isNaN(t) ? sleepWindows.find((w) => t >= w.start && t <= w.end) : undefined;
+    let target: string | null = win?.date ?? null;
+    if (!target) {
+      const date = extractDate(sample.dateStr);
+      const h = extractHour(sample.dateStr);
+      const hasWindow = sleepWindows.some((w) => w.date === date);
+      if (!hasWindow && (h < 0 || h < 7)) target = date;
+    }
+    if (!target) continue;
+    const day = getDay(target);
+    if (sample.kind === "hrv") day._hrv_samples.push(sample.v);
+    else if (sample.kind === "respi") day._respi_samples.push(sample.v);
+    else day._spo2_samples.push(sample.v);
+  }
+
   const supabase = createServiceClient();
   const results: string[] = [];
   // FC max de référence pour la charge cardio (séances et fond)
@@ -424,6 +443,7 @@ export async function POST(request: Request) {
     }
     // Arrondir les cumuls horaires
     if (day.active_kcal != null) day.active_kcal = Math.round(day.active_kcal);
+    if (day.steps != null) day.steps = Math.round(day.steps);
     if (day.daylight_min != null) day.daylight_min = Math.round(day.daylight_min);
 
     const hasData = Object.entries(day).some(([k, v]) => !k.startsWith("_") && v != null);
@@ -441,8 +461,6 @@ export async function POST(request: Request) {
       .lt("date", date)
       .order("date", { ascending: false });
 
-    const pastHrvValues = (past ?? []).map((r) => r.hrv_ms).filter((v): v is number => v != null);
-    const pastHrValues = (past ?? []).map((r) => r.resting_hr_bpm).filter((v): v is number => v != null);
 
     // Détection d'outliers via médiane 14j
     const past14 = (past ?? []).slice(0, 14);
@@ -463,12 +481,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Baseline 60j pour le recovery score — médiane HRV (résiste aux pics)
-    const hrvAvg = pastHrvValues.length > 0 ? median(pastHrvValues) : null;
-    const hrAvg = pastHrValues.length > 0 ? pastHrValues.reduce((a, b) => a + b, 0) / pastHrValues.length : null;
-    const respiValues = (past ?? []).map((r) => r.respiratory_rate).filter((v): v is number => v != null);
-    const respiAvg = respiValues.length > 0 ? respiValues.reduce((a, b) => a + b, 0) / respiValues.length : null;
-
     // Le score se calcule sur la journée complète : un envoi peut ne contenir
     // qu'une partie des données d'un jour (ex. seulement la température de la
     // nuit). On complète donc avec ce qui est déjà en base, sinon le score
@@ -483,20 +495,20 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const prevDayHr = (past ?? []).find((r) => r.resting_hr_bpm != null)?.resting_hr_bpm ?? null;
-    const effectiveHr = day.resting_hr_bpm ?? existing?.resting_hr_bpm ?? prevDayHr;
-
-    const recovery = computeRecoveryScore({
-      hrvMs: day.hrv_ms ?? existing?.hrv_ms ?? null,
-      hrv7dAvgMs: hrvAvg,
-      restingHrBpm: effectiveHr,
-      restingHr7dAvgBpm: hrAvg,
-      sleepTotalMin: day.sleep_total_min ?? existing?.sleep_total_min ?? null,
-      sleepRemPct: day.sleep_rem_pct ?? existing?.sleep_rem_pct ?? null,
-      sleepDeepPct: day.sleep_deep_pct ?? existing?.sleep_deep_pct ?? null,
-      respiratoryRate: day.respiratory_rate ?? existing?.respiratory_rate ?? null,
-      respiratoryRate7dAvg: respiAvg,
-    });
+    // Mesures du jour uniquement (envoi, sinon ligne existante). Avant, la FC
+    // repos manquante était remplacée par la dernière connue sur 60 jours :
+    // un jour sans aucune mesure pouvait sortir à 9/10.
+    const recovery = recoveryForDay(
+      {
+        hrv_ms: day.hrv_ms ?? existing?.hrv_ms ?? null,
+        resting_hr_bpm: day.resting_hr_bpm ?? existing?.resting_hr_bpm ?? null,
+        respiratory_rate: day.respiratory_rate ?? existing?.respiratory_rate ?? null,
+        sleep_total_min: day.sleep_total_min ?? existing?.sleep_total_min ?? null,
+        sleep_rem_pct: day.sleep_rem_pct ?? existing?.sleep_rem_pct ?? null,
+        sleep_deep_pct: day.sleep_deep_pct ?? existing?.sleep_deep_pct ?? null,
+      },
+      past ?? [],
+    );
 
     // Ne pas écraser les champs existants avec null :
     // on ne passe que les champs non-null du day bucket dans l'upsert
@@ -560,8 +572,11 @@ export async function POST(request: Request) {
     const startStr = String(wo.start ?? "");
     if (!startStr) continue;
 
-    const startDate = new Date(startStr.replace(" ", "T").replace(/ ([+-])/, "$1"));
-    const startedAt = startDate.toISOString();
+    const startedAt = toIso(startStr);
+    if (!startedAt) {
+      results.push(`workout ignoré : date de début illisible "${startStr}"`);
+      continue;
+    }
 
     const name = String(wo.name ?? wo.activityType ?? "Unknown");
     const durationSec = Number(wo.duration);
@@ -573,8 +588,15 @@ export async function POST(request: Request) {
       const raw = Number(aeObj.qty);
       const units = String(aeObj.units ?? "kcal").toLowerCase();
       kcal = Math.round(units === "kj" ? raw / 4.184 : raw);
-    } else if (wo.activeEnergy != null) {
-      kcal = Math.round(Number(wo.activeEnergy));
+    } else if (Array.isArray(wo.activeEnergy)) {
+      // Points minute par minute ({ qty, units }) : somme convertie en kcal
+      let total = 0;
+      for (const pt of wo.activeEnergy as Record<string, unknown>[]) {
+        const q = Number(pt.qty);
+        if (isNaN(q)) continue;
+        total += String(pt.units ?? "kcal").toLowerCase() === "kj" ? q / 4.184 : q;
+      }
+      if (total > 0) kcal = Math.round(total);
     }
 
     // FC de la séance. Health Auto Export renvoie parfois une séance sans ses

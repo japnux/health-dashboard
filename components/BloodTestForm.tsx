@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import {
   BIOMARKERS_BY_KEY,
-  getBiomarkerStatus,
+  biomarkerStatusFor,
 } from "@/lib/biomarkers";
 
 type Props = {
@@ -128,8 +128,7 @@ export function BloodTestForm({ onSaved }: Props) {
   // Compter les statuts pour la preview
   const statusCounts = parsed?.results.reduce(
     (acc, r) => {
-      const def = BIOMARKERS_BY_KEY.get(r.biomarker_key);
-      const status = getBiomarkerStatus(r.value, r.ref_min ?? def?.refMin ?? null, r.ref_max ?? def?.refMax ?? null);
+      const status = biomarkerStatusFor(r.biomarker_key, r.value, r.ref_min ?? null, r.ref_max ?? null);
       acc[status] = (acc[status] ?? 0) + 1;
       return acc;
     },
@@ -252,7 +251,7 @@ export function BloodTestForm({ onSaved }: Props) {
                   const def = BIOMARKERS_BY_KEY.get(r.biomarker_key);
                   const refMin = r.ref_min ?? def?.refMin ?? null;
                   const refMax = r.ref_max ?? def?.refMax ?? null;
-                  const status = getBiomarkerStatus(r.value, refMin, refMax);
+                  const status = biomarkerStatusFor(r.biomarker_key, r.value, r.ref_min ?? null, r.ref_max ?? null);
                   const label = def?.label ?? r.biomarker_key;
 
                   return (

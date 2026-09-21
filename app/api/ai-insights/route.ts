@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
-import { todayIso, isoDaysAgo } from "@/lib/dates";
+import { todayIso, isoDaysAgo, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
@@ -176,7 +176,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
       supabase
         .from("workouts")
         .select("started_at, type, duration_min, kcal")
-        .gte("started_at", `${sevenDaysAgo}T00:00:00`)
+        .gte("started_at", localMidnightUtcIso(sevenDaysAgo))
         .order("started_at", { ascending: true }),
       supabase
         .from("body_composition")
@@ -232,7 +232,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
 
   // Croiser workouts faits aujourd'hui avec activités prévues
   const todayWorkouts = (workoutsRes.data ?? []).filter(
-    (w) => w.started_at.startsWith(today),
+    (w) => dateInTz(w.started_at) === today,
   );
   const planned = plannedRes.data ?? [];
 
@@ -378,7 +378,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
   // Résumé pré-calculé des workouts par jour et par type (source de vérité)
   const workoutsByDayAndType: Record<string, Record<string, number>> = {};
   for (const w of (workoutsRes.data ?? [])) {
-    const date = w.started_at.slice(0, 10);
+    const date = dateInTz(w.started_at);
     const normalized = normalizeWorkoutType(w.type ?? "");
     if (!workoutsByDayAndType[date]) workoutsByDayAndType[date] = {};
     workoutsByDayAndType[date][normalized] = (workoutsByDayAndType[date][normalized] ?? 0) + 1;

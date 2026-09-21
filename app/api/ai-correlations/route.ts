@@ -5,7 +5,7 @@ import { createHash } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
-import { todayIso, isoDaysAgo } from "@/lib/dates";
+import { todayIso, isoDaysAgo, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
@@ -138,13 +138,14 @@ export async function GET(request: Request) {
     supabase
       .from("daily_metrics")
       .select("date, hrv_ms, resting_hr_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
-      .gte("date", ninetyDaysAgo)
+      // 30 jours de plus : historique du strain des premiers jours de la fenêtre
+      .gte("date", isoDateMinusDays(ninetyDaysAgo, 30))
       .lte("date", today)
       .order("date", { ascending: true }),
     supabase
       .from("workouts")
       .select("started_at, type, duration_min, kcal")
-      .gte("started_at", `${ninetyDaysAgo}T00:00:00`)
+      .gte("started_at", localMidnightUtcIso(ninetyDaysAgo))
       .order("started_at", { ascending: true }),
     supabase
       .from("protein_logs")
@@ -198,9 +199,11 @@ export async function GET(request: Request) {
 
   // Strain quotidien
   const allDays = metricsRes.data ?? [];
-  const dailyStrain = allDays.map((m, i) => {
-    // Historique : les 30 jours précédents
-    const result = computeDayStrain(m, allDays.slice(Math.max(0, i - 30), i));
+  const metrics90 = allDays.filter((m) => m.date >= ninetyDaysAgo);
+  const dailyStrain = metrics90.map((m) => {
+    // Historique : les 30 jours calendaires précédents (pas les 30 lignes)
+    const from = isoDateMinusDays(m.date, 30);
+    const result = computeDayStrain(m, allDays.filter((d) => d.date >= from && d.date < m.date));
     return { date: m.date, score: result.score, level: result.level };
   });
 
@@ -220,7 +223,7 @@ export async function GET(request: Request) {
   };
 
   // Sommeil lisible
-  const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => {
+  const metricsWithReadableSleep = metrics90.map((m) => {
     const sleepMin = m.sleep_total_min;
     const sleepLabel = sleepMin != null
       ? `${Math.floor(sleepMin / 60)}h${Math.round(sleepMin % 60).toString().padStart(2, "0")}`

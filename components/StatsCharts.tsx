@@ -23,7 +23,6 @@ import {
 } from "@/lib/stats-data";
 import { formatWorkoutType } from "@/lib/workout-recommendation";
 import { AiCorrelations } from "@/components/AiCorrelations";
-import { computeDayStrain, type StrainDay } from "@/lib/strain-score";
 import { computeJournalImpact } from "@/lib/journal-impact";
 import { JOURNAL_ENABLED } from "@/lib/features";
 
@@ -102,6 +101,10 @@ type StatsPayload = {
   startDate: string;
   endDate: string;
   label: string;
+  today: string;
+  // Strain de chaque jour (deux périodes), calculé côté serveur avec la même
+  // référence glissante 30j que l'accueil
+  strainByDate: Record<string, number>;
   dailyMetrics: DailyMetric[];
   workouts: Workout[];
   bodyComposition: BodyComp[];
@@ -199,11 +202,18 @@ function tabMiniAnalysis(tab: StatsTab, data: StatsPayload, period: Period): str
       const stepsVals = m.map((d) => d.steps).filter((v): v is number => v != null);
       const avgStepsVal = stepsVals.length > 0 ? Math.round(stepsVals.reduce((a, b) => a + b, 0) / stepsVals.length) : null;
       const nbWorkouts = data.workouts.length;
-      const daysInPeriod = period === "week" ? 7 : period === "month" ? 30 : 365;
+      // Jours réellement couverts : la période entière si elle est passée,
+      // sinon jusqu'à aujourd'hui (avant : 30 ou 365 jours fixes, septembre
+      // en cours sortait à 2.8 séances/sem au lieu de 4.0)
+      const lastDay = data.endDate < data.today ? data.endDate : data.today;
+      const daysInPeriod = Math.max(
+        1,
+        Math.round((Date.parse(`${lastDay}T00:00:00Z`) - Date.parse(`${data.startDate}T00:00:00Z`)) / 86_400_000) + 1,
+      );
       const freqPerWeek = nbWorkouts > 0 ? Math.round((nbWorkouts / daysInPeriod) * 7 * 10) / 10 : 0;
       const kcalVals = m.map((d) => d.active_kcal).filter((v): v is number => v != null);
       const avgKcal = kcalVals.length > 0 ? Math.round(kcalVals.reduce((a, b) => a + b, 0) / kcalVals.length) : null;
-      const strainData = computeDailyStrain(m, pm);
+      const strainData = computeDailyStrain(m, data.strainByDate);
       const strainAvg = strainData.length > 0 ? Math.round((strainData.reduce((s, d) => s + d.strain, 0) / strainData.length) * 10) / 10 : null;
       let text = avgStepsVal != null ? `${avgStepsVal.toLocaleString("fr-FR")} pas/jour.` : "";
       if (nbWorkouts > 0) text += ` ${nbWorkouts} séances (${freqPerWeek}/sem).`;
@@ -431,7 +441,7 @@ export function StatsCharts() {
               )}
               <StrainChart
                 metrics={data.dailyMetrics}
-                prevMetrics={data.previousPeriod.dailyMetrics}
+                strainByDate={data.strainByDate}
                 startDate={data.startDate}
                 endDate={data.endDate}
                 period={period}
@@ -1171,18 +1181,18 @@ function ActivityChart({
 
 function StrainChart({
   metrics,
-  prevMetrics,
+  strainByDate,
   startDate,
   endDate,
   period,
 }: {
   metrics: DailyMetric[];
-  prevMetrics: PrevPeriodMetric[];
+  strainByDate: Record<string, number>;
   startDate: string;
   endDate: string;
   period: Period;
 }) {
-  const dailyStrain = computeDailyStrain(metrics, prevMetrics);
+  const dailyStrain = computeDailyStrain(metrics, strainByDate);
   const filled = fillMissingDays(
     dailyStrain.map((d) => ({ date: d.date, value: d.strain })),
     startDate,
@@ -1557,10 +1567,10 @@ function PeriodSummary({
   const bestSteps = maxOf(m.map((d) => d.steps));
 
   // Strain
-  const dailyStrain = computeDailyStrain(m, pm);
+  const dailyStrain = computeDailyStrain(m, data.strainByDate);
   const strainVals = dailyStrain.map((d) => d.strain);
   const avgStrain = avgOf(strainVals);
-  const prevDailyStrain = computeDailyStrain(pm, []);
+  const prevDailyStrain = computeDailyStrain(pm, data.strainByDate);
   const prevAvgStrain = avgOf(prevDailyStrain.map((d) => d.strain));
   const bestStrain = maxOf(strainVals);
   const avgStrainColor = avgStrain == null ? undefined
@@ -1757,20 +1767,15 @@ function PeriodSummary({
   );
 }
 
-// Calcule le strain pour chaque jour (charge cardio, repli kcal actives).
-// Baseline : la période précédente, ou la période courante à défaut.
+// Strain des jours affichés, tel que calculé par le serveur (référence 30j
+// glissante par jour, identique à l'accueil). Jours sans valeur ignorés.
 function computeDailyStrain(
-  metrics: ({ date: string } & StrainDay)[],
-  prevMetrics: ({ date: string } & StrainDay)[],
+  metrics: { date: string }[],
+  strainByDate: Record<string, number>,
 ): { date: string; strain: number }[] {
-  const hasData = (days: StrainDay[]) =>
-    days.filter((d) => (d.active_kcal ?? 0) > 0 || (d.cardio_load ?? 0) > 0).length >= 3;
-  const baseline = hasData(prevMetrics) ? prevMetrics : hasData(metrics) ? metrics : [];
-
-  return metrics.map((m) => {
-    const result = computeDayStrain(m, baseline);
-    return { date: m.date, strain: result.score };
-  });
+  return metrics
+    .filter((m) => strainByDate[m.date] != null)
+    .map((m) => ({ date: m.date, strain: strainByDate[m.date] }));
 }
 
 function maxOf(vals: (number | null)[]): number | null {

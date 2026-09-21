@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { BloodTestForm } from "@/components/BloodTestForm";
-import { getBiomarkerStatus, BIOMARKER_CATEGORIES, BIOMARKERS_BY_KEY, type BiomarkerCategory } from "@/lib/biomarkers";
+import { biomarkerStatusFor, BIOMARKER_CATEGORIES, BIOMARKERS_BY_KEY, type BiomarkerCategory } from "@/lib/biomarkers";
 import type { AttentionMarker } from "./page";
 
 type BloodTestResult = {
@@ -144,11 +144,26 @@ function MiniSparkline({
 
 // ── Delta helpers ─────────────────────────────────────────────────
 
-function getDeltaColor(delta: number, biomarkerKey: string): string {
-  if (delta === 0) return "text-[var(--color-body)]/40";
+// Vert si l'évolution rapproche de la plage optimale, rouge si elle en
+// éloigne, neutre si on reste dedans. Avant, toute hausse était verte, même
+// des leucocytes qui passaient au-dessus du max.
+function getDeltaColor(
+  delta: number,
+  biomarkerKey: string,
+  value: number,
+  effMin: number | null,
+  effMax: number | null,
+): string {
+  const neutral = "text-[var(--color-body)]/40";
+  if (delta === 0) return neutral;
   const def = BIOMARKERS_BY_KEY.get(biomarkerKey);
-  const isGood = def?.lowerIsBetter ? delta < 0 : delta > 0;
-  return isGood ? "text-[#15be53]" : "text-[#ea2261]";
+  if (def?.lowerIsBetter) return delta < 0 ? "text-[#15be53]" : "text-[#ea2261]";
+  const distance = (v: number) =>
+    effMin != null && v < effMin ? effMin - v : effMax != null && v > effMax ? v - effMax : 0;
+  const before = distance(value - delta);
+  const after = distance(value);
+  if (after === before) return neutral;
+  return after < before ? "text-[#15be53]" : "text-[#ea2261]";
 }
 
 /** Utilise les plages optimales du registre plutôt que celles stockées en DB (issues du PDF labo) */
@@ -161,8 +176,9 @@ function getEffectiveRefs(biomarkerKey: string, dbRefMin: number | null, dbRefMa
 // ── Ligne de marqueur unifiée (colonnes fixes) ──────────────────
 
 function BiomarkerRow({
-  biomarkerKey, label, value, unit, status, effMin, effMax, delta, history, router,
+  biomarkerKey, label, value, unit, status, effMin, effMax, delta, history, router, measuredAt,
 }: {
+  measuredAt?: string | null; // affichée si le marqueur n'est pas dans le dernier bilan
   biomarkerKey: string;
   label: string;
   value: number;
@@ -190,6 +206,11 @@ function BiomarkerRow({
       {/* Nom — prend tout l'espace restant */}
       <span className="text-[13px] text-[var(--color-heading)] dark:text-white flex-1 min-w-0 truncate">
         {label}
+        {measuredAt && (
+          <span className="ml-1.5 text-[10px] text-[var(--color-body)]/60">
+            {new Date(`${measuredAt}T12:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "2-digit" })}
+          </span>
+        )}
       </span>
 
       {/* Sparkline — desktop only, largeur fixe */}
@@ -212,7 +233,7 @@ function BiomarkerRow({
       {/* Delta — largeur fixe, toujours rendu (vide si pas de delta) */}
       <span
         className={`text-[10px] tabular-nums w-[36px] text-right shrink-0 ${
-          delta != null && delta !== 0 ? getDeltaColor(delta, biomarkerKey) : ""
+          delta != null && delta !== 0 ? getDeltaColor(delta, biomarkerKey, value, effMin, effMax) : ""
         }`}
       >
         {delta != null && delta !== 0
@@ -310,6 +331,11 @@ function AttentionSummary({ markers, testDate }: { markers: AttentionMarker[]; t
               </p>
               <p className="text-[10px] text-[var(--color-body)] mt-0.5 tabular-nums">
                 {fmtBioVal(m.value, m.unit)} {m.unit}
+                {m.measuredAt !== testDate && (
+                  <span className="text-[var(--color-body)]/60 ml-1">
+                    ({new Date(`${m.measuredAt}T12:00:00Z`).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })})
+                  </span>
+                )}
                 {m.trend === "degrading" && <span className="text-[#ea2261] ml-1">↗ dégradation</span>}
                 {m.trend === "improving" && <span className="text-[#15be53] ml-1">↘ amélioration</span>}
               </p>
@@ -798,7 +824,20 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
   const visibleCategories = orderCategories([...allCategories]);
 
   const latest = tests[0] ?? null;
-  const previous = tests.length >= 2 ? tests[1] : null;
+
+  // Dernière mesure connue de chaque marqueur (tous bilans), avec la
+  // précédente pour l'écart : un bilan partiel ne masque plus les autres
+  const latestByMarker = useMemo(() => {
+    const map = new Map<string, { r: BloodTestResult; date: string; prev: BloodTestResult | null }>();
+    for (const t of tests) {
+      for (const r of t.blood_test_results) {
+        const known = map.get(r.biomarker_key);
+        if (!known) map.set(r.biomarker_key, { r, date: t.test_date, prev: null });
+        else if (!known.prev) known.prev = r;
+      }
+    }
+    return map;
+  }, [tests]);
 
   // Récupérer userAge depuis le config (on le passe pas encore, null par défaut)
   const userAge: number | null = null;
@@ -889,14 +928,11 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
 
           {/* Liste de marqueurs — layout mobile-first (cards) */}
           <div className="space-y-1">
-            {latest?.blood_test_results
-              .filter((r) => r.category === activeCategory)
-              .map((r) => {
+            {[...latestByMarker.values()]
+              .filter(({ r }) => r.category === activeCategory)
+              .map(({ r, date, prev: prevResult }) => {
                 const { refMin: effMin, refMax: effMax } = getEffectiveRefs(r.biomarker_key, r.ref_min, r.ref_max);
-                const status = getBiomarkerStatus(r.value, effMin, effMax);
-                const prevResult = previous?.blood_test_results.find(
-                  (pr) => pr.biomarker_key === r.biomarker_key,
-                );
+                const status = biomarkerStatusFor(r.biomarker_key, r.value, r.ref_min, r.ref_max);
                 const delta = prevResult ? r.value - prevResult.value : null;
                 const history = biomarkerHistory.get(r.biomarker_key) ?? [];
 
@@ -913,6 +949,7 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
                     delta={delta}
                     history={history}
                     router={router}
+                    measuredAt={date !== latest?.test_date ? date : null}
                   />
                 );
               })}
@@ -987,11 +1024,7 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
                       <div className="space-y-0.5">
                         {results.map((r) => {
                           const { refMin: effMin, refMax: effMax } = getEffectiveRefs(r.biomarker_key, r.ref_min, r.ref_max);
-                          const status = getBiomarkerStatus(
-                            r.value,
-                            effMin,
-                            effMax,
-                          );
+                          const status = biomarkerStatusFor(r.biomarker_key, r.value, r.ref_min, r.ref_max);
                           const prevResult = prevTest?.blood_test_results.find(
                             (pr) => pr.biomarker_key === r.biomarker_key,
                           );

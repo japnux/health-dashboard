@@ -1,6 +1,8 @@
 // Tendance de composition corporelle par régression linéaire simple.
 // Lisse le bruit point-à-point pour donner un signal de direction stable.
 
+import { isoDaysAgo } from "@/lib/dates";
+
 export type BodyMeasurement = {
   measured_at: string;
   weight_kg: number | null;
@@ -63,14 +65,17 @@ export function computeTrend(
   windowDays = 60,
 ): BodyTrend | null {
   if (!bodies || bodies.length < 2) return null;
-  const todayMs = Date.now();
-  const cutoffMs = todayMs - windowDays * 86_400_000;
+  // Fenêtre en jours calendaires (aujourd'hui − N, inclus). Avant, la borne
+  // partait de l'heure actuelle et excluait une pesée faite pile N jours plus tôt.
+  const cutoffDate = isoDaysAgo(windowDays);
+  const cutoffMs = new Date(`${cutoffDate}T00:00:00Z`).getTime();
   const points: Point[] = [];
   for (const b of bodies) {
     const v = b[metric];
     if (v == null) continue;
-    const t = new Date(b.measured_at).getTime();
-    if (Number.isNaN(t) || t < cutoffMs) continue;
+    const day = b.measured_at.slice(0, 10);
+    const t = new Date(`${day}T00:00:00Z`).getTime();
+    if (Number.isNaN(t) || day < cutoffDate) continue;
     points.push({
       // index en jours depuis le début de fenêtre (échelle compatible avec slopePerWeek = slope * 7)
       dayIndex: (t - cutoffMs) / 86_400_000,

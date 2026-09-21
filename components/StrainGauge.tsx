@@ -25,7 +25,7 @@ export function StrainGauge({ strain }: Props) {
         <p className="text-[11px] text-[var(--color-body)] mt-0.5 whitespace-nowrap">
           {strain.mode === "hr"
             ? `Charge cardio ${strain.cardioLoad}`
-            : `${strain.activeKcalToday} kcal actives`}
+            : `Estimé sur ${strain.activeKcalToday} kcal`}
         </p>
         {strain.hasBaseline && (
           <p className="text-[11px] text-[var(--color-body)] whitespace-nowrap">

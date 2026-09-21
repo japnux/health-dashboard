@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
-import { todayIso, isoDaysAgo, diffDaysIso } from "@/lib/dates";
-import { computeRecoveryScore, type RecoveryResult } from "@/lib/recovery-score";
+import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
+import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
 import { computeDayStrain, type StrainResult } from "@/lib/strain-score";
@@ -97,7 +97,8 @@ export type DashboardSnapshot = {
 export type WatchInsights = {
   bedtime: string | null; // ISO, coucher de la nuit dernière
   wakeTime: string | null; // ISO, lever
-  bedtimeSpreadMin: number | null; // écart-type de l'heure de coucher sur 7 nuits
+  bedtimeSpreadMin: number | null; // écart-type de l'heure de coucher
+  bedtimeNights: number; // nuits réellement utilisées pour l'écart-type (max 8)
   wristTempDeltaC: number | null; // écart vs médiane 60j
   breathingDisturbances: number | null;
   // Alerte si la nuit dernière dépasse nettement la médiane des 30 nuits précédentes
@@ -105,7 +106,8 @@ export type WatchInsights = {
   vo2Max: { value: number; date: string } | null; // dernière mesure connue
   cardioRecoveryBpm: { value: number; date: string } | null; // dernière mesure connue
   walkingHrBpm: number | null;
-  walkingHr7dAvg: number | null;
+  walkingHrIsYesterday: boolean; // valeur du jour absente : c'est celle d'hier
+  walkingHrAvg: { value: number; days: number } | null; // moyenne des jours précédents
   hrMaxBpm: number | null;
   hrMinBpm: number | null;
 };
@@ -147,7 +149,9 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     supabase
       .from("workouts")
       .select("*")
-      .gte("started_at", `${sevenDaysAgo}T00:00:00`)
+      // 7 jours calendaires de Paris, aujourd'hui compris (avant : depuis J-7 à
+      // 00h UTC, soit 8 jours, et "Séances 7j" comptait une séance de trop)
+      .gte("started_at", localMidnightUtcIso(isoDaysAgo(6)))
       .order("started_at", { ascending: false })
       .limit(20),
     supabase
@@ -211,19 +215,19 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const hrBaseline = hr60dAvg ?? avg(past7.map((r) => r.resting_hr_bpm));
   const respiBaseline = avg(baseline60.map((r) => r.respiratory_rate)) ?? avg(past7.map((r) => r.respiratory_rate));
 
-  const effectiveRestingHr = today?.resting_hr_bpm ?? yesterdayMetrics?.resting_hr_bpm ?? null;
-
-  const recovery = computeRecoveryScore({
-    hrvMs: today?.hrv_ms ?? null,
-    hrv7dAvgMs: hrvBaseline,
-    restingHrBpm: effectiveRestingHr,
-    restingHr7dAvgBpm: hrBaseline,
-    sleepTotalMin: today?.sleep_total_min ?? null,
-    sleepRemPct: today?.sleep_rem_pct ?? null,
-    sleepDeepPct: today?.sleep_deep_pct ?? null,
-    respiratoryRate: today?.respiratory_rate ?? null,
-    respiratoryRate7dAvg: respiBaseline,
-  });
+  // Score : FC repos du jour uniquement. Si elle manque, le composant est
+  // absent (score "partiel") plutôt que remplacé par celle d'hier.
+  const recovery = recoveryForDay(
+    {
+      hrv_ms: today?.hrv_ms ?? null,
+      resting_hr_bpm: today?.resting_hr_bpm ?? null,
+      respiratory_rate: today?.respiratory_rate ?? null,
+      sleep_total_min: today?.sleep_total_min ?? null,
+      sleep_rem_pct: today?.sleep_rem_pct ?? null,
+      sleep_deep_pct: today?.sleep_deep_pct ?? null,
+    },
+    baseline60,
+  );
 
   const recentWorkouts = workouts ?? [];
   const lastWorkout = recentWorkouts[0] ?? null;
@@ -295,7 +299,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     });
 
   // Détection jour training / repos
-  const todayWorkouts = recentWorkouts.filter((w) => w.started_at.startsWith(date));
+  const todayWorkouts = recentWorkouts.filter((w) => dateInTz(w.started_at) === date);
   const plannedList = plannedRows ?? [];
   const isTrainingDay = todayWorkouts.length > 0 || plannedList.length > 0;
 
@@ -440,7 +444,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
         }
       : null,
     bloodTestAgeDays: bloodTests?.[0]
-      ? diffDaysIso(bloodTests[0].test_date, date)
+      ? diffDaysIso(date, bloodTests[0].test_date)
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
@@ -508,19 +512,29 @@ function computeWatchInsights(
   };
 
   const walkingHrToday = today?.walking_hr_avg_bpm ?? yesterdayMetrics?.walking_hr_avg_bpm ?? null;
-  const walking7d = avg(recent.map((r) => r.walking_hr_avg_bpm));
+  const walkingHrIsYesterday = today?.walking_hr_avg_bpm == null && walkingHrToday != null;
+  // Moyenne sur les jours précédents seulement (aujourd'hui exclu), avec leur nombre
+  const walkingPast = recent
+    .filter((r) => r.date !== today?.date)
+    .map((r) => r.walking_hr_avg_bpm)
+    .filter((v): v is number => v != null);
 
   return {
     bedtime: today?.sleep_start ?? null,
     wakeTime: today?.sleep_end ?? null,
     bedtimeSpreadMin,
+    bedtimeNights: bedMinutes.length,
     wristTempDeltaC,
     breathingDisturbances: breathingToday,
     breathingAlert,
     vo2Max: lastOf("vo2_max"),
     cardioRecoveryBpm: lastOf("cardio_recovery_bpm"),
     walkingHrBpm: walkingHrToday,
-    walkingHr7dAvg: walking7d != null ? Math.round(walking7d) : null,
+    walkingHrIsYesterday,
+    walkingHrAvg:
+      walkingPast.length > 0
+        ? { value: Math.round(walkingPast.reduce((a, b) => a + b, 0) / walkingPast.length), days: walkingPast.length }
+        : null,
     hrMaxBpm: today?.hr_max_bpm ?? null,
     hrMinBpm: today?.hr_min_bpm ?? null,
   };

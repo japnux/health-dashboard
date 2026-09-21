@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { createHash } from "crypto";
 import { redirect } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
-import { BIOMARKERS_BY_KEY, getBiomarkerStatus } from "@/lib/biomarkers";
+import { BIOMARKERS_BY_KEY, biomarkerStatusFor } from "@/lib/biomarkers";
 import { BiologieClient } from "./client";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +48,7 @@ export type AttentionMarker = {
   status: "borderline" | "out_of_range";
   trend: "degrading" | "stable" | "improving" | null;
   delta: number | null;
+  measuredAt: string; // date du bilan où ce marqueur a été mesuré en dernier
 };
 
 export default async function BiologiePage() {
@@ -61,29 +62,35 @@ export default async function BiologiePage() {
     .order("test_date", { ascending: false });
 
   const tests = (data ?? []) as BloodTest[];
-  const latest = tests[0] ?? null;
-  const previous = tests.length >= 2 ? tests[1] : null;
+
+  // ── Dernière mesure connue de chaque marqueur, tous bilans confondus ──
+  // Avant, seul le dernier bilan comptait : un bilan partiel (urgences) faisait
+  // disparaître la ferritine, la B12 ou la vitamine D mesurées avant.
+  const latestByKey = new Map<string, { r: BloodTestResult; date: string; prev: BloodTestResult | null }>();
+  for (const t of tests) {
+    for (const r of t.blood_test_results) {
+      const known = latestByKey.get(r.biomarker_key);
+      if (!known) latestByKey.set(r.biomarker_key, { r, date: t.test_date, prev: null });
+      else if (!known.prev) known.prev = r; // mesure précédente du même marqueur
+    }
+  }
 
   // ── Marqueurs nécessitant attention ──
   const attentionMarkers: AttentionMarker[] = [];
 
-  if (latest) {
-    for (const r of latest.blood_test_results) {
-      // Utiliser les plages du registre (source de vérité) plutôt que celles du PDF labo
+  for (const { r, date: measuredAt, prev: prevResult } of latestByKey.values()) {
+      // Plage optimale du registre + normes du labo stockées avec le résultat
       const def = BIOMARKERS_BY_KEY.get(r.biomarker_key);
-      const effMin = def?.refMin ?? r.ref_min;
-      const effMax = def?.refMax ?? r.ref_max;
-      const status = getBiomarkerStatus(r.value, effMin, effMax);
+      const effMin = def ? def.refMin : r.ref_min;
+      const effMax = def ? def.refMax : r.ref_max;
+      const status = biomarkerStatusFor(r.biomarker_key, r.value, r.ref_min, r.ref_max);
       if (status === "optimal") continue;
 
-      const prevResult = previous?.blood_test_results.find(
-        (pr) => pr.biomarker_key === r.biomarker_key,
-      );
       const delta = prevResult ? r.value - prevResult.value : null;
 
       let trend: AttentionMarker["trend"] = null;
       if (delta !== null && delta !== 0 && prevResult) {
-        const prevStatus = getBiomarkerStatus(prevResult.value, effMin, effMax);
+        const prevStatus = biomarkerStatusFor(prevResult.biomarker_key, prevResult.value, prevResult.ref_min, prevResult.ref_max);
         // Dégradation = le marqueur s'éloigne de la plage optimale
         if (def?.lowerIsBetter) {
           trend = delta > 0 ? "degrading" : "improving";
@@ -114,8 +121,8 @@ export default async function BiologiePage() {
         status: status as "borderline" | "out_of_range",
         trend,
         delta,
+        measuredAt,
       });
-    }
   }
 
   // Trier : out_of_range + degrading en premier
@@ -134,11 +141,9 @@ export default async function BiologiePage() {
       resultsByCategory.get(cat)!.push(r);
     }
 
-    const outOfRange = t.blood_test_results.filter((r) => {
-      const d = BIOMARKERS_BY_KEY.get(r.biomarker_key);
-      const status = getBiomarkerStatus(r.value, d?.refMin ?? r.ref_min, d?.refMax ?? r.ref_max);
-      return status === "out_of_range";
-    });
+    const outOfRange = t.blood_test_results.filter(
+      (r) => biomarkerStatusFor(r.biomarker_key, r.value, r.ref_min, r.ref_max) === "out_of_range",
+    );
 
     return {
       ...t,

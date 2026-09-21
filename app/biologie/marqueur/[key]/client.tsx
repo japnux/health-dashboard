@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
-import { getBiomarkerStatus } from "@/lib/biomarkers";
+import { statusWithLabRefs } from "@/lib/biomarkers";
 
 type HistoryPoint = {
   date: string;
@@ -184,7 +184,7 @@ function EvolutionChart({
 
       {/* Points + labels */}
       {history.map((h, i) => {
-        const status = getBiomarkerStatus(h.value, refMin, refMax);
+        const status = statusWithLabRefs(h.value, refMin, refMax, h.ref_min, h.ref_max);
         const color = status === "optimal" ? "#06b6d4" : status === "borderline" ? "#64748d" : "#ea2261";
         return (
           <g key={i}>
@@ -240,7 +240,7 @@ export function MarqueurClient({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const latest = history[history.length - 1] ?? null;
-  const latestStatus = latest ? getBiomarkerStatus(latest.value, refMin, refMax) : "optimal";
+  const latestStatus = latest ? statusWithLabRefs(latest.value, refMin, refMax, latest.ref_min, latest.ref_max) : "optimal";
   const isOptimal = latestStatus === "optimal";
 
   const generateAnalysis = async () => {
@@ -379,11 +379,19 @@ export function MarqueurClient({
             </thead>
             <tbody>
               {[...history].reverse().map((h, i, arr) => {
-                const status = getBiomarkerStatus(h.value, refMin, refMax);
+                const status = statusWithLabRefs(h.value, refMin, refMax, h.ref_min, h.ref_max);
                 const prev = i < arr.length - 1 ? arr[i + 1] : null;
                 const delta = prev ? h.value - prev.value : null;
-                const deltaGood = delta != null && delta !== 0
-                  ? lowerIsBetter ? delta < 0 : delta > 0
+                // Bon si l'évolution rapproche de la plage optimale (ou baisse
+                // pour un marqueur "plus bas = mieux"), neutre si elle y reste
+                const dist = (v: number) =>
+                  refMin != null && v < refMin ? refMin - v : refMax != null && v > refMax ? v - refMax : 0;
+                const deltaGood = delta != null && delta !== 0 && prev
+                  ? lowerIsBetter
+                    ? delta < 0
+                    : dist(h.value) === dist(prev.value)
+                      ? null
+                      : dist(h.value) < dist(prev.value)
                   : null;
 
                 return (

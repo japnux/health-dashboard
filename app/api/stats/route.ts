@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createHash } from "crypto";
 import { createServiceClient } from "@/lib/supabase/service";
-import { todayIso } from "@/lib/dates";
+import { todayIso, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
+import { computeDayStrain } from "@/lib/strain-score";
 
 async function isAuthenticated(): Promise<boolean> {
   const pw = process.env.DASHBOARD_PASSWORD;
@@ -91,6 +92,7 @@ export async function GET(request: Request) {
     prevWorkoutsRes,
     journalRes,
     prevJournalRes,
+    strainRowsRes,
   ] = await Promise.all([
     supabase
       .from("daily_metrics")
@@ -104,8 +106,10 @@ export async function GET(request: Request) {
     supabase
       .from("workouts")
       .select("started_at, type, duration_min, kcal")
-      .gte("started_at", `${current.start}T00:00:00`)
-      .lte("started_at", `${current.end}T23:59:59`)
+      // Bornes à minuit heure de Paris (avant : minuit UTC, une séance après
+      // 22h l'été tombait sur la veille)
+      .gte("started_at", localMidnightUtcIso(current.start))
+      .lt("started_at", localMidnightUtcIso(isoDateMinusDays(current.end, -1)))
       .order("started_at", { ascending: true }),
 
     supabase
@@ -128,8 +132,8 @@ export async function GET(request: Request) {
     supabase
       .from("workouts")
       .select("started_at, type, duration_min, kcal")
-      .gte("started_at", `${prev.start}T00:00:00`)
-      .lte("started_at", `${prev.end}T23:59:59`),
+      .gte("started_at", localMidnightUtcIso(prev.start))
+      .lt("started_at", localMidnightUtcIso(isoDateMinusDays(prev.end, -1))),
 
     supabase
       .from("journal_entries")
@@ -143,7 +147,26 @@ export async function GET(request: Request) {
       .select("date, mood, energy, stress")
       .gte("date", prev.start)
       .lte("date", prev.end),
+
+    // Strain : 30 jours d'historique avant la période précédente, pour calculer
+    // chaque jour avec la même référence glissante que l'accueil
+    supabase
+      .from("daily_metrics")
+      .select("date, active_kcal, cardio_load")
+      .gte("date", isoDateMinusDays(prev.start, 30))
+      .lte("date", current.end)
+      .order("date", { ascending: true }),
   ]);
+
+  // Strain de chaque jour des deux périodes, baseline = les 30 jours précédents
+  const strainRows = strainRowsRes.data ?? [];
+  const strainByDate: Record<string, number> = {};
+  for (const row of strainRows) {
+    if (row.date < prev.start) continue;
+    const from = isoDateMinusDays(row.date, 30);
+    const history = strainRows.filter((r) => r.date >= from && r.date < row.date);
+    strainByDate[row.date] = computeDayStrain(row, history).score;
+  }
 
   const journalEntries = journalRes.data ?? [];
   const prevJournalEntries = prevJournalRes.data ?? [];
@@ -173,6 +196,8 @@ export async function GET(request: Request) {
     startDate: current.start,
     endDate: current.end,
     label: current.label,
+    today: todayIso(),
+    strainByDate,
     dailyMetrics: metricsRes.data ?? [],
     workouts: workoutsRes.data ?? [],
     bodyComposition: bodyRes.data ?? [],

@@ -1,5 +1,6 @@
 import { getDashboardSnapshot, type DashboardSnapshot } from "@/lib/dashboard-data";
-import { formatFrLong } from "@/lib/dates";
+import { formatFrLong, dateInTz, diffDaysIso } from "@/lib/dates";
+import { workoutDisplayLabel } from "@/lib/workout-types";
 import { recoveryColor } from "@/lib/recovery-score";
 import { NutritionTracker } from "@/components/NutritionTracker";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
@@ -52,7 +53,9 @@ export default async function Home() {
     snap.today?.hrv_ms != null && snap.yesterdayMetrics?.hrv_ms != null
       ? snap.today.hrv_ms - snap.yesterdayMetrics.hrv_ms
       : null;
+  // FC repos : celle du jour, sinon celle d'hier, signalée comme telle
   const effectiveHr = snap.today?.resting_hr_bpm ?? snap.yesterdayMetrics?.resting_hr_bpm ?? null;
+  const hrIsYesterday = snap.today?.resting_hr_bpm == null && effectiveHr != null;
   const hrDelta = null;
   const respiDelta =
     snap.today?.respiratory_rate != null && snap.yesterdayMetrics?.respiratory_rate != null
@@ -79,7 +82,11 @@ export default async function Home() {
         </h1>
         {snap.lastSyncAt && (
           <p className="text-[11px] text-[var(--color-body)]/50 mt-0.5">
-            Dernières données reçues à {new Date(snap.lastSyncAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
+            Dernières données reçues{" "}
+            {dateInTz(snap.lastSyncAt) === snap.date
+              ? "à "
+              : `le ${new Date(snap.lastSyncAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: "Europe/Paris" })} à `}
+            {new Date(snap.lastSyncAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
           </p>
         )}
       </header>
@@ -153,7 +160,7 @@ export default async function Home() {
               }
               sub={
                 snap.hrvBaselineAvg != null
-                  ? `méd ${Math.round(snap.hrvBaselineAvg)}`
+                  ? `méd 60j ${Math.round(snap.hrvBaselineAvg)}`
                   : undefined
               }
               delta={hrvDelta}
@@ -168,7 +175,7 @@ export default async function Home() {
               }
             />
             <MiniMetric
-              label="FC repos"
+              label={hrIsYesterday ? "FC repos (hier)" : "FC repos"}
               value={
                 effectiveHr != null
                   ? `${effectiveHr} bpm`
@@ -176,7 +183,7 @@ export default async function Home() {
               }
               sub={
                 snap.hrBaselineAvg != null
-                  ? `moy ${Math.round(snap.hrBaselineAvg)}`
+                  ? `moy 60j ${Math.round(snap.hrBaselineAvg)}`
                   : undefined
               }
               delta={hrDelta}
@@ -196,7 +203,7 @@ export default async function Home() {
                 value={`${Math.round(snap.today.respiratory_rate * 10) / 10}/min`}
                 sub={
                   snap.respiBaselineAvg != null
-                    ? `moy ${Math.round(snap.respiBaselineAvg * 10) / 10}`
+                    ? `moy 60j ${Math.round(snap.respiBaselineAvg * 10) / 10}`
                     : undefined
                 }
                 delta={respiDelta}
@@ -227,7 +234,7 @@ export default async function Home() {
         {/* Strain */}
         <StrainCard
           strain={snap.strain}
-          todayWorkouts={snap.recentWorkouts.filter((w) => w.started_at.startsWith(snap.date)).map((w) => ({ type: w.type }))}
+          todayWorkouts={snap.recentWorkouts.filter((w) => dateInTz(w.started_at) === snap.date).map((w) => ({ type: w.type }))}
           watch={snap.watch}
         />
 
@@ -249,8 +256,14 @@ export default async function Home() {
               {(snap.today?.sleep_rem_pct != null || snap.today?.sleep_deep_pct != null) && (() => {
                 const rem = snap.today?.sleep_rem_pct ?? 0;
                 const deep = snap.today?.sleep_deep_pct ?? 0;
-                const awake = snap.today?.sleep_awake_pct ?? null;
-                const light = Math.max(0, 100 - rem - deep - (awake ?? 0));
+                // Le total de sommeil d'Apple exclut l'éveil : les 3 phases font
+                // 100 % du sommeil, et l'éveil s'affiche à part, en minutes.
+                const awakePct = snap.today?.sleep_awake_pct ?? null;
+                const awakeMin =
+                  awakePct != null && snap.today?.sleep_total_min != null
+                    ? Math.round((awakePct * snap.today.sleep_total_min) / 100)
+                    : null;
+                const light = Math.max(0, 100 - rem - deep);
                 return (
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-1.5">
                     {snap.today?.sleep_deep_pct != null && (
@@ -274,10 +287,10 @@ export default async function Home() {
                         <span className="text-[var(--color-body)]/60">léger</span>
                       </span>
                     )}
-                    {awake != null && (
+                    {awakeMin != null && (
                       <span className="flex items-center gap-1 text-[11px]">
                         <span className="inline-block w-2 h-2 rounded-full bg-[#f97316]" />
-                        <span className="text-[#f97316]">{Math.round(awake)}%</span>
+                        <span className="text-[#f97316]">{awakeMin} min</span>
                         <span className="text-[var(--color-body)]/60">éveillé</span>
                       </span>
                     )}
@@ -294,7 +307,6 @@ export default async function Home() {
               targetMin={snap.sleepTargetMin}
               remPct={snap.today.sleep_rem_pct ?? undefined}
               deepPct={snap.today.sleep_deep_pct ?? undefined}
-              awakePct={snap.today.sleep_awake_pct ?? undefined}
             />
           )}
           <SleepTiming watch={snap.watch} />
@@ -451,9 +463,9 @@ function CardioMetrics({ watch }: { watch: DashboardSnapshot["watch"] }) {
   }
   if (watch.walkingHrBpm != null) {
     items.push({
-      label: "FC marche",
+      label: watch.walkingHrIsYesterday ? "FC marche (hier)" : "FC marche",
       value: `${watch.walkingHrBpm} bpm`,
-      sub: watch.walkingHr7dAvg != null ? `moy 7j ${watch.walkingHr7dAvg}` : undefined,
+      sub: watch.walkingHrAvg ? `moy ${watch.walkingHrAvg.days}j ${watch.walkingHrAvg.value}` : undefined,
     });
   }
   if (watch.vo2Max) {
@@ -499,7 +511,7 @@ function SleepTiming({ watch }: { watch: DashboardSnapshot["watch"] }) {
         <MiniMetric
           label="Régularité"
           value={`±${watch.bedtimeSpreadMin} min`}
-          sub="coucher, 7 nuits"
+          sub={`coucher, ${watch.bedtimeNights} nuits`}
           delta={null}
           positiveIsGood
         />
@@ -618,13 +630,11 @@ function SleepBar({
   targetMin,
   remPct,
   deepPct,
-  awakePct,
 }: {
   totalMin: number;
   targetMin: number;
   remPct?: number;
   deepPct?: number;
-  awakePct?: number;
 }) {
   const pct = Math.min(100, Math.round((totalMin / targetMin) * 100));
   const targetH = Math.floor(targetMin / 60);
@@ -634,8 +644,8 @@ function SleepBar({
   const hasPhases = remPct != null && deepPct != null;
   const deep = deepPct ?? 0;
   const rem = remPct ?? 0;
-  const awake = awakePct ?? 0;
-  const light = Math.max(0, 100 - deep - rem - awake);
+  // La barre représente le sommeil vs l'objectif : l'éveil n'en fait pas partie
+  const light = Math.max(0, 100 - deep - rem);
 
   return (
     <div className="mt-3">
@@ -645,9 +655,6 @@ function SleepBar({
             <div className="h-full bg-[#6366f1] transition-all" style={{ width: `${deep * pct / 100}%` }} />
             <div className="h-full bg-[#06b6d4] transition-all" style={{ width: `${rem * pct / 100}%` }} />
             <div className="h-full bg-[#93c5fd] transition-all" style={{ width: `${light * pct / 100}%` }} />
-            {awake > 0 && (
-              <div className="h-full bg-[#f97316] transition-all" style={{ width: `${awake * pct / 100}%` }} />
-            )}
           </>
         ) : (
           <div
@@ -672,14 +679,17 @@ type BodyCompRow = {
 
 function bodyAnalysis(current: BodyCompRow, previous: BodyCompRow): string | null {
   const weightDiff = +(current.weight_kg - previous.weight_kg).toFixed(1);
+  // Période de la comparaison, sinon "+1.3 kg" ne dit pas depuis quand
+  const gapDays = diffDaysIso(current.measured_at.slice(0, 10), previous.measured_at.slice(0, 10));
+  const since = `en ${gapDays} j`;
   const hasFat = current.body_fat_pct != null && previous.body_fat_pct != null;
   const hasLean = current.lean_mass_kg != null && previous.lean_mass_kg != null;
 
   if (!hasFat && !hasLean) {
     if (Math.abs(weightDiff) < 0.3) return "Poids stable — continue à tracker pour voir la tendance.";
     return weightDiff > 0
-      ? `+${weightDiff} kg — pèse-toi avec la balance impédancemètre pour voir la répartition.`
-      : `${weightDiff} kg — pèse-toi avec la balance impédancemètre pour voir la répartition.`;
+      ? `+${weightDiff} kg ${since} — pèse-toi avec la balance impédancemètre pour voir la répartition.`
+      : `${weightDiff} kg ${since} — pèse-toi avec la balance impédancemètre pour voir la répartition.`;
   }
 
   const fatDiff = hasFat ? +(current.body_fat_pct! - previous.body_fat_pct!).toFixed(1) : 0;
@@ -828,11 +838,10 @@ function lastWorkoutLabel(type: string | null, startedAt: string): string {
     Walking: "Marche",
     Cycling: "Vélo",
   };
-  const cleanType = type ? (typeMap[type] ?? type) : "?";
-  const d = new Date(startedAt);
-  const daysDiff = Math.round(
-    (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24),
-  );
+  const cleanType = type ? (typeMap[type] ?? workoutDisplayLabel(type)) : "?";
+  // Écart en jours calendaires (heure de Paris), pas en tranches de 24 h :
+  // une séance d'hier 23h vue ce matin à 8h est bien "hier"
+  const daysDiff = diffDaysIso(dateInTz(new Date()), dateInTz(startedAt));
   if (daysDiff === 0) return `${cleanType} auj.`;
   if (daysDiff === 1) return `${cleanType} hier`;
   return `${cleanType} il y a ${daysDiff}j`;

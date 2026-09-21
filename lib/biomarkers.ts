@@ -57,7 +57,7 @@ export const BIOMARKERS: BiomarkerDef[] = [
   { key: "ast_alt_ratio", label: "AST/ALT", category: "foie", unit: "calc", refMin: 0.8, refMax: 1.5, desc: "Ratio calculé qui aide à distinguer les atteintes hépatiques alcooliques des non-alcooliques." },
   { key: "fib4", label: "FIB-4", category: "foie", unit: "calc", refMin: 0.81, refMax: 0.9, desc: "Score de fibrose hépatique calculé à partir de l'âge, des plaquettes et des transaminases." },
   { key: "albumin", label: "Albumine", category: "foie", unit: "g/L", refMin: 35, refMax: 50, desc: "Protéine produite par le foie. Reflète la capacité de synthèse hépatique et l'état nutritionnel." },
-  { key: "bilirubin", label: "Bilirubine conjuguée", category: "foie", unit: "mg/dL", refMin: null, refMax: 5, lowerIsBetter: true, desc: "Produit de dégradation de l'hémoglobine, métabolisé par le foie. Élevée en cas d'obstruction biliaire." },
+  { key: "bilirubin", label: "Bilirubine conjuguée", category: "foie", unit: "mg/dL", refMin: null, refMax: 0.3, lowerIsBetter: true, desc: "Produit de dégradation de l'hémoglobine, métabolisé par le foie. Élevée en cas d'obstruction biliaire." },
 
   // ─── Lipides ───────────────────────────────────────────
   { key: "apob", label: "ApoB", category: "lipides", unit: "mg/dL", refMin: null, refMax: 60, lowerIsBetter: true, desc: "Protéine portée par les particules LDL athérogènes. Meilleur prédicteur du risque cardiovasculaire que le LDL-C." },
@@ -74,7 +74,7 @@ export const BIOMARKERS: BiomarkerDef[] = [
   { key: "homa_ir", label: "HOMA-IR", category: "metabolique", unit: "calc", refMin: null, refMax: 1.5, lowerIsBetter: true, desc: "Indice de résistance à l'insuline calculé à partir de la glycémie et de l'insuline à jeun." },
   { key: "insulin", label: "Insuline", category: "metabolique", unit: "µIU/mL", refMin: 2.6, refMax: 24.9, desc: "Hormone pancréatique qui régule la glycémie. Élevée des années avant que la glycémie ne monte." },
   { key: "uric_acid", label: "Acide urique", category: "metabolique", unit: "mg/L", refMin: 30, refMax: 55, lowerIsBetter: true, desc: "Produit du métabolisme des purines. Élevé par le fructose, l'alcool et les protéines animales. Lié à la goutte et au risque cardiovasculaire." },
-  { key: "urea", label: "Urée", category: "metabolique", unit: "g/L", refMin: 0.07, refMax: 0.1, desc: "Déchet du métabolisme des protéines, éliminé par les reins. Reflète l'apport protéique et la fonction rénale." },
+  { key: "urea", label: "Urée", category: "metabolique", unit: "g/L", refMin: 0.15, refMax: 0.45, desc: "Déchet du métabolisme des protéines, éliminé par les reins. Reflète l'apport protéique et la fonction rénale." },
 
   // ─── Hormones ──────────────────────────────────────────
   { key: "free_testo", label: "Testostérone libre", category: "hormones", unit: "nmol/L", refMin: 0.25, refMax: 0.5, desc: "Fraction active de la testostérone, non liée aux protéines. Directement utilisable par les tissus." },
@@ -146,19 +146,34 @@ export const BIOMARKERS: BiomarkerDef[] = [
 
 export const BIOMARKERS_BY_KEY = new Map(BIOMARKERS.map((b) => [b.key, b]));
 
-/** Évalue le statut d'un biomarqueur par rapport à sa plage de référence optimale.
- *  Tolérance relative au boundary (50%) : simule la zone "normal labo" de Lucis. */
+/** Statut d'un biomarqueur.
+ *  - hors plage : en dehors des normes du labo (labMin/labMax) quand on les a
+ *  - limite     : dans les normes du labo mais hors de la plage optimale
+ *  - optimal    : dans la plage optimale (refMin/refMax, registre)
+ *  Sans normes labo, repli sur une tolérance de 50 % autour de la plage
+ *  optimale (avant, c'était la seule règle : une glycémie au-dessus du max du
+ *  labo sortait "limite"). */
 export function getBiomarkerStatus(
   value: number,
   refMin: number | null,
   refMax: number | null,
+  labMin: number | null = null,
+  labMax: number | null = null,
 ): BiomarkerStatus {
-  if (refMin == null && refMax == null) return "optimal";
+  if (refMin == null && refMax == null && labMin == null && labMax == null) return "optimal";
+
+  // Hors des normes du labo : toujours "hors plage"
+  if ((labMin != null && value < labMin) || (labMax != null && value > labMax)) {
+    return "out_of_range";
+  }
 
   // Dans la plage optimale
   if ((refMax == null || value <= refMax) && (refMin == null || value >= refMin)) {
     return "optimal";
   }
+
+  // Dans les normes du labo mais hors optimal
+  if (labMin != null || labMax != null) return "borderline";
 
   // Au-dessus du max : % d'écart par rapport au max
   if (refMax != null && value > refMax) {
@@ -173,6 +188,34 @@ export function getBiomarkerStatus(
   }
 
   return "optimal";
+}
+
+/** Statut à partir de la plage optimale et des références stockées avec le
+ *  résultat. Ces références sont parfois une simple copie de la plage
+ *  optimale (import sans normes labo) : dans ce cas elles ne comptent pas
+ *  comme normes du labo. */
+export function statusWithLabRefs(
+  value: number,
+  optMin: number | null,
+  optMax: number | null,
+  dbMin: number | null,
+  dbMax: number | null,
+): BiomarkerStatus {
+  const isCopy = dbMin === optMin && dbMax === optMax;
+  return getBiomarkerStatus(value, optMin, optMax, isCopy ? null : dbMin, isCopy ? null : dbMax);
+}
+
+/** Statut d'un résultat stocké : plage optimale du registre + normes labo en
+ *  base. Marqueur inconnu du registre : les références en base font foi. */
+export function biomarkerStatusFor(
+  key: string,
+  value: number,
+  dbMin: number | null,
+  dbMax: number | null,
+): BiomarkerStatus {
+  const def = BIOMARKERS_BY_KEY.get(key);
+  if (!def) return getBiomarkerStatus(value, dbMin, dbMax, dbMin, dbMax);
+  return statusWithLabRefs(value, def.refMin, def.refMax, dbMin, dbMax);
 }
 
 /** Marqueurs clés à afficher sur le dashboard (sous-ensemble curé) */

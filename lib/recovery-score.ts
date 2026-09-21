@@ -21,7 +21,7 @@ export type RecoveryComponent = {
 
 export type RecoveryResult = {
   score: number | null; // 1-10, arrondi à 0.5 près
-  basis: "full" | "partial" | "estimated"; // full = 4 composants OK, partial = 2-3, estimated = 1
+  basis: "full" | "partial" | "estimated"; // full = 4 composants, partial = 2-3, estimated = 1
   components: {
     hrv: RecoveryComponent;
     restingHr: RecoveryComponent;
@@ -86,11 +86,20 @@ function scoreSleep(
     return { score: 0, available: false };
   }
   const totalH = totalMin / 60;
+
+  // Sans phases (sommeil saisi à la main, autre source) : on note la durée
+  // seule, sans prétendre juger la qualité. Avant, les phases absentes
+  // comptaient comme 0 % et plafonnaient une nuit de 8 h à 4/10.
+  if (remPct == null || deepPct == null) {
+    const byDuration = totalH >= 7 ? 7 : totalH >= 6 ? 4 : 1;
+    return { score: byDuration, available: true };
+  }
+
   // Paliers selon le brief système
   let score: number;
-  if (totalH >= 7.5 && (remPct ?? 0) >= 20 && (deepPct ?? 0) >= 15) {
+  if (totalH >= 7.5 && remPct >= 20 && deepPct >= 15) {
     score = 10;
-  } else if (totalH >= 7 && (remPct ?? 0) >= 15 && (deepPct ?? 0) >= 10) {
+  } else if (totalH >= 7 && remPct >= 15 && deepPct >= 10) {
     score = 7;
   } else if (totalH >= 6) {
     score = 4;
@@ -160,8 +169,11 @@ export function computeRecoveryScore(input: RecoveryInput): RecoveryResult {
   // Arrondi à 0.5 près
   const score = Math.round(rawScore * 2) / 2;
 
+  // "full" seulement si les 4 composants sont mesurés (avant : dès 3, et un
+  // score sans respiration s'affichait comme complet)
   let basis: RecoveryResult["basis"];
-  if (availableCount >= 3) basis = "full";
+  if (availableCount === 4) basis = "full";
+  else if (availableCount === 3) basis = "partial";
   else if (availableCount === 2) basis = "partial";
   else basis = "estimated";
 
@@ -169,6 +181,58 @@ export function computeRecoveryScore(input: RecoveryInput): RecoveryResult {
 }
 
 // Helper d'affichage : couleur du badge selon score
+// ─── Score d'une journée à partir de l'historique stocké ───────────────
+// Définition unique du calcul, partagée par l'import, l'accueil et le
+// recalcul de l'historique : ils ne peuvent plus diverger.
+// Références : HRV = médiane des 60 jours précédents (résiste aux pics),
+// FC repos et respiration = moyennes des 60 jours précédents.
+
+export type RecoveryDayInput = {
+  hrv_ms: number | null;
+  resting_hr_bpm: number | null;
+  respiratory_rate: number | null;
+  sleep_total_min: number | null;
+  sleep_rem_pct: number | null;
+  sleep_deep_pct: number | null;
+};
+
+export type RecoveryHistoryRow = {
+  hrv_ms: number | null;
+  resting_hr_bpm: number | null;
+  respiratory_rate: number | null;
+};
+
+function presentValues(rows: RecoveryHistoryRow[], key: keyof RecoveryHistoryRow): number[] {
+  return rows.map((r) => r[key]).filter((v): v is number => v != null);
+}
+
+function meanOf(values: number[]): number | null {
+  return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+}
+
+function medianOf(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// day : mesures de la journée uniquement (aucune valeur d'un autre jour).
+// past60 : les jours [J-60, J-1].
+export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow[]): RecoveryResult {
+  return computeRecoveryScore({
+    hrvMs: day.hrv_ms,
+    hrv7dAvgMs: medianOf(presentValues(past60, "hrv_ms")),
+    restingHrBpm: day.resting_hr_bpm,
+    restingHr7dAvgBpm: meanOf(presentValues(past60, "resting_hr_bpm")),
+    sleepTotalMin: day.sleep_total_min,
+    sleepRemPct: day.sleep_rem_pct,
+    sleepDeepPct: day.sleep_deep_pct,
+    respiratoryRate: day.respiratory_rate,
+    respiratoryRate7dAvg: meanOf(presentValues(past60, "respiratory_rate")),
+  });
+}
+
 export function recoveryColor(score: number | null): "green" | "yellow" | "red" | "gray" {
   if (score == null) return "gray";
   if (score >= 7) return "green";
