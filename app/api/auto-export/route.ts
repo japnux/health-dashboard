@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { recoveryForDay } from "@/lib/recovery-score";
+import { extractWorkoutDetails, stripRoutesForLog } from "@/lib/workout-details";
 import {
   getHrMax,
   localMidnightUtc,
@@ -655,6 +656,17 @@ export async function POST(request: Request) {
     if (!error) {
       workoutCount++;
       if (wLoad) loadDates.add(extractDate(startStr));
+      // Détails (courbe FC, récupération, tracé GPS) : écrits à part pour qu'un
+      // souci sur ces colonnes n'empêche jamais d'enregistrer la séance
+      const details = extractWorkoutDetails(wo);
+      if (Object.keys(details).length > 0) {
+        const { error: detailsError } = await supabase
+          .from("workouts")
+          .update(details)
+          .eq("started_at", startedAt)
+          .eq("type", name);
+        if (detailsError) results.push(`workout ${name} détails: erreur ${detailsError.message}`);
+      }
     } else results.push(`workout ${name}: erreur ${error.message}`);
   }
   if (workoutCount > 0) results.push(`workouts: ${workoutCount} insérés`);
@@ -680,7 +692,8 @@ export async function POST(request: Request) {
     days_processed: days.size,
     workouts_processed: workoutCount,
     details: results,
-    raw_payload: payload,
+    // Sans les tracés GPS bruts (plusieurs Mo par envoi)
+    raw_payload: stripRoutesForLog(payload),
     http_headers: {
       "automation-name": request.headers.get("automation-name") ?? "",
       "automation-id": request.headers.get("automation-id") ?? "",

@@ -103,6 +103,13 @@ export type Database = {
           max_hr_bpm: number | null;
           cardio_load: number | null;
           hr_zone_min: number[] | null;
+          // [min depuis le début, FC moy, FC max] / [s après la fin, FC] / [lat, lon, m/s]
+          hr_series: [number, number, number][] | null;
+          hr_recovery: [number, number][] | null;
+          route: [number, number, number | null][] | null;
+          distance_km: number | null;
+          avg_speed_kmh: number | null;
+          max_speed_kmh: number | null;
           created_at: string;
         };
         Insert: {
@@ -116,6 +123,12 @@ export type Database = {
           max_hr_bpm?: number | null;
           cardio_load?: number | null;
           hr_zone_min?: number[] | null;
+          hr_series?: [number, number, number][] | null;
+          hr_recovery?: [number, number][] | null;
+          route?: [number, number, number | null][] | null;
+          distance_km?: number | null;
+          avg_speed_kmh?: number | null;
+          max_speed_kmh?: number | null;
         };
         Update: Partial<Database["public"]["Tables"]["workouts"]["Insert"]>;
         Relationships: [];

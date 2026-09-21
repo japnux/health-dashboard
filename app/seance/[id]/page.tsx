@@ -6,7 +6,11 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { getUserTz } from "@/lib/user-tz";
 import { normalizeWorkoutType, workoutDisplayLabel } from "@/lib/workout-types";
 import { HR_ZONES } from "@/lib/hr-zones";
+import { getHrMax } from "@/lib/cardio-load";
+import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
 import { BackLink, DetailCard, DetailPage, Delta, StatGrid } from "@/components/detail/DetailBits";
+import { WorkoutHrChart } from "@/components/charts/WorkoutHrChart";
+import { RouteMap } from "@/components/charts/RouteMap";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +31,10 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = createServiceClient();
-  const [{ data: w }, tz] = await Promise.all([
+  const [{ data: w }, tz, hrMax] = await Promise.all([
     supabase.from("workouts").select("*").eq("id", id).maybeSingle(),
     getUserTz(supabase),
+    getHrMax(supabase),
   ]);
   if (!w) notFound();
 
@@ -38,7 +43,7 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
   const from = new Date(new Date(w.started_at).getTime() - 30 * 86_400_000).toISOString();
   const { data: others } = await supabase
     .from("workouts")
-    .select("type, duration_min, kcal, avg_hr_bpm, cardio_load")
+    .select("type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_recovery")
     .gte("started_at", from)
     .lt("started_at", w.started_at);
   const same = (others ?? []).filter((o) => normalizeWorkoutType(o.type ?? "") === typeKey);
@@ -48,7 +53,18 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
     load: mean(same.map((o) => (o.cardio_load != null ? Number(o.cardio_load) : null))),
     hr: mean(same.map((o) => o.avg_hr_bpm)),
     kcal: mean(same.map((o) => o.kcal)),
+    drop1: mean(same.map((o) => heartRateRecoveryDrop(o.hr_recovery as RecoveryPoint[] | null)?.drop1 ?? null)),
   };
+  const hrr = heartRateRecoveryDrop(w.hr_recovery as RecoveryPoint[] | null);
+  const hrrLevel =
+    hrr?.drop1 == null
+      ? null
+      : hrr.drop1 >= 20
+        ? { label: "bonne", color: "#15be53" }
+        : hrr.drop1 >= 12
+          ? { label: "correcte", color: "#eab308" }
+          : { label: "faible", color: "#ea2261" };
+  const fmtKm = (v: number) => (v < 10 ? v.toFixed(2) : v.toFixed(1)).replace(".", ",");
   const label = workoutDisplayLabel(w.type ?? "Séance");
   const start = new Date(w.started_at);
   const zones = Array.isArray(w.hr_zone_min) && w.hr_zone_min.length === 5 ? (w.hr_zone_min as number[]) : null;
@@ -126,6 +142,27 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
         {w.max_hr_bpm != null && <p className="text-xs text-[var(--color-body)] mt-4">FC max de la séance : {w.max_hr_bpm} bpm</p>}
       </DetailCard>
 
+      {w.route && w.route.length >= 2 && (
+        <DetailCard title="Tracé">
+          <RouteMap route={w.route} />
+          <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
+            <StatGrid
+              items={[
+                { label: "Distance", value: w.distance_km != null ? `${fmtKm(Number(w.distance_km))} km` : "—" },
+                { label: "Vitesse moy.", value: w.avg_speed_kmh != null ? `${String(w.avg_speed_kmh).replace(".", ",")} km/h` : "—" },
+                { label: "Vitesse max", value: w.max_speed_kmh != null ? `${String(w.max_speed_kmh).replace(".", ",")} km/h` : "—" },
+              ]}
+            />
+          </div>
+        </DetailCard>
+      )}
+
+      {w.hr_series && w.hr_series.length >= 2 && (
+        <DetailCard title="Fréquence cardiaque">
+          <WorkoutHrChart series={w.hr_series} hrMax={hrMax} />
+        </DetailCard>
+      )}
+
       <DetailCard title="Zones cardio">
         {zones && zoneTotal > 0 ? (
           <div className="space-y-2.5">
@@ -148,14 +185,43 @@ export default async function SeancePage({ params }: { params: Promise<{ id: str
               );
             })}
             <p className="text-[11px] text-[var(--color-body)] pt-1">
-              Temps passé au-dessus de 50 % de ta FC max : {fmtDuration(zoneTotal)}. La courbe de fréquence cardiaque de la
-              séance arrivera prochainement.
+              Temps passé au-dessus de 50 % de ta FC max : {fmtDuration(zoneTotal)}.
             </p>
           </div>
         ) : (
           <p className="text-sm text-[var(--color-body)]">Pas de fréquence cardiaque minute par minute pour cette séance.</p>
         )}
       </DetailCard>
+
+      {hrr && (
+        <DetailCard title="Récupération cardio">
+          <StatGrid
+            items={[
+              { label: "FC à l'arrêt", value: `${hrr.endHr} bpm` },
+              {
+                label: "Après 1 min",
+                value: hrr.drop1 != null ? `−${hrr.drop1} bpm` : "—",
+                sub: (
+                  <>
+                    {hrrLevel && <span style={{ color: hrrLevel.color }}>{hrrLevel.label}</span>}
+                    {ref.drop1 != null && (
+                      <span className="text-[var(--color-body)]/70">
+                        {hrrLevel ? " · " : ""}moy. {label} −{Math.round(ref.drop1)}
+                      </span>
+                    )}
+                  </>
+                ),
+              },
+              { label: "Après 2 min", value: hrr.drop2 != null ? `−${hrr.drop2} bpm` : "—" },
+            ]}
+          />
+          <p className="text-[11px] text-[var(--color-body)] mt-4 leading-relaxed">
+            Vitesse à laquelle ton cœur redescend quand tu t&apos;arrêtes : plus la baisse est forte, meilleure est ta
+            forme cardio. En 1 minute, moins de 12 bpm est faible, 12 à 20 correct, plus de 20 bon. Elle dépend aussi de la
+            façon dont tu termines : un arrêt après un effort calme baisse moins.
+          </p>
+        </DetailCard>
+      )}
     </DetailPage>
   );
 }
