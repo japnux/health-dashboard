@@ -77,10 +77,10 @@ export default async function Home() {
         {snap.lastSyncAt && (
           <p className="text-[11px] text-[var(--color-body)]/50 mt-0.5">
             Dernières données reçues{" "}
-            {dateInTz(snap.lastSyncAt) === snap.date
+            {dateInTz(snap.lastSyncAt, snap.tz) === snap.date
               ? "à "
-              : `le ${new Date(snap.lastSyncAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: "Europe/Paris" })} à `}
-            {new Date(snap.lastSyncAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" })}
+              : `le ${new Date(snap.lastSyncAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", timeZone: snap.tz })} à `}
+            {new Date(snap.lastSyncAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: snap.tz })}
           </p>
         )}
       </header>
@@ -250,13 +250,13 @@ export default async function Home() {
         {/* Strain */}
         <StrainCard
           strain={snap.strain}
-          todayWorkouts={snap.recentWorkouts.filter((w) => dateInTz(w.started_at) === snap.date).map((w) => ({ type: w.type }))}
+          todayWorkouts={snap.recentWorkouts.filter((w) => dateInTz(w.started_at, snap.tz) === snap.date).map((w) => ({ type: w.type }))}
           watch={snap.watch}
           loadBalance={snap.loadBalance}
         />
 
         {/* Sommeil */}
-        <SleepCard today={snap.today} sleepTargetMin={snap.sleepTargetMin} watch={snap.watch} />
+        <SleepCard today={snap.today} sleepTargetMin={snap.sleepTargetMin} watch={snap.watch} tz={snap.tz} />
       </div>
 
       {/* ── Nutrition + Suggestion Workout — côte à côte ── */}
@@ -324,7 +324,7 @@ export default async function Home() {
             value={`${snap.weekWorkoutCount}`}
             sub={
               snap.lastWorkout
-                ? lastWorkoutLabel(snap.lastWorkout.type, snap.lastWorkout.started_at)
+                ? lastWorkoutLabel(snap.lastWorkout.type, snap.lastWorkout.started_at, snap.tz)
                 : undefined
             }
           />
@@ -561,7 +561,7 @@ function BodyCompositionCard({
   );
 }
 
-function lastWorkoutLabel(type: string | null, startedAt: string): string {
+function lastWorkoutLabel(type: string | null, startedAt: string, tz: string): string {
   const typeMap: Record<string, string> = {
     SurfingSports: "Surf",
     FunctionalStrengthTraining: "Muscu",
@@ -578,7 +578,7 @@ function lastWorkoutLabel(type: string | null, startedAt: string): string {
   const cleanType = type ? (typeMap[type] ?? workoutDisplayLabel(type)) : "?";
   // Écart en jours calendaires (heure de Paris), pas en tranches de 24 h :
   // une séance d'hier 23h vue ce matin à 8h est bien "hier"
-  const daysDiff = diffDaysIso(dateInTz(new Date()), dateInTz(startedAt));
+  const daysDiff = diffDaysIso(dateInTz(new Date(), tz), dateInTz(startedAt, tz));
   if (daysDiff === 0) return `${cleanType} auj.`;
   if (daysDiff === 1) return `${cleanType} hier`;
   return `${cleanType} il y a ${daysDiff}j`;

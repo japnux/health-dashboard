@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
+import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
@@ -161,9 +162,11 @@ async function getCachedInsights(supabase: ReturnType<typeof createServiceClient
 }
 
 async function fetchContextData(supabase: ReturnType<typeof createServiceClient>) {
-  const today = todayIso();
-  const sevenDaysAgo = isoDaysAgo(7);
-  const thirtyDaysAgo = isoDaysAgo(30);
+  // Fuseau du téléphone : mêmes jours que les données reçues, même en voyage
+  const tz = await getUserTz(supabase);
+  const today = todayIso(tz);
+  const sevenDaysAgo = isoDaysAgo(7, tz);
+  const thirtyDaysAgo = isoDaysAgo(30, tz);
 
   const [metricsRes, workoutsRes, bodyRes, proteinRes, journalRes, mealRes, plannedRes, configRes] =
     await Promise.all([
@@ -176,7 +179,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
       supabase
         .from("workouts")
         .select("started_at, type, duration_min, kcal")
-        .gte("started_at", localMidnightUtcIso(sevenDaysAgo))
+        .gte("started_at", localMidnightUtcIso(sevenDaysAgo, tz))
         .order("started_at", { ascending: true }),
       supabase
         .from("body_composition")
@@ -232,7 +235,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
 
   // Croiser workouts faits aujourd'hui avec activités prévues
   const todayWorkouts = (workoutsRes.data ?? []).filter(
-    (w) => dateInTz(w.started_at) === today,
+    (w) => dateInTz(w.started_at, tz) === today,
   );
   const planned = plannedRes.data ?? [];
 
@@ -330,7 +333,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
 
   const slotTargetsMap = computeSlotTargets(profilesConfig[dayProfile], effectiveTargets, slotsConfig);
 
-  const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: "Europe/Paris" });
+  const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: tz });
   const currentHour = parseInt(nowParis, 10);
 
   const todayMeals = (mealRes.data ?? []).filter((m) => m.date === today).map((m) => ({
@@ -378,7 +381,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
   // Résumé pré-calculé des workouts par jour et par type (source de vérité)
   const workoutsByDayAndType: Record<string, Record<string, number>> = {};
   for (const w of (workoutsRes.data ?? [])) {
-    const date = dateInTz(w.started_at);
+    const date = dateInTz(w.started_at, tz);
     const normalized = normalizeWorkoutType(w.type ?? "");
     if (!workoutsByDayAndType[date]) workoutsByDayAndType[date] = {};
     workoutsByDayAndType[date][normalized] = (workoutsByDayAndType[date][normalized] ?? 0) + 1;

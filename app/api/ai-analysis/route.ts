@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
 import { BIOMARKERS_BY_KEY } from "@/lib/biomarkers";
+import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
@@ -215,8 +216,10 @@ export async function GET(request: Request) {
 
 async function fetchHealthData(days: number) {
   const supabase = createServiceClient();
-  const today = todayIso();
-  const startDate = isoDaysAgo(days);
+  // Fuseau du téléphone : mêmes jours que les données reçues, même en voyage
+  const tz = await getUserTz(supabase);
+  const today = todayIso(tz);
+  const startDate = isoDaysAgo(days, tz);
 
   const [metricsRes, workoutsRes, bodyRes, proteinRes, journalRes, mealRes, plannedRes, configRes, bloodTestsRes] =
     await Promise.all([
@@ -231,7 +234,7 @@ async function fetchHealthData(days: number) {
       supabase
         .from("workouts")
         .select("started_at, type, duration_min, kcal")
-        .gte("started_at", localMidnightUtcIso(startDate))
+        .gte("started_at", localMidnightUtcIso(startDate, tz))
         .order("started_at", { ascending: true }),
       supabase
         .from("body_composition")
@@ -301,7 +304,7 @@ async function fetchHealthData(days: number) {
 
   // Workouts et activités
   const allWorkouts = workoutsRes.data ?? [];
-  const todayWorkouts = allWorkouts.filter((w) => dateInTz(w.started_at) === today);
+  const todayWorkouts = allWorkouts.filter((w) => dateInTz(w.started_at, tz) === today);
   const planned = plannedRes.data ?? [];
   const isTrainingDay = todayWorkouts.length > 0 || planned.length > 0;
 
@@ -339,7 +342,7 @@ async function fetchHealthData(days: number) {
   const { data: strainHistory } = await supabase
     .from("daily_metrics")
     .select("active_kcal, cardio_load")
-    .gte("date", isoDaysAgo(30))
+    .gte("date", isoDaysAgo(30, tz))
     .lt("date", today);
   const strain = computeDayStrain(
     { active_kcal: activeKcalToday, cardio_load: todayMetrics?.cardio_load ?? null },
@@ -374,7 +377,7 @@ async function fetchHealthData(days: number) {
 
   const slotTargetsMap = computeSlotTargets(profilesConfig[dayProfile], effectiveTargets, slotsConfig);
 
-  const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: "Europe/Paris" });
+  const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: tz });
   const currentHour = parseInt(nowParis, 10);
 
   const todayMeals = (mealRes.data ?? []).filter((m) => m.date === today).map((m) => ({

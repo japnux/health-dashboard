@@ -1,7 +1,7 @@
 // Helpers de date — par défaut en Europe/Paris (Geoffrey est mobile mais
 // majoritairement en EU). À paramétrer si besoin via une variable d'env.
 
-const DEFAULT_TZ = process.env.DASHBOARD_TZ ?? "Europe/Paris";
+export const DEFAULT_TZ = process.env.DASHBOARD_TZ ?? "Europe/Paris";
 
 // Retourne la date du jour au format YYYY-MM-DD dans la timezone donnée.
 export function todayIso(tz: string = DEFAULT_TZ): string {
@@ -23,7 +23,7 @@ export function dateInTz(instant: string | Date, tz: string = DEFAULT_TZ): strin
 }
 
 // Décalage de la timezone par rapport à UTC à un instant donné, en ms.
-function tzOffsetMs(date: Date, tz: string): number {
+export function tzOffsetMs(date: Date, tz: string): number {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone: tz,

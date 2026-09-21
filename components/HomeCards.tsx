@@ -103,9 +103,9 @@ function CardioMetrics({
 }
 
 // Horaires sous la carte Sommeil : coucher → lever, régularité.
-function SleepTiming({ watch }: { watch: DashboardSnapshot["watch"] }) {
-  const bedtime = formatHourParis(watch.bedtime);
-  const wake = formatHourParis(watch.wakeTime);
+function SleepTiming({ watch, tz }: { watch: DashboardSnapshot["watch"]; tz: string }) {
+  const bedtime = formatHour(watch.bedtime, tz);
+  const wake = formatHour(watch.wakeTime, tz);
   if (!bedtime) return null;
 
   return (
@@ -197,13 +197,13 @@ export function MiniMetric({
   );
 }
 
-// Heure locale Paris "23:50" à partir d'un ISO
-export function formatHourParis(iso: string | null): string | null {
+// Heure locale "23:50" (fuseau de l'utilisateur) à partir d'un ISO
+export function formatHour(iso: string | null, tz: string): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
   return new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris",
+    timeZone: tz,
     hour: "2-digit",
     minute: "2-digit",
   }).format(d);
@@ -264,7 +264,9 @@ export function SleepCard({
   today,
   sleepTargetMin,
   watch,
+  tz,
 }: {
+  tz: string;
   today: DashboardSnapshot["today"];
   sleepTargetMin: number;
   watch: DashboardSnapshot["watch"];
@@ -343,7 +345,7 @@ export function SleepCard({
           deepPct={today.sleep_deep_pct ?? undefined}
         />
       )}
-      <SleepTiming watch={watch} />
+      <SleepTiming watch={watch} tz={tz} />
     </section>
   );
 }

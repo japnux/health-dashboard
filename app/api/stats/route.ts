@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createHash } from "crypto";
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
+import { getUserTz } from "@/lib/user-tz";
 import { computeDayStrain } from "@/lib/strain-score";
 
 async function isAuthenticated(): Promise<boolean> {
@@ -15,8 +16,8 @@ async function isAuthenticated(): Promise<boolean> {
   return cookieStore.get("hd_session")?.value === expected;
 }
 
-function getWeekRange(offset: number): { start: string; end: string; label: string } {
-  const now = new Date(`${todayIso()}T12:00:00Z`);
+function getWeekRange(offset: number, tz: string): { start: string; end: string; label: string } {
+  const now = new Date(`${todayIso(tz)}T12:00:00Z`);
   const dow = now.getUTCDay();
   const mondayOffset = dow === 0 ? 6 : dow - 1;
   const monday = new Date(now);
@@ -34,8 +35,8 @@ function getWeekRange(offset: number): { start: string; end: string; label: stri
   return { start, end, label: `${fmt(monday)}–${fmt(sunday)}` };
 }
 
-function getMonthRange(offset: number): { start: string; end: string; label: string } {
-  const now = new Date(`${todayIso()}T12:00:00Z`);
+function getMonthRange(offset: number, tz: string): { start: string; end: string; label: string } {
+  const now = new Date(`${todayIso(tz)}T12:00:00Z`);
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1));
   const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0));
 
@@ -47,8 +48,8 @@ function getMonthRange(offset: number): { start: string; end: string; label: str
   return { start, end, label: monthName };
 }
 
-function getYearRange(offset: number): { start: string; end: string; label: string } {
-  const now = new Date(`${todayIso()}T12:00:00Z`);
+function getYearRange(offset: number, tz: string): { start: string; end: string; label: string } {
+  const now = new Date(`${todayIso(tz)}T12:00:00Z`);
   const year = now.getUTCFullYear() - offset;
 
   const start = `${year}-01-01`;
@@ -58,15 +59,15 @@ function getYearRange(offset: number): { start: string; end: string; label: stri
   return { start, end, label: `${year}` };
 }
 
-function getPeriodRange(period: string, offset: number) {
+function getPeriodRange(period: string, offset: number, tz: string) {
   switch (period) {
     case "week":
-      return getWeekRange(offset);
+      return getWeekRange(offset, tz);
     case "year":
-      return getYearRange(offset);
+      return getYearRange(offset, tz);
     case "month":
     default:
-      return getMonthRange(offset);
+      return getMonthRange(offset, tz);
   }
 }
 
@@ -79,10 +80,12 @@ export async function GET(request: Request) {
   const period = url.searchParams.get("period") ?? "month";
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
 
-  const current = getPeriodRange(period, offset);
-  const prev = getPeriodRange(period, offset + 1);
-
   const supabase = createServiceClient();
+  // Fuseau du téléphone : mêmes jours que les données reçues, même en voyage
+  const tz = await getUserTz(supabase);
+
+  const current = getPeriodRange(period, offset, tz);
+  const prev = getPeriodRange(period, offset + 1, tz);
 
   const [
     metricsRes,
@@ -108,8 +111,8 @@ export async function GET(request: Request) {
       .select("started_at, type, duration_min, kcal, hr_zone_min")
       // Bornes à minuit heure de Paris (avant : minuit UTC, une séance après
       // 22h l'été tombait sur la veille)
-      .gte("started_at", localMidnightUtcIso(current.start))
-      .lt("started_at", localMidnightUtcIso(isoDateMinusDays(current.end, -1)))
+      .gte("started_at", localMidnightUtcIso(current.start, tz))
+      .lt("started_at", localMidnightUtcIso(isoDateMinusDays(current.end, -1), tz))
       .order("started_at", { ascending: true }),
 
     supabase
@@ -132,8 +135,8 @@ export async function GET(request: Request) {
     supabase
       .from("workouts")
       .select("started_at, type, duration_min, kcal, hr_zone_min")
-      .gte("started_at", localMidnightUtcIso(prev.start))
-      .lt("started_at", localMidnightUtcIso(isoDateMinusDays(prev.end, -1))),
+      .gte("started_at", localMidnightUtcIso(prev.start, tz))
+      .lt("started_at", localMidnightUtcIso(isoDateMinusDays(prev.end, -1), tz)),
 
     supabase
       .from("journal_entries")
@@ -196,7 +199,7 @@ export async function GET(request: Request) {
     startDate: current.start,
     endDate: current.end,
     label: current.label,
-    today: todayIso(),
+    today: todayIso(tz),
     strainByDate,
     dailyMetrics: metricsRes.data ?? [],
     workouts: workoutsRes.data ?? [],

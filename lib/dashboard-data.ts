@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
+import { getUserTz } from "@/lib/user-tz";
 import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
@@ -88,6 +89,7 @@ export type DashboardSnapshot = {
   } | null;
   bloodTestAgeDays: number | null;
   lastSyncAt: string | null;
+  tz: string; // fuseau de l'utilisateur (téléphone), pour l'affichage des heures et jours
   watch: WatchInsights;
   // 7 derniers jours (aujourd'hui compris), ordre chronologique, pour les mini-courbes
   trend7d: { date: string; hrv: number | null; rhr: number | null; sleepHr: number | null }[];
@@ -109,9 +111,9 @@ export type LoadBalance = {
   label: string;
 };
 
-function computeLoadBalance(past: { date: string; cardio_load: number | null }[]): LoadBalance | null {
-  const from7 = isoDaysAgo(7);
-  const from28 = isoDaysAgo(28);
+function computeLoadBalance(past: { date: string; cardio_load: number | null }[], tz: string): LoadBalance | null {
+  const from7 = isoDaysAgo(7, tz);
+  const from28 = isoDaysAgo(28, tz);
   const acuteVals = past.filter((r) => r.date >= from7).map((r) => r.cardio_load).filter((v): v is number => v != null);
   const chronicVals = past.filter((r) => r.date >= from28).map((r) => r.cardio_load).filter((v): v is number => v != null);
   // Il faut des jours réellement mesurés : 6 sur 7 et 24 sur 28
@@ -159,10 +161,13 @@ const DEFAULTS = {
 
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const supabase = createServiceClient();
-  const date = todayIso();
-  const yesterday = isoDaysAgo(1);
-  const sevenDaysAgo = isoDaysAgo(7);
-  const sixtyDaysAgo = isoDaysAgo(60);
+  // Fuseau du téléphone (voyage) : "aujourd'hui" et les séances du jour suivent
+  // les mêmes jours que les données reçues
+  const tz = await getUserTz(supabase);
+  const date = todayIso(tz);
+  const yesterday = isoDaysAgo(1, tz);
+  const sevenDaysAgo = isoDaysAgo(7, tz);
+  const sixtyDaysAgo = isoDaysAgo(60, tz);
 
   const [
     { data: recentMetrics },
@@ -189,7 +194,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .select("*")
       // 7 jours calendaires de Paris, aujourd'hui compris (avant : depuis J-7 à
       // 00h UTC, soit 8 jours, et "Séances 7j" comptait une séance de trop)
-      .gte("started_at", localMidnightUtcIso(isoDaysAgo(6)))
+      .gte("started_at", localMidnightUtcIso(isoDaysAgo(6, tz), tz))
       .order("started_at", { ascending: false })
       .limit(20),
     supabase
@@ -295,9 +300,9 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   // Tendances par régression linéaire sur fenêtre 60j (lisse le bruit point-à-point).
   const TREND_WINDOW = 60;
   const bodyTrends = {
-    weight: computeTrend(bodies ?? [], "weight_kg", TREND_WINDOW),
-    fat: computeTrend(bodies ?? [], "body_fat_pct", TREND_WINDOW),
-    lean: computeTrend(bodies ?? [], "lean_mass_kg", TREND_WINDOW),
+    weight: computeTrend(bodies ?? [], "weight_kg", TREND_WINDOW, tz),
+    fat: computeTrend(bodies ?? [], "body_fat_pct", TREND_WINDOW, tz),
+    lean: computeTrend(bodies ?? [], "lean_mass_kg", TREND_WINDOW, tz),
   };
 
   const proteinTotalToday = (proteinRows ?? []).reduce(
@@ -338,7 +343,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     });
 
   // Détection jour training / repos
-  const todayWorkouts = recentWorkouts.filter((w) => dateInTz(w.started_at) === date);
+  const todayWorkouts = recentWorkouts.filter((w) => dateInTz(w.started_at, tz) === date);
   const plannedList = plannedRows ?? [];
   const isTrainingDay = todayWorkouts.length > 0 || plannedList.length > 0;
 
@@ -391,7 +396,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const journalImpact = computeJournalImpact(journalRows ?? [], allMetricsForImpact);
 
   // Strain score : charge du jour vs baseline 30j
-  const thirtyDaysAgoDate = isoDaysAgo(30);
+  const thirtyDaysAgoDate = isoDaysAgo(30, tz);
   const strainBaseline = baseline60.filter((r) => r.date >= thirtyDaysAgoDate);
   const strain = computeDayStrain(
     { active_kcal: activeKcalToday, cardio_load: today?.cardio_load ?? null },
@@ -412,7 +417,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   };
   const slotTargetsMap = computeSlotTargets(profilesConfig[dayProfile], effectiveTargetsForSlots, slotsConfig);
 
-  const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: "Europe/Paris" });
+  const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: tz });
   const currentHour = parseInt(nowParis, 10);
 
   const todayMeals = allMeals.filter((m) => m.date === date).map((m) => ({
@@ -486,11 +491,12 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       ? diffDaysIso(date, bloodTests[0].test_date)
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
-    watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
-    loadBalance: computeLoadBalance(baseline60),
+    watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60, tz),
+    loadBalance: computeLoadBalance(baseline60, tz),
+    tz,
     sleepHrBaselineAvg: avg(baseline60.map((r) => r.sleeping_hr_bpm)),
     trend7d: Array.from({ length: 7 }, (_, i) => {
-      const d = isoDaysAgo(6 - i);
+      const d = isoDaysAgo(6 - i, tz);
       const row = recentMetrics?.find((r) => r.date === d);
       return {
         date: d,
@@ -515,10 +521,11 @@ function computeWatchInsights(
   yesterdayMetrics: DailyMetricsRow | null,
   recent: DailyMetricsRow[],
   baseline60: BaselineRow[],
+  tz: string,
 ): WatchInsights {
   // Régularité : écart-type de l'heure de coucher sur les 7 dernières nuits
   const bedMinutes = recent
-    .map((r) => bedtimeMinutes(r.sleep_start))
+    .map((r) => bedtimeMinutes(r.sleep_start, tz))
     .filter((v): v is number => v != null);
   const bedtimeSpreadMin = bedMinutes.length >= 3 ? Math.round(stdDev(bedMinutes)) : null;
 
@@ -588,12 +595,12 @@ function computeWatchInsights(
 
 // Heure de coucher en minutes, décalée pour que 23h et 1h restent voisins :
 // tout ce qui précède 18h compte comme "après minuit" (+24h).
-function bedtimeMinutes(iso: string | null): number | null {
+function bedtimeMinutes(iso: string | null, tz: string): number | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
   const parts = new Intl.DateTimeFormat("fr-FR", {
-    timeZone: "Europe/Paris",
+    timeZone: tz,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",

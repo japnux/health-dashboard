@@ -203,6 +203,8 @@ export async function POST(request: Request) {
     return bodyComp.get(date)!;
   }
 
+  // Sessions de sommeil secondaires ignorées (siestes), reportées dans le log
+  const skippedSleep: string[] = [];
   // HRV, respiration et SpO2 : rattachées à la nuit après lecture du sommeil
   const nightSamples: { kind: "hrv" | "respi" | "spo2"; dateStr: string; v: number }[] = [];
   // FC moyenne horaire avec son instant de début, pour la FC de sommeil
@@ -263,6 +265,16 @@ export async function POST(request: Request) {
                 : !isNaN(qty) && qty > 0
                   ? qty
                   : null;
+
+          // Plusieurs sessions le même jour (sieste) : la plus longue est la
+          // nuit ; une plus courte ne l'écrase pas, elle est signalée
+          if (rawTotal != null && day.sleep_total_min != null) {
+            const newMin = isHours ? rawTotal * 60 : rawTotal;
+            if (newMin <= day.sleep_total_min) {
+              skippedSleep.push(`sommeil ${date}: session de ${Math.round(newMin)} min ignorée (nuit de ${day.sleep_total_min} min conservée)`);
+              break;
+            }
+          }
 
           if (rawTotal != null) {
             // Les pourcentages se calculent sur le total exact, pas sur le total
@@ -428,7 +440,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServiceClient();
-  const results: string[] = [];
+  const results: string[] = [...skippedSleep];
   // FC max de référence pour la charge cardio (séances et fond)
   const hrMax = await getHrMax(supabase);
   // Jours dont la charge cardio doit être recalculée en fin de traitement

@@ -5,6 +5,7 @@ import { createHash } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
+import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
 import { getUserProfile, profileToPromptBlock } from "@/lib/user-profile";
 import { normalizeWorkoutType } from "@/lib/workout-types";
@@ -78,10 +79,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const forceRefresh = url.searchParams.get("refresh") === "1";
 
-  const today = todayIso();
-  const ninetyDaysAgo = isoDaysAgo(90);
-
   const supabase = createServiceClient();
+  // Fuseau du téléphone : mêmes jours que les données reçues, même en voyage
+  const tz = await getUserTz(supabase);
+  const today = todayIso(tz);
+  const ninetyDaysAgo = isoDaysAgo(90, tz);
 
   const [latestSyncRes, latestMealRes, latestJournalRes, cachedRes] = await Promise.all([
     supabase
@@ -145,7 +147,7 @@ export async function GET(request: Request) {
     supabase
       .from("workouts")
       .select("started_at, type, duration_min, kcal")
-      .gte("started_at", localMidnightUtcIso(ninetyDaysAgo))
+      .gte("started_at", localMidnightUtcIso(ninetyDaysAgo, tz))
       .order("started_at", { ascending: true }),
     supabase
       .from("protein_logs")

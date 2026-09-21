@@ -63,11 +63,12 @@ export function computeTrend(
   bodies: BodyMeasurement[] | null | undefined,
   metric: "weight_kg" | "body_fat_pct" | "lean_mass_kg",
   windowDays = 60,
+  tz?: string,
 ): BodyTrend | null {
   if (!bodies || bodies.length < 2) return null;
   // Fenêtre en jours calendaires (aujourd'hui − N, inclus). Avant, la borne
   // partait de l'heure actuelle et excluait une pesée faite pile N jours plus tôt.
-  const cutoffDate = isoDaysAgo(windowDays);
+  const cutoffDate = isoDaysAgo(windowDays, tz);
   const cutoffMs = new Date(`${cutoffDate}T00:00:00Z`).getTime();
   const points: Point[] = [];
   for (const b of bodies) {
