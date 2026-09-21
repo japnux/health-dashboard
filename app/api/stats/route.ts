@@ -105,7 +105,7 @@ export async function GET(request: Request) {
 
     supabase
       .from("workouts")
-      .select("started_at, type, duration_min, kcal")
+      .select("started_at, type, duration_min, kcal, hr_zone_min")
       // Bornes à minuit heure de Paris (avant : minuit UTC, une séance après
       // 22h l'été tombait sur la veille)
       .gte("started_at", localMidnightUtcIso(current.start))
@@ -131,7 +131,7 @@ export async function GET(request: Request) {
 
     supabase
       .from("workouts")
-      .select("started_at, type, duration_min, kcal")
+      .select("started_at, type, duration_min, kcal, hr_zone_min")
       .gte("started_at", localMidnightUtcIso(prev.start))
       .lt("started_at", localMidnightUtcIso(isoDateMinusDays(prev.end, -1))),
 

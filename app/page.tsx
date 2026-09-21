@@ -236,6 +236,7 @@ export default async function Home() {
           strain={snap.strain}
           todayWorkouts={snap.recentWorkouts.filter((w) => dateInTz(w.started_at) === snap.date).map((w) => ({ type: w.type }))}
           watch={snap.watch}
+          loadBalance={snap.loadBalance}
         />
 
         {/* Sommeil */}
@@ -426,10 +427,12 @@ function StrainCard({
   strain,
   todayWorkouts,
   watch,
+  loadBalance,
 }: {
   strain: StrainResult;
   todayWorkouts: { type: string | null }[];
   watch: DashboardSnapshot["watch"];
+  loadBalance: DashboardSnapshot["loadBalance"];
 }) {
   const bgMap: Record<string, string> = {
     light: "from-[#15be53]/10 to-[#15be53]/3 border-[#15be53]/20",
@@ -449,15 +452,35 @@ function StrainCard({
       </p>
       <StrainGauge strain={strain} />
       <WorkoutBadges workouts={todayWorkouts} />
-      <CardioMetrics watch={watch} />
+      <CardioMetrics watch={watch} loadBalance={loadBalance} />
     </section>
   );
 }
 
-// Indicateurs cardio sous le Strain : effort du jour (FC max, FC en marche)
-// puis forme de fond (VO2 max, récup cardio) quand la montre les a mesurés.
-function CardioMetrics({ watch }: { watch: DashboardSnapshot["watch"] }) {
-  const items: { label: string; value: string; sub?: string }[] = [];
+// Indicateurs cardio sous le Strain : équilibre de charge, effort du jour
+// (FC max, FC en marche) puis forme de fond (VO2 max, récup cardio).
+function CardioMetrics({
+  watch,
+  loadBalance,
+}: {
+  watch: DashboardSnapshot["watch"];
+  loadBalance: DashboardSnapshot["loadBalance"];
+}) {
+  const items: { label: string; value: string; sub?: string; dot?: string }[] = [];
+  if (loadBalance) {
+    const dot = {
+      low: "#94a3b8",
+      balanced: "#15be53",
+      rising: "#f97316",
+      spike: "#ea2261",
+    }[loadBalance.level];
+    items.push({
+      label: "Charge 7j / 28j",
+      value: loadBalance.ratio.toFixed(2),
+      sub: loadBalance.label,
+      dot,
+    });
+  }
   if (watch.hrMaxBpm != null) {
     items.push({ label: "FC max", value: `${watch.hrMaxBpm} bpm`, sub: "aujourd'hui" });
   }
@@ -483,7 +506,15 @@ function CardioMetrics({ watch }: { watch: DashboardSnapshot["watch"] }) {
   return (
     <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-sm">
       {items.map((i) => (
-        <MiniMetric key={i.label} label={i.label} value={i.value} sub={i.sub} delta={null} positiveIsGood />
+        <MiniMetric
+          key={i.label}
+          label={i.label}
+          value={i.value}
+          sub={i.sub}
+          delta={null}
+          positiveIsGood
+          subDot={i.dot}
+        />
       ))}
     </div>
   );
@@ -538,6 +569,7 @@ function MiniMetric({
   delta,
   positiveIsGood,
   chart,
+  subDot,
 }: {
   label: string;
   value: string;
@@ -545,6 +577,7 @@ function MiniMetric({
   delta: number | null;
   positiveIsGood: boolean;
   chart?: React.ReactNode; // mini-courbe optionnelle sous la valeur
+  subDot?: string; // pastille d'état (couleur) devant le sous-titre
 }) {
   let deltaStr = "";
   let deltaColor = "text-[var(--color-body)]";
@@ -568,6 +601,7 @@ function MiniMetric({
         {value}
       </div>
       <div className="flex items-center gap-1 whitespace-nowrap">
+        {subDot && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: subDot }} />}
         {sub && <span className="text-[11px] sm:text-[10px] text-[var(--color-body)]">{sub}</span>}
         {deltaStr && (
           <span className={`text-[11px] sm:text-[10px] tabular-nums font-normal ${deltaColor}`}>

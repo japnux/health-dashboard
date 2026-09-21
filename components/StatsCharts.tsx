@@ -25,6 +25,7 @@ import { formatWorkoutType } from "@/lib/workout-recommendation";
 import { AiCorrelations } from "@/components/AiCorrelations";
 import { computeJournalImpact } from "@/lib/journal-impact";
 import { JOURNAL_ENABLED } from "@/lib/features";
+import { dateInTz } from "@/lib/dates";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ type Workout = {
   type: string;
   duration_min: number | null;
   kcal: number | null;
+  hr_zone_min?: number[] | null; // minutes par zone de FC (50-60 … 90-100 % FC max)
 };
 
 type BodyComp = {
@@ -439,6 +441,7 @@ export function StatsCharts() {
               {data.workouts.length > 0 && (
                 <WorkoutsSummary workouts={data.workouts} />
               )}
+              <ZonesChart workouts={data.workouts} period={period} />
               <StrainChart
                 metrics={data.dailyMetrics}
                 strainByDate={data.strainByDate}
@@ -1173,6 +1176,146 @@ function ActivityChart({
           <Bar dataKey="steps" fill={C.orange} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── Zones de fréquence cardiaque ─────────────────────────────────────────
+
+// Zones en % de la FC max, rampe ordinale bleue (validée : un seul ton,
+// clair → foncé, le plus clair reste lisible sur fond clair)
+const ZONES = [
+  { key: "z1", label: "Z1", name: "récupération", range: "50-60 %", color: "#86b6ef" },
+  { key: "z2", label: "Z2", name: "endurance", range: "60-70 %", color: "#5598e7" },
+  { key: "z3", label: "Z3", name: "tempo", range: "70-80 %", color: "#2a78d6" },
+  { key: "z4", label: "Z4", name: "seuil", range: "80-90 %", color: "#1c5cab" },
+  { key: "z5", label: "Z5", name: "maximum", range: "90-100 %", color: "#0d366b" },
+] as const;
+
+// Lundi de la semaine d'une date YYYY-MM-DD
+function mondayOf(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtMinutes(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${h}h`;
+}
+
+// Temps passé dans chaque zone pendant les séances (FC minute par minute).
+// Par jour en vue semaine, par semaine en vue mois et année.
+function ZonesChart({ workouts, period }: { workouts: Workout[]; period: Period }) {
+  const measured = workouts.filter((w) => Array.isArray(w.hr_zone_min) && w.hr_zone_min.length === 5);
+  const totals = [0, 0, 0, 0, 0];
+  const buckets = new Map<string, number[]>();
+  for (const w of measured) {
+    const day = dateInTz(w.started_at);
+    const key = period === "week" ? day : mondayOf(day);
+    const b = buckets.get(key) ?? [0, 0, 0, 0, 0];
+    w.hr_zone_min!.forEach((m, i) => {
+      b[i] += m;
+      totals[i] += m;
+    });
+    buckets.set(key, b);
+  }
+  const grandTotal = totals.reduce((a, b) => a + b, 0);
+
+  if (grandTotal === 0) {
+    return (
+      <ChartCard title="Zones cardio en séance">
+        <p className="text-sm text-[var(--color-body)]">
+          Aucune séance avec fréquence cardiaque sur la période (disponible depuis mai 2026).
+        </p>
+      </ChartCard>
+    );
+  }
+
+  const chartData = [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, z]) => ({
+      label: period === "week" ? shortDateLabel(key) : `sem. ${shortDateLabel(key)}`,
+      z1: z[0],
+      z2: z[1],
+      z3: z[2],
+      z4: z[3],
+      z5: z[4],
+    }));
+
+  return (
+    <ChartCard title="Zones cardio en séance">
+      {/* Répartition de la période, en minutes et en part du temps en zone */}
+      <div className="flex h-2.5 rounded-full overflow-hidden gap-[2px] mb-3" role="img" aria-label="Répartition du temps par zone">
+        {ZONES.map((z, i) =>
+          totals[i] > 0 ? (
+            <div key={z.key} style={{ width: `${(totals[i] / grandTotal) * 100}%`, backgroundColor: z.color }} />
+          ) : null,
+        )}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-3 gap-y-1.5 mb-4">
+        {ZONES.map((z, i) => (
+          <div key={z.key} className="flex items-start gap-1.5 min-w-0">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm mt-0.5 shrink-0" style={{ backgroundColor: z.color }} />
+            <div className="min-w-0">
+              <p className="text-[11px] text-[var(--color-heading)] dark:text-white whitespace-nowrap">
+                {z.label} {z.name}
+              </p>
+              <p className="text-[10px] text-[var(--color-body)] whitespace-nowrap tabular-nums">
+                {fmtMinutes(totals[i])} · {Math.round((totals[i] / grandTotal) * 100)} %
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={chartData}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-zinc-200, #e4e4e7)" opacity={0.5} vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 11, fill: C.zinc400 }}
+            axisLine={false}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: C.zinc400 }}
+            axisLine={false}
+            tickLine={false}
+            width={40}
+            tickFormatter={(v: number) => fmtMinutes(v)}
+          />
+          <Tooltip
+            cursor={{ fill: "rgba(100,116,141,0.08)" }}
+            contentStyle={{
+              backgroundColor: C.zinc800,
+              border: "none",
+              borderRadius: 8,
+              color: "#fff",
+              fontSize: 12,
+            }}
+            formatter={(val, name) => {
+              const z = ZONES.find((zz) => zz.key === name);
+              return [fmtMinutes(val as number), z ? `${z.label} ${z.name} (${z.range})` : String(name)];
+            }}
+          />
+          {ZONES.map((z) => (
+            <Bar
+              key={z.key}
+              dataKey={z.key}
+              stackId="zones"
+              fill={z.color}
+              strokeWidth={2}
+              className="stroke-white dark:stroke-[#0d1520]"
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-[10px] text-[var(--color-body)] mt-2">
+        Minutes passées pendant les séances, en % de la FC max. La FC hors séance n&apos;est pas comptée.
+      </p>
     </ChartCard>
   );
 }

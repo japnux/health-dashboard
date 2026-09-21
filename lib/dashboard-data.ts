@@ -91,7 +91,43 @@ export type DashboardSnapshot = {
   watch: WatchInsights;
   // 7 derniers jours (aujourd'hui compris), ordre chronologique, pour les mini-courbes
   trend7d: { date: string; hrv: number | null; rhr: number | null }[];
+  loadBalance: LoadBalance | null;
 };
+
+// Équilibre de charge (ratio aigu/chronique) : charge cardio moyenne des 7
+// derniers jours rapportée à celle des 28 derniers. Aujourd'hui exclu : la
+// journée n'est pas finie, elle ferait baisser le ratio le matin.
+// Zones de Gabbett (2016) : < 0,8 sous-charge ; 0,8-1,3 équilibré ;
+// 1,3-1,5 en hausse ; > 1,5 pic (risque de blessure accru).
+export type LoadBalance = {
+  ratio: number;
+  acute: number; // moyenne journalière sur 7 jours
+  chronic: number; // moyenne journalière sur 28 jours
+  level: "low" | "balanced" | "rising" | "spike";
+  label: string;
+};
+
+function computeLoadBalance(past: { date: string; cardio_load: number | null }[]): LoadBalance | null {
+  const from7 = isoDaysAgo(7);
+  const from28 = isoDaysAgo(28);
+  const acuteVals = past.filter((r) => r.date >= from7).map((r) => r.cardio_load).filter((v): v is number => v != null);
+  const chronicVals = past.filter((r) => r.date >= from28).map((r) => r.cardio_load).filter((v): v is number => v != null);
+  // Il faut des jours réellement mesurés : 6 sur 7 et 24 sur 28
+  if (acuteVals.length < 6 || chronicVals.length < 24) return null;
+  const acute = acuteVals.reduce((a, b) => a + b, 0) / acuteVals.length;
+  const chronic = chronicVals.reduce((a, b) => a + b, 0) / chronicVals.length;
+  if (chronic <= 0) return null;
+  const ratio = Math.round((acute / chronic) * 100) / 100;
+  const [level, label]: [LoadBalance["level"], string] =
+    ratio < 0.8
+      ? ["low", "sous ta charge habituelle"]
+      : ratio <= 1.3
+        ? ["balanced", "équilibrée"]
+        : ratio <= 1.5
+          ? ["rising", "en hausse"]
+          : ["spike", "pic de charge"];
+  return { ratio, acute: Math.round(acute), chronic: Math.round(chronic), level, label };
+}
 
 // Données Apple Watch complémentaires (sommeil, cardio, nuit).
 export type WatchInsights = {
@@ -448,6 +484,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
+    loadBalance: computeLoadBalance(baseline60),
     trend7d: Array.from({ length: 7 }, (_, i) => {
       const d = isoDaysAgo(6 - i);
       const row = recentMetrics?.find((r) => r.date === d);
