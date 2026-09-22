@@ -131,7 +131,7 @@ export function BodyCompositionTile({
           unit="%"
           sub={fatKg ? `${fr(fatKg.value)} kg` : undefined}
           trend={trends.fat}
-          trendUnit="pt"
+          trendUnit="%"
           color={trendColor("fat", trends.fat, objective)}
           date={fatPct?.date ?? null}
           today={today}

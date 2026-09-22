@@ -1087,7 +1087,7 @@ function BodyStats({ bodies }: { bodies: BodyComp[] }) {
   const last = latestComposition(bodies);
   const metrics = [
     { title: "Poids", key: "weight_kg" as const, unit: "kg", color: VIVID.blue, better: "none" as const, changeUnit: "kg" },
-    { title: "Masse grasse", key: "body_fat_pct" as const, unit: "%", color: FAT_COLOR, better: "down" as const, changeUnit: "pt" },
+    { title: "Masse grasse", key: "body_fat_pct" as const, unit: "%", color: FAT_COLOR, better: "down" as const, changeUnit: "%" },
     { title: "Masse maigre", key: "lean_mass_kg" as const, unit: "kg", color: LEAN_COLOR, better: "up" as const, changeUnit: "kg" },
   ];
   return (

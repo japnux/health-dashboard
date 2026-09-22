@@ -148,7 +148,7 @@ export default async function CorpsPage({
       )}
 
       {metricCard("Poids", "weight", weightPts, "kg", VIVID.blue, "kg")}
-      {metricCard("Masse grasse", "fat", fatPts, "%", FAT_COLOR, "pt")}
+      {metricCard("Masse grasse", "fat", fatPts, "%", FAT_COLOR, "%")}
       {metricCard("Masse maigre", "lean", leanPts, "kg", LEAN_COLOR, "kg")}
 
       <DetailCard title="À propos">
@@ -160,7 +160,7 @@ export default async function CorpsPage({
           </p>
           <p>
             L&apos;impédancemètre estime la masse grasse à partir de l&apos;eau du corps : hydratation, repas ou séance récente
-            la font varier de 1 à 2 points. Pour des mesures comparables, pèse-toi le matin à jeun, au réveil, dans les
+            la font varier de 1 à 2 %. Pour des mesures comparables, pèse-toi le matin à jeun, au réveil, dans les
             mêmes conditions. Une pesée isolée ne veut rien dire ; la tendance sur plusieurs semaines, si.
           </p>
           <p>
