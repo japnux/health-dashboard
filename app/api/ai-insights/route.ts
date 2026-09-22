@@ -54,7 +54,40 @@ export type AiInsightsContent = {
   recommendations: AiRecommendation[];
   workoutSuggestion: AiWorkoutReco;
   generatedAt: string;
+  // Créneau de génération (voir currentSlot) : jour, étapes atteintes, nombre
+  // de générations ce jour-là
+  schedule?: { date: string; key: string; count: number };
 };
+
+// Modèle : Opus 5.5, nettement meilleur que Haiku sur ces analyses (comparé
+// sur les mêmes données le 22/09), généré peu souvent pour tenir le coût
+const INSIGHTS_MODEL = "claude-opus-5-5";
+
+/**
+ * Créneau de génération du jour. Une nouvelle analyse est produite quand une
+ * étape est franchie : la nuit reçue (matin), chaque séance (2 au maximum),
+ * puis le soir à partir de 20h. Soit 3 par jour avec une séance, 4 avec deux,
+ * 2 les jours de repos. Avant la première étape, on garde l'analyse précédente.
+ */
+async function currentSlot(supabase: ReturnType<typeof createServiceClient>) {
+  const tz = await getUserTz(supabase);
+  const today = todayIso(tz);
+  const [{ data: day }, { data: sessions }] = await Promise.all([
+    supabase.from("daily_metrics").select("sleep_total_min").eq("date", today).maybeSingle(),
+    supabase.from("workouts").select("started_at").gte("started_at", localMidnightUtcIso(today, tz)),
+  ]);
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: tz }).format(new Date()));
+  const night = day?.sleep_total_min != null;
+  const done = Math.min(2, sessions?.length ?? 0);
+  const evening = hour >= 20;
+  return {
+    today,
+    key: `nuit:${night ? 1 : 0}|seances:${done}|soir:${evening ? 1 : 0}`,
+    reached: night || done > 0 || evening,
+    // Plafond de sécurité : une par étape possible
+    cap: 2 + done,
+  };
+}
 
 // Partie nutrition masquée : l'IA ne parle ni de repas ni de macros.
 const N = NUTRITION_ENABLED;
@@ -441,22 +474,20 @@ export async function GET(request: Request) {
 
   const supabase = createServiceClient();
 
-  const [latestSync, cached] = await Promise.all([
+  const [latestSync, cached, slot] = await Promise.all([
     getLatestDataVersion(supabase),
     getCachedInsights(supabase),
+    currentSlot(supabase),
   ]);
 
-  // TTL minimum 2h — ne pas régénérer juste parce qu'un sync est arrivé
-  const cacheAge = cached?.generated_at
-    ? Date.now() - new Date(cached.generated_at).getTime()
-    : Infinity;
-  const TTL_MS = 2 * 60 * 60 * 1000; // 2 heures
+  // Régénérer seulement quand une nouvelle étape de la journée est franchie
+  // (et dans la limite du jour), ou sur demande
+  const prev = (cached?.content as AiInsightsContent | undefined)?.schedule;
+  const countToday = prev?.date === slot.today ? prev.count : 0;
+  const newStep = !prev || prev.date !== slot.today || prev.key !== slot.key;
+  const due = slot.reached && newStep && countToday < slot.cap;
 
-  if (
-    !forceRefresh &&
-    cached &&
-    (cacheAge < TTL_MS || (latestSync && cached.data_version >= latestSync))
-  ) {
+  if (!forceRefresh && cached && !due) {
     return NextResponse.json({
       ...(cached.content as AiInsightsContent),
       generatedAt: cached.generated_at,
@@ -481,8 +512,10 @@ export async function GET(request: Request) {
 
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 1500,
+      model: INSIGHTS_MODEL,
+      // Réflexion adaptative (toujours active sur Opus 5.5) : marge large
+      max_tokens: 16000,
+      output_config: { effort: "medium" },
       system: systemWithProfile,
       messages: [{
         role: "user",
@@ -492,7 +525,7 @@ export async function GET(request: Request) {
 
     logApiUsage({
       endpoint: "ai-insights",
-      model: "claude-haiku-4-5-20251001",
+      model: INSIGHTS_MODEL,
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     });
@@ -500,7 +533,10 @@ export async function GET(request: Request) {
     // Premier bloc texte : un modèle avec réflexion commence par un bloc "thinking"
     const textBlock = response.content.find((b) => b.type === "text");
     const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
-    const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    // Objet JSON seul : on ignore un éventuel texte ou bloc de code autour
+    const start = rawText.indexOf("{");
+    const end = rawText.lastIndexOf("}");
+    const jsonStr = start >= 0 && end > start ? rawText.slice(start, end + 1) : rawText.trim();
 
     let raw: Record<string, unknown>;
     try {
@@ -523,6 +559,8 @@ export async function GET(request: Request) {
     const content: AiInsightsContent = {
       ...parsed,
       generatedAt: now,
+      // Un rafraîchissement manuel ne consomme pas le quota du jour
+      schedule: { date: slot.today, key: slot.key, count: forceRefresh ? countToday : countToday + 1 },
     };
 
     await supabase.from("ai_cache").upsert(

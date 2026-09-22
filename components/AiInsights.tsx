@@ -90,6 +90,9 @@ function displayWorkoutType(raw: string): string {
   return WORKOUT_TYPE_DISPLAY[raw.toLowerCase()] ?? raw;
 }
 
+// Requête en cours partagée par les composants qui montent en même temps
+let inflight: Promise<AiInsightsData> | null = null;
+
 function useAiInsightsData() {
   const [data, setData] = useState<AiInsightsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,11 +101,22 @@ function useAiInsightsData() {
 
   const load = (force: boolean) => {
     if (force) setRefreshing(true); else setLoading(true);
-    fetch(`/api/ai-insights${force ? "?refresh=1" : ""}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("Erreur chargement");
-        return r.json();
-      })
+    // Chargement initial partagé entre les blocs de la page : une seule
+    // requête, donc au plus une génération par l'IA
+    const request =
+      !force && inflight
+        ? inflight
+        : fetch(`/api/ai-insights${force ? "?refresh=1" : ""}`).then((r) => {
+            if (!r.ok) throw new Error("Erreur chargement");
+            return r.json() as Promise<AiInsightsData>;
+          });
+    if (!force) {
+      inflight = request;
+      request.finally(() => {
+        if (inflight === request) inflight = null;
+      }).catch(() => {});
+    }
+    request
       .then(setData)
       .catch(() => setError("Impossible de charger les analyses"))
       .finally(() => { setLoading(false); setRefreshing(false); });

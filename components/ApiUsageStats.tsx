@@ -191,8 +191,9 @@ export function ApiUsageStats() {
       </Card>
 
       <p className="text-[11px] text-[var(--color-body)]">
-        Coûts recalculés au tarif actuel (Haiku 4.5 : 1 $ par million de tokens en entrée, 5 $ en sortie), à partir des
-        tokens enregistrés. Estimation : ce qui passe par ce tableau de bord, hors taxes.
+        Coûts recalculés au tarif de chaque modèle à partir des tokens enregistrés (par million de tokens, entrée / sortie :
+        Haiku 4.5 1 $ / 5 $, Sonnet 5 2 $ / 10 $, Opus 5.5 4 $ / 20 $). Les tendances et la séance suggérée utilisent Opus 5.5,
+        3 fois par jour (4 avec deux séances). Estimation hors taxes.
       </p>
     </div>
   );
