@@ -281,7 +281,8 @@ export function StatsCharts() {
       {loading && <div className="text-center text-sm text-[var(--color-body)] py-12">Chargement…</div>}
 
       {!loading && data && (
-        <div className="space-y-5">
+        // Grand écran : cartes sur deux colonnes, en flux (pas de trou)
+        <div className="lg:columns-2 lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid">
           {activeTab === "resume" && <SummaryTab data={data} period={period} />}
           {activeTab === "entrainement" && <TrainingTab data={data} period={period} />}
           {activeTab === "recuperation" && <RecoveryTab data={data} />}
@@ -403,7 +404,7 @@ function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
         partial={prevEnd < data.previousPeriod.endDate}
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 [column-span:all]">
         <KpiTile
           label="Récupération"
           value={rec != null ? fr1(rec) : "—"}
@@ -594,7 +595,7 @@ function SummarySentence({
   }
   if (form != null) parts.push(`forme : ${formZone(form).long}`);
   return (
-    <div className="rounded-[var(--radius-md)] bg-[var(--color-brand-purple)]/5 border border-[var(--color-brand-purple)]/10 px-4 py-3">
+    <div className="rounded-[var(--radius-md)] bg-[var(--color-brand-purple)]/5 border border-[var(--color-brand-purple)]/10 px-4 py-3 [column-span:all]">
       <p className="text-sm text-[var(--color-heading)] dark:text-white/90">{parts.join(", ")}.</p>
     </div>
   );

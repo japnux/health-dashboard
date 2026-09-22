@@ -107,14 +107,15 @@ export default async function SeancePage({
       <BackLink />
       {/* En-tête teinté par la couleur du sport, carte du tracé en tête comme l'app de référence */}
       <header
-        className="rounded-[var(--radius-lg)] border overflow-hidden"
+        // Grand écran : carte à gauche, titre et chiffres à droite
+        className={`rounded-[var(--radius-lg)] border overflow-hidden [column-span:all] ${hasRoute ? "lg:grid lg:grid-cols-[1.4fr_1fr] lg:items-center" : ""}`}
         style={{
           background: tintedBackground(accent, 1.3),
           borderColor: tint(accent, 0.35),
         }}
       >
         {hasRoute && (
-          <div className="p-2 pb-0">
+          <div className="p-2 pb-0 lg:pb-2">
             <RouteMap route={w.route!} />
           </div>
         )}

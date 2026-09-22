@@ -21,7 +21,7 @@ export function NavBar() {
 
   return (
     <nav className="sticky top-0 z-40 bg-white/80 dark:bg-[#0d1520]/80 backdrop-blur-sm border-b border-[var(--color-border)] dark:border-white/10">
-      <div className="mx-auto max-w-2xl flex items-center justify-center px-4 py-2 sm:py-3">
+      <div className="mx-auto max-w-2xl lg:max-w-[1180px] xl:max-w-[1480px] flex items-center justify-center px-4 py-2 sm:py-3">
         <div className="flex items-center gap-1">
           {links.map((l) => {
             const active =

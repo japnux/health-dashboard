@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 export default function StatsPage() {
   return (
-    <main className="mx-auto max-w-2xl p-4 sm:p-6 space-y-4">
+    <main className="mx-auto max-w-2xl lg:max-w-6xl p-4 sm:p-6 space-y-4">
       <header className="pt-3 pb-1">
         <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
           Historique

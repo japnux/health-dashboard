@@ -306,14 +306,14 @@ export function MarqueurClient({
       {/* Retour */}
       <button
         onClick={() => router.push("/biologie")}
-        className="flex items-center gap-1.5 text-sm text-[var(--color-body)] hover:text-[var(--color-heading)] transition-colors"
+        className="[column-span:all] flex items-center gap-1.5 text-sm text-[var(--color-body)] hover:text-[var(--color-heading)] transition-colors"
       >
         ← Retour à la biologie
       </button>
 
       {/* En-tête */}
       <div
-        className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
+        className="[column-span:all] rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
         style={{ boxShadow: "var(--shadow-ambient)" }}
       >
         <div className="flex items-start justify-between">

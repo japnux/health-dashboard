@@ -6,13 +6,26 @@ import { tintedBackground, tint } from "@/lib/palette";
 import { BackButton } from "@/components/detail/BackButton";
 
 export function DetailPage({ children }: { children: React.ReactNode }) {
-  return <main className="mx-auto max-w-2xl p-4 pb-24 sm:p-6 space-y-5">{children}</main>;
+  // Grand écran : cartes réparties sur deux colonnes (placement en flux, sans
+  // trou quand les hauteurs diffèrent) ; en-tête et retour sur toute la largeur
+  return (
+    <main className="mx-auto max-w-2xl lg:max-w-6xl p-4 pb-24 sm:p-6 lg:columns-2 lg:gap-6 [&>*]:mb-5 [&>*]:break-inside-avoid">
+      {children}
+    </main>
+  );
 }
 
 // Retour vers la page précédente du dashboard (accueil par défaut)
 export function BackLink({ href = "/" }: { href?: string }) {
-  return <BackButton fallback={href} />;
+  return (
+    <div className={FULL_WIDTH}>
+      <BackButton fallback={href} />
+    </div>
+  );
 }
+
+// Élément sur toute la largeur dans la mise en page en colonnes
+export const FULL_WIDTH = "[column-span:all]";
 
 // En-tête : sur-titre, grand chiffre, statut (pastille + libellé), date, conseil.
 // Carte teintée par la couleur du statut (ou `accent`), comme l'app de référence.
@@ -38,7 +51,7 @@ export function DetailHeader({
   const color = accent ?? status?.color ?? null;
   return (
     <header
-      className={color ? "rounded-[var(--radius-lg)] border p-5 sm:p-6" : undefined}
+      className={`${FULL_WIDTH} ${color ? "rounded-[var(--radius-lg)] border p-5 sm:p-6" : ""}`}
       style={color ? { background: tintedBackground(color), borderColor: tint(color, 0.3) } : undefined}
     >
       <p className="text-xs uppercase tracking-wide text-[var(--color-body)]">{eyebrow}</p>

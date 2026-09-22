@@ -144,7 +144,7 @@ export default async function BiologiePage() {
   });
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8 space-y-6">
+    <main className="mx-auto max-w-2xl px-4 py-8 lg:max-w-6xl lg:columns-2 lg:gap-6 [&>*]:mb-6 [&>*]:break-inside-avoid">
       <BiologieClient tests={testsForClient} attentionMarkers={attentionMarkers} />
     </main>
   );

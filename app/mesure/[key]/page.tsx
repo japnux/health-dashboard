@@ -96,7 +96,7 @@ export default async function MesurePage({
     <DetailPage>
       <BackLink />
       {/* Autres mesures : navigation rapide */}
-      <nav className="flex flex-wrap gap-1.5">
+      <nav className="flex flex-wrap gap-1.5 [column-span:all]">
         {BODY_METRICS.map((m) => (
           <Link
             key={m.key}

@@ -540,9 +540,23 @@ function BioAgeExplainer({ bioAge, userAge }: { bioAge: number; userAge: number 
 
   return (
     <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="text-[11px] px-2.5 py-1 rounded-full bg-[var(--color-brand-purple)]/10 text-[var(--color-brand-purple)] hover:bg-[var(--color-brand-purple)]/15 transition-colors flex items-center gap-1"
+      {/* span "bouton" : ce badge est affiché dans l'en-tête cliquable d'un bilan,
+          et un <button> dans un <button> casse l'hydratation */}
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(!open);
+          }
+        }}
+        className="cursor-pointer text-[11px] px-2.5 py-1 rounded-full bg-[var(--color-brand-purple)]/10 text-[var(--color-brand-purple)] hover:bg-[var(--color-brand-purple)]/15 transition-colors flex items-center gap-1"
       >
         Âge bio : {Math.round(bioAge * 10) / 10} ans
         {diff !== null && (
@@ -551,7 +565,7 @@ function BioAgeExplainer({ bioAge, userAge }: { bioAge: number; userAge: number 
           </span>
         )}
         <span className="text-[10px] opacity-60 ml-0.5">{open ? "▲" : "ℹ"}</span>
-      </button>
+      </span>
 
       {open && (
         <div className="absolute top-full left-0 mt-2 w-72 z-20 rounded-xl bg-white dark:bg-[#1a1a2e] border border-[var(--color-border)] dark:border-white/10 p-4 space-y-2 shadow-lg">
@@ -856,8 +870,8 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header (toute la largeur en disposition deux colonnes) */}
+      <div className="flex items-center justify-between [column-span:all]">
         <div>
           <h1 className="text-lg font-normal text-[var(--color-heading)] dark:text-white">
             🧬 Biologie
@@ -879,7 +893,7 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
       {/* Formulaire */}
       {showForm && (
         <section
-          className="rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
+          className="[column-span:all] rounded-[var(--radius-lg)] bg-white dark:bg-white/5 border border-[var(--color-border)] dark:border-white/10 p-5"
           style={{ boxShadow: "var(--shadow-ambient)" }}
         >
           <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] mb-4 font-normal">
