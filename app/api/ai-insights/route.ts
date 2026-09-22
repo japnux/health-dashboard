@@ -497,7 +497,9 @@ export async function GET(request: Request) {
       outputTokens: response.usage.output_tokens,
     });
 
-    const rawText = response.content[0].type === "text" ? response.content[0].text : "";
+    // Premier bloc texte : un modèle avec réflexion commence par un bloc "thinking"
+    const textBlock = response.content.find((b) => b.type === "text");
+    const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
     const jsonStr = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
 
     let raw: Record<string, unknown>;
