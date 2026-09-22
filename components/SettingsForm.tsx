@@ -6,7 +6,6 @@ import {
   parseObjective,
   computeBaseTargets,
   OBJECTIVE_CONFIGS,
-  type Objective,
 } from "@/lib/nutrition-calc";
 
 type Config = {
@@ -113,8 +112,8 @@ export function SettingsForm() {
       </Section>
       )}
 
-      <Section title="Objectifs quotidiens">
-        <Field label="Sommeil (objectif)">
+      <Section title="Objectif de sommeil">
+        <Field label="Durée visée" help="Sert à la qualité de la nuit, à la tuile Sommeil et aux statistiques.">
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -147,24 +146,10 @@ export function SettingsForm() {
             <span className="text-sm text-[var(--color-body)]">min</span>
           </div>
         </Field>
-
-        <Field label="Pas / jour">
-          <input
-            type="number"
-            min={1000}
-            max={30000}
-            step={1000}
-            value={config.steps_target}
-            onChange={(e) =>
-              setConfig({ ...config, steps_target: +e.target.value })
-            }
-            className={inputClass}
-          />
-        </Field>
       </Section>
 
       <Section title="Profil">
-        <Field label="Âge">
+        <Field label="Âge" help="Donne ta FC max (formule de Tanaka), donc tes zones cardio et ta charge.">
           <input
             type="number"
             min={10}
@@ -178,7 +163,7 @@ export function SettingsForm() {
           />
         </Field>
 
-        <Field label="Sexe">
+        <Field label="Sexe" help="Contexte pour l'IA.">
           <select
             value={config.user_sex ?? ""}
             onChange={(e) =>
@@ -192,7 +177,7 @@ export function SettingsForm() {
           </select>
         </Field>
 
-        <Field label="Taille (cm)">
+        <Field label="Taille (cm)" help="Contexte pour l'IA.">
           <input
             type="number"
             min={100}
@@ -206,7 +191,7 @@ export function SettingsForm() {
           />
         </Field>
 
-        <Field label="Objectif">
+        <Field label="Objectif" help="Verdict de composition corporelle et conseils de l'IA.">
           <select
             value={config.user_objective ?? ""}
             onChange={(e) =>
@@ -222,46 +207,28 @@ export function SettingsForm() {
           </select>
         </Field>
 
-        <Field label="Activité principale">
+        <Field label="Activité principale" help="Contexte pour l'IA.">
           <input
             type="text"
             value={config.user_activity ?? ""}
             onChange={(e) =>
               setConfig({ ...config, user_activity: e.target.value || null })
             }
-            placeholder="Ex: Surf, Muscu, Course…"
+            placeholder="Ex : surf, muscu, course"
             className={inputClass}
           />
         </Field>
-      </Section>
 
-      <Section title="Informations">
-        <div className="text-sm text-[var(--color-body)] space-y-2">
-          <p>
-            <span className="font-normal text-[var(--color-label)] dark:text-white/80">
-              Fuseau horaire
-            </span>{" "}
-            — Europe/Paris
-          </p>
-          <p>
-            <span className="font-normal text-[var(--color-label)] dark:text-white/80">
-              Données
-            </span>{" "}
-            — Supabase + Apple Health (auto-export)
-          </p>
-          <p>
-            <span className="font-normal text-[var(--color-label)] dark:text-white/80">
-              IA
-            </span>{" "}
-            — Claude Haiku (tendances, séance suggérée, corrélations, analyse)
-          </p>
-          <p>
-            <span className="font-normal text-[var(--color-label)] dark:text-white/80">
-              Technologies
-            </span>{" "}
-            — Next.js + Supabase + Vercel
-          </p>
-        </div>
+        <Field label="Objectifs personnels" help="Texte libre transmis à l'IA (ex. préparer un trip surf en novembre).">
+          <textarea
+            value={config.user_goals ?? ""}
+            onChange={(e) => setConfig({ ...config, user_goals: e.target.value || null })}
+            rows={2}
+            maxLength={300}
+            placeholder="—"
+            className={`${inputClass} sm:max-w-[320px] resize-y`}
+          />
+        </Field>
       </Section>
 
       <div className="flex items-center gap-3">
@@ -303,16 +270,20 @@ function Section({
 
 function Field({
   label,
+  help,
   children,
 }: {
   label: string;
+  help?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-      <label className="text-sm font-normal text-[var(--color-label)] dark:text-white/80">
-        {label}
-      </label>
+      <div className="min-w-0">
+        <label className="text-sm font-normal text-[var(--color-label)] dark:text-white/80">{label}</label>
+        {/* Ce que ce réglage influence */}
+        {help && <p className="text-[11px] text-[var(--color-body)] mt-0.5 max-w-[320px]">{help}</p>}
+      </div>
       {children}
     </div>
   );
