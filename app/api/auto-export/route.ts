@@ -818,6 +818,17 @@ export async function POST(request: Request) {
     .insert(logRow as import("@/lib/types").Database["public"]["Tables"]["sync_logs"]["Insert"]);
   if (logError) console.error("[auto-export] écriture sync_logs échouée:", logError.message);
 
+  // Purge : les envois de plus de 60 jours ne gardent plus leur contenu brut
+  // (déjà traité ; les courbes FC et tracés sont dans workouts). Les lignes de
+  // journal restent, pour garder l'historique des synchros.
+  const purgeBefore = new Date(Date.now() - 60 * 86_400_000).toISOString();
+  const { error: purgeError } = await supabase
+    .from("sync_logs")
+    .update({ raw_payload: null })
+    .lt("created_at", purgeBefore)
+    .not("raw_payload", "is", null);
+  if (purgeError) console.error("[auto-export] purge sync_logs échouée:", purgeError.message);
+
   return NextResponse.json({
     ok: status !== "empty",
     status,
