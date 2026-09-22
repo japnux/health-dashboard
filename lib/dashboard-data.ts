@@ -1,10 +1,11 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
+import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { balanceZone, loadBalanceSeries, type BalanceLevel } from "@/lib/load-balance";
 import { formSeries, formZone, type FormLevel } from "@/lib/form";
 import { BODY_METRICS, metricRange, metricStatus, type BodyMetricKey, type MetricRange, type MetricStatus } from "@/lib/body-metrics";
-import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
+import { isIncompleteNight, recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
 import { computeDayStrain, type StrainResult } from "@/lib/strain-score";
@@ -49,6 +50,8 @@ export type DashboardSnapshot = {
   lastBodyComposition: BodyCompositionRow | null;
   prevBodyComposition: BodyCompositionRow | null;
   bodyCompositionAgeDays: number | null;
+  // Requêtes en échec (affichées sur l'accueil plutôt que des zéros muets)
+  dataErrors: string[];
   // Dernières valeurs (poids ; gras et maigre de la dernière impédance)
   composition: CompositionSnapshot;
   bodyTrends: {
@@ -205,21 +208,10 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const sevenDaysAgo = isoDaysAgo(7, tz);
   const sixtyDaysAgo = isoDaysAgo(60, tz);
 
-  const [
-    { data: recentMetrics },
-    { data: workouts },
-    { data: bodies },
-    { data: proteinRows },
-    { data: configRow },
-    { data: protein7dRows },
-    { data: mealRows },
-    { data: plannedRows },
-    { data: baselineMetrics },
-    { data: journalRows },
-    { data: bloodTests },
-    { data: syncRows },
-    { data: loadRows },
-  ] = await Promise.all([
+  // Requête sautée (partie désactivée) : même forme qu'un résultat vide
+  const skipped = Promise.resolve({ data: [] as never[], error: null });
+
+  const results = await Promise.all([
     supabase
       .from("daily_metrics")
       .select("*")
@@ -228,7 +220,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .order("date", { ascending: false }),
     supabase
       .from("workouts")
-      .select("*")
+      // Sans les tracés GPS ni les courbes de FC (lourds, inutiles sur l'accueil)
+      .select("id, started_at, type, duration_min, kcal, source, created_at, avg_hr_bpm, max_hr_bpm, cardio_load, hr_zone_min, distance_km, avg_speed_kmh, max_speed_kmh")
       // 7 jours calendaires de Paris, aujourd'hui compris (avant : depuis J-7 à
       // 00h UTC, soit 8 jours, et "Séances 7j" comptait une séance de trop)
       .gte("started_at", localMidnightUtcIso(isoDaysAgo(6, tz), tz))
@@ -239,18 +232,18 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .select("*")
       .order("measured_at", { ascending: false })
       .limit(150),
-    supabase.from("protein_logs").select("grams").eq("date", date),
-    supabase.from("dashboard_config").select("*").eq("id", 1).single(),
-    supabase
-      .from("protein_logs")
-      .select("id, date, grams, label, logged_at")
-      .gte("date", sevenDaysAgo)
-      .lte("date", date),
-    supabase
-      .from("meal_logs")
-      .select("id, date, label, calories, proteines_g, glucides_g, lipides_g, logged_at")
-      .gte("date", sevenDaysAgo)
-      .lte("date", date),
+    NUTRITION_ENABLED ? supabase.from("protein_logs").select("grams").eq("date", date) : skipped,
+    supabase.from("dashboard_config").select("*").eq("id", 1).maybeSingle(),
+    NUTRITION_ENABLED
+      ? supabase.from("protein_logs").select("id, date, grams, label, logged_at").gte("date", sevenDaysAgo).lte("date", date)
+      : skipped,
+    NUTRITION_ENABLED
+      ? supabase
+          .from("meal_logs")
+          .select("id, date, label, calories, proteines_g, glucides_g, lipides_g, logged_at")
+          .gte("date", sevenDaysAgo)
+          .lte("date", date)
+      : skipped,
     supabase
       .from("planned_activities")
       .select("type, count")
@@ -261,11 +254,9 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
-    supabase
-      .from("journal_entries")
-      .select("date, mood, energy, stress")
-      .gte("date", sixtyDaysAgo)
-      .lte("date", date),
+    JOURNAL_ENABLED
+      ? supabase.from("journal_entries").select("date, mood, energy, stress").gte("date", sixtyDaysAgo).lte("date", date)
+      : skipped,
     supabase
       .from("blood_tests")
       .select("id, test_date, lab_name, biological_age, blood_test_results(biomarker_key, label, category, value, unit, ref_min, ref_max)")
@@ -286,6 +277,36 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
       .lte("date", date)
       .order("date", { ascending: true }),
   ]);
+
+  // Une requête en échec ne doit pas passer pour "pas de données" : on la
+  // journalise et on la signale sur l'accueil
+  const QUERY_NAMES = [
+    "mesures 7 j", "séances", "pesées", "protéines", "réglages", "protéines 7 j", "repas",
+    "activités prévues", "référence 60 j", "journal", "biologie", "synchros", "charge",
+  ];
+  const dataErrors = results.flatMap((r, i) => {
+    const err = (r as { error: { message: string } | null }).error;
+    if (!err) return [];
+    console.error(`[dashboard] ${QUERY_NAMES[i]} :`, err.message);
+    return [QUERY_NAMES[i]];
+  });
+  const [
+    { data: recentMetrics },
+    { data: workoutsRaw },
+    { data: bodies },
+    { data: proteinRows },
+    { data: configRow },
+    { data: protein7dRows },
+    { data: mealRows },
+    { data: plannedRows },
+    { data: baselineMetrics },
+    { data: journalRows },
+    { data: bloodTests },
+    { data: syncRows },
+    { data: loadRows },
+  ] = results;
+  // Colonnes lourdes non chargées : typées comme absentes
+  const workouts = workoutsRaw as unknown as WorkoutRow[] | null;
 
   const config = (configRow ?? DEFAULTS) as Record<string, unknown>;
 
@@ -430,7 +451,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const weekWorkoutCount = recentWorkouts.length;
   const weekSteps = past7.map((r) => r.steps).filter((v): v is number => v != null);
   const weekAvgSteps = weekSteps.length > 0 ? Math.round(weekSteps.reduce((a, b) => a + b, 0) / weekSteps.length) : null;
-  const weekSleep = past7.map((r) => r.sleep_total_min).filter((v): v is number => v != null);
+  // Nuits incomplètes (moins de 3 h) exclues de la moyenne
+  const weekSleep = past7.map((r) => r.sleep_total_min).filter((v): v is number => v != null && !isIncompleteNight(v));
   const weekAvgSleep = weekSleep.length > 0 ? Math.round(weekSleep.reduce((a, b) => a + b, 0) / weekSleep.length) : null;
 
   // Impact analysis : corrélation journal → recovery J+1 (60j de données)
@@ -502,6 +524,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     bodyCompositionAgeDays,
     bodyTrends,
     composition,
+    dataErrors,
     proteinTotalToday,
     macrosToday,
     macrosTargets,

@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 import { redirect, notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
 import { BIOMARKERS_BY_KEY } from "@/lib/biomarkers";
@@ -7,15 +6,6 @@ import { MarqueurClient } from "./client";
 
 export const dynamic = "force-dynamic";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 type Props = { params: Promise<{ key: string }> };
 

@@ -15,6 +15,17 @@ export const VIVID = {
   gray: "#8e8e93",
 } as const;
 
+// Versions foncées pour du TEXTE coloré sur fond clair (contraste ≥ 4,5:1).
+// Les couleurs VIVID restent réservées aux pastilles, barres et fonds.
+export const TEXT = {
+  green: "#1f7a3a",
+  red: "#c0271e",
+  orange: "#a15c00",
+  yellow: "#8a6d00",
+  blue: "#0058b8",
+  purple: "#7a2fa3",
+} as const;
+
 // Teinte de fond d'une couleur hex (#rrggbb) : alpha en hex ajouté
 export function tint(hex: string, alpha: number): string {
   const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)

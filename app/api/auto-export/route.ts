@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
+import { safeEqual } from "@/lib/session";
 import { createServiceClient } from "@/lib/supabase/service";
+import { isoDateMinusDays } from "@/lib/dates";
+import { normalizeWorkoutType } from "@/lib/workout-types";
 import { recoveryForDay } from "@/lib/recovery-score";
 import { extractWorkoutDetails, stripRoutesForLog } from "@/lib/workout-details";
 import {
@@ -14,7 +17,8 @@ import {
 function isAuthorized(request: Request): boolean {
   const key = process.env.AUTO_EXPORT_API_KEY;
   if (!key) return false;
-  return request.headers.get("x-api-key") === key;
+  // Comparaison à temps constant (pas d'indice sur la clé via la durée)
+  return safeEqual(request.headers.get("x-api-key") ?? "", key);
 }
 
 function extractDate(dateStr: string): string {
@@ -119,6 +123,42 @@ type DayBucket = {
   hr_hourly: HrHourly | null; // FC moyenne horaire, pour la charge cardio hors séance
   sleeping_hr_bpm: number | null; // plus basse moyenne horaire pendant le sommeil
 };
+
+// Ligne existante de daily_metrics utilisée pour la fusion et la référence
+type HistoryRow = {
+  date: string;
+  hrv_ms: number | null;
+  resting_hr_bpm: number | null;
+  sleeping_hr_bpm: number | null;
+  respiratory_rate: number | null;
+  sleep_total_min: number | null;
+  sleep_rem_pct: number | null;
+  sleep_deep_pct: number | null;
+  sleep_awake_pct: number | null;
+  sleep_start: string | null;
+  sleep_end: string | null;
+  steps: number | null;
+  active_kcal: number | null;
+  daylight_min: number | null;
+  hr_max_bpm: number | null;
+  hr_min_bpm: number | null;
+  hr_hourly: HrHourly | null;
+};
+const HISTORY_COLUMNS =
+  "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, hr_max_bpm, hr_min_bpm, hr_hourly";
+
+// Valeur reçue, sans jamais descendre sous celle déjà en base (cumul partiel)
+function keepMax(received: number | null, stored: number | null): number | null {
+  if (received == null) return null; // rien reçu : la valeur en base reste
+  return stored != null && Number(stored) > received ? Number(stored) : received;
+}
+
+// FC horaire { start, avg[24] } → points datés pour la FC de sommeil
+function hourlyPoints(h: HrHourly | null): { t: number; avg: number }[] {
+  if (!h) return [];
+  const t0 = Date.parse(h.start);
+  return h.avg.flatMap((avg, i) => (avg != null ? [{ t: t0 + i * 3_600_000, avg }] : []));
+}
 
 type BodyCompBucket = {
   weight_kg: number | null;
@@ -245,7 +285,9 @@ export async function POST(request: Request) {
           break;
         }
         case "spo2": {
-          const val = Number(point.qty);
+          const raw = Number(point.qty);
+          // Parfois envoyée en fraction (0,96) plutôt qu'en pourcentage
+          const val = raw > 0 && raw <= 1 ? raw * 100 : raw;
           if (!isNaN(val) && val > 0) nightSamples.push({ kind: "spo2", dateStr, v: r1(val) });
           break;
         }
@@ -448,7 +490,30 @@ export async function POST(request: Request) {
   const loadDates = new Set<string>();
 
   // ── daily_metrics avec recovery score ──
-  for (const [date, day] of days) {
+  // Historique chargé en une fois : les 60 jours avant le premier jour reçu
+  // (référence du score, valeurs aberrantes) et les lignes déjà en base des
+  // jours reçus, avec lesquelles on fusionne : un envoi partiel ne doit rien
+  // effacer ni faire baisser un cumul
+  const dayDates = [...days.keys()].sort();
+  const history = new Map<string, HistoryRow>();
+  let historyOk = true;
+  if (dayDates.length > 0) {
+    const { data: rows, error: histError } = await supabase
+      .from("daily_metrics")
+      .select(HISTORY_COLUMNS)
+      .gte("date", isoDateMinusDays(dayDates[0], 61))
+      .lte("date", dayDates[dayDates.length - 1]);
+    if (histError) {
+      historyOk = false;
+      results.push(`daily_metrics: erreur lecture historique ${histError.message} (jours non traités)`);
+    }
+    for (const r of (rows ?? []) as unknown as HistoryRow[]) history.set(r.date, r);
+  }
+
+  for (const date of historyOk ? dayDates : []) {
+    const day = days.get(date)!;
+    const existing = history.get(date) ?? null;
+
     // Résoudre les samples nocturnes → médiane
     if (day._hrv_samples.length > 0) {
       day.hrv_ms = r1(median(day._hrv_samples));
@@ -472,26 +537,57 @@ export async function POST(request: Request) {
     if (day.steps != null) day.steps = Math.round(day.steps);
     if (day.daylight_min != null) day.daylight_min = Math.round(day.daylight_min);
 
+    // Fusion avec la ligne existante : cumuls au maximum, extrêmes de FC,
+    // FC horaire complétée heure par heure
+    if (existing) {
+      day.steps = keepMax(day.steps, existing.steps);
+      day.active_kcal = keepMax(day.active_kcal, existing.active_kcal);
+      day.daylight_min = keepMax(day.daylight_min, existing.daylight_min);
+      day.hr_max_bpm = keepMax(day.hr_max_bpm, existing.hr_max_bpm);
+      if (day.hr_min_bpm != null && existing.hr_min_bpm != null) day.hr_min_bpm = Math.min(day.hr_min_bpm, existing.hr_min_bpm);
+      if (day.hr_hourly && existing.hr_hourly && day.hr_hourly.start === existing.hr_hourly.start) {
+        const old = existing.hr_hourly.avg;
+        day.hr_hourly = { start: day.hr_hourly.start, avg: day.hr_hourly.avg.map((v, h) => v ?? old[h] ?? null) };
+      }
+      // Une session nettement plus courte que la nuit déjà enregistrée est une
+      // sieste envoyée plus tard : elle ne remplace pas la nuit
+      if (day.sleep_total_min != null && existing.sleep_total_min != null && day.sleep_total_min < existing.sleep_total_min * 0.6) {
+        results.push(`sommeil ${date}: session de ${day.sleep_total_min} min ignorée (nuit de ${existing.sleep_total_min} min conservée)`);
+        day.sleep_total_min = day.sleep_rem_pct = day.sleep_deep_pct = day.sleep_awake_pct = null;
+        day.sleep_start = day.sleep_end = null;
+      }
+    }
+
+    // FC de sommeil manquante : calculée avec la nuit et la FC horaire déjà
+    // en base (elles peuvent arriver dans des envois différents)
+    if (day.sleeping_hr_bpm == null && existing?.sleeping_hr_bpm == null) {
+      const start = day.sleep_start ?? existing?.sleep_start ?? null;
+      const end = day.sleep_end ?? existing?.sleep_end ?? null;
+      if (start && end) {
+        const prevDate = isoDateMinusDays(date, 1);
+        const hourly = [
+          ...hourlyPoints(days.get(prevDate)?.hr_hourly ?? history.get(prevDate)?.hr_hourly ?? null),
+          ...hourlyPoints(day.hr_hourly ?? existing?.hr_hourly ?? null),
+        ];
+        const sleepingHr = sleepingHrFromHourly(Date.parse(start), Date.parse(end), hourly);
+        if (sleepingHr != null) day.sleeping_hr_bpm = sleepingHr;
+      }
+    }
+
     const hasData = Object.entries(day).some(([k, v]) => !k.startsWith("_") && v != null);
     if (!hasData) continue;
 
-    // Récupérer l'historique 60j pour baseline recovery + outlier detection
-    const sixtyDaysBefore = new Date(`${date}T12:00:00Z`);
-    sixtyDaysBefore.setUTCDate(sixtyDaysBefore.getUTCDate() - 60);
-    const windowStart60 = sixtyDaysBefore.toISOString().slice(0, 10);
+    // Les 60 jours précédents, du plus récent au plus ancien
+    const from60 = isoDateMinusDays(date, 60);
+    const past = [...history.values()]
+      .filter((r) => r.date >= from60 && r.date < date)
+      .sort((x, y) => y.date.localeCompare(x.date));
 
-    const { data: past } = await supabase
-      .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate")
-      .gte("date", windowStart60)
-      .lt("date", date)
-      .order("date", { ascending: false });
-
-
-    // Détection d'outliers via médiane 14j
-    const past14 = (past ?? []).slice(0, 14);
+    // Valeurs aberrantes : comparaison à la médiane des 14 derniers jours
+    const past14 = past.slice(0, 14);
     const hrv14 = past14.map((r) => r.hrv_ms).filter((v): v is number => v != null);
     const hr14 = past14.map((r) => r.resting_hr_bpm).filter((v): v is number => v != null);
+    const sleepHr14 = past14.map((r) => r.sleeping_hr_bpm).filter((v): v is number => v != null);
     if (day.hrv_ms != null && hrv14.length >= 3) {
       const medianHrv = median(hrv14);
       if (day.hrv_ms > medianHrv * 2.5 || day.hrv_ms < medianHrv * 0.3) {
@@ -506,24 +602,16 @@ export async function POST(request: Request) {
         day.resting_hr_bpm = null;
       }
     }
-
-    // Le score se calcule sur la journée complète : un envoi peut ne contenir
-    // qu'une partie des données d'un jour (ex. seulement la température de la
-    // nuit). On complète donc avec ce qui est déjà en base, sinon le score
-    // serait recalculé sur des données partielles et écraserait le bon.
-    const { data: existing, error: existingError } = await supabase
-      .from("daily_metrics")
-      .select("hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct")
-      .eq("date", date)
-      .maybeSingle();
-    if (existingError) {
-      results.push(`daily_metrics ${date}: erreur lecture existant ${existingError.message}`);
-      continue;
+    // La FC de sommeil est l'entrée principale du score : même garde-fou
+    if (day.sleeping_hr_bpm != null && sleepHr14.length >= 3) {
+      const medianSleepHr = median(sleepHr14);
+      if (Math.abs(day.sleeping_hr_bpm - medianSleepHr) > 20) {
+        results.push(`⚠️ FC de sommeil ${date}: ${day.sleeping_hr_bpm} bpm rejetée (médiane 14j = ${Math.round(medianSleepHr)} bpm)`);
+        day.sleeping_hr_bpm = null;
+      }
     }
 
-    // Mesures du jour uniquement (envoi, sinon ligne existante). Avant, la FC
-    // repos manquante était remplacée par la dernière connue sur 60 jours :
-    // un jour sans aucune mesure pouvait sortir à 9/10.
+    // Score sur la journée complète : valeurs reçues, sinon celles déjà en base
     const recovery = recoveryForDay(
       {
         hrv_ms: day.hrv_ms ?? existing?.hrv_ms ?? null,
@@ -534,24 +622,30 @@ export async function POST(request: Request) {
         sleep_rem_pct: day.sleep_rem_pct ?? existing?.sleep_rem_pct ?? null,
         sleep_deep_pct: day.sleep_deep_pct ?? existing?.sleep_deep_pct ?? null,
       },
-      past ?? [],
+      past,
     );
 
-    // Ne pas écraser les champs existants avec null :
-    // on ne passe que les champs non-null du day bucket dans l'upsert
+    // Seuls les champs reçus sont écrits (pas d'écrasement par null)...
     const dayFields: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(day)) {
       if (k.startsWith("_")) continue; // champs internes (_hrv_samples)
       if (v != null) dayFields[k] = v;
     }
+    // ... sauf les phases quand une nouvelle nuit remplace l'ancienne : les
+    // pourcentages de l'ancienne nuit ne doivent pas rester collés à la nouvelle
+    if (day.sleep_total_min != null) {
+      dayFields.sleep_rem_pct = day.sleep_rem_pct;
+      dayFields.sleep_deep_pct = day.sleep_deep_pct;
+      dayFields.sleep_awake_pct = day.sleep_awake_pct;
+    }
 
+    // Plus de copie de l'envoi complet par jour : il est déjà dans sync_logs
     const { error } = await supabase.from("daily_metrics").upsert(
       {
         date,
         ...dayFields,
         recovery_score: recovery.score,
         recovery_score_basis: recovery.basis,
-        raw_payload: payload as Record<string, unknown>,
       },
       { onConflict: "date" },
     );
@@ -560,6 +654,8 @@ export async function POST(request: Request) {
     } else {
       results.push(`daily_metrics ${date}: ok (recovery ${recovery.score ?? "n/a"}/10)`);
       if (day.hr_hourly) loadDates.add(date);
+      // Le jour suivant du même envoi s'appuie sur ces valeurs
+      history.set(date, { ...(existing ?? { date }), ...dayFields, date } as HistoryRow);
     }
   }
 
@@ -567,24 +663,25 @@ export async function POST(request: Request) {
   for (const [date, bc] of bodyComp) {
     if (bc.weight_kg == null && bc.body_fat_pct == null && bc.lean_mass_kg == null) continue;
 
-    if (bc.weight_kg == null) continue;
-
     let fatPct = bc.body_fat_pct;
-    if (fatPct == null && bc.weight_kg > 0 && bc.lean_mass_kg != null && bc.lean_mass_kg > 0) {
+    if (fatPct == null && bc.weight_kg != null && bc.weight_kg > 0 && bc.lean_mass_kg != null && bc.lean_mass_kg > 0) {
       fatPct = r1((1 - bc.lean_mass_kg / bc.weight_kg) * 100);
     }
 
-    const { error } = await supabase
-      .from("body_composition")
-      .upsert(
-        {
-          measured_at: date,
-          weight_kg: bc.weight_kg,
-          body_fat_pct: fatPct,
-          lean_mass_kg: bc.lean_mass_kg,
-        },
-        { onConflict: "measured_at" },
-      );
+    // Seuls les champs reçus : une pesée simple le même jour ne doit pas
+    // effacer la masse grasse et la masse maigre de l'impédancemètre
+    const fields: { body_fat_pct?: number; lean_mass_kg?: number } = {};
+    if (fatPct != null) fields.body_fat_pct = fatPct;
+    if (bc.lean_mass_kg != null) fields.lean_mass_kg = bc.lean_mass_kg;
+
+    // Le poids est obligatoire en base : sans poids, on complète seulement
+    // une pesée déjà enregistrée ce jour-là
+    const { error } =
+      bc.weight_kg != null
+        ? await supabase
+            .from("body_composition")
+            .upsert({ measured_at: date, weight_kg: bc.weight_kg, ...fields }, { onConflict: "measured_at" })
+        : await supabase.from("body_composition").update(fields).eq("measured_at", date);
     if (error) {
       results.push(`body_composition ${date}: erreur ${error.message}`);
     } else {
@@ -605,7 +702,19 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const name = String(wo.name ?? wo.activityType ?? "Unknown");
+    let name = String(wo.name ?? wo.activityType ?? "Unknown");
+    // Même séance déjà enregistrée sous un autre nom (langue du téléphone,
+    // import historique "Surfing" contre "Sports de Surf") : on met à jour
+    // cette ligne au lieu d'en créer une seconde
+    const t0 = Date.parse(startedAt);
+    const { data: near } = await supabase
+      .from("workouts")
+      .select("type")
+      .gte("started_at", new Date(t0 - 90_000).toISOString())
+      .lte("started_at", new Date(t0 + 90_000).toISOString());
+    const twin = (near ?? []).find((n) => n.type !== name && normalizeWorkoutType(n.type ?? "") === normalizeWorkoutType(name));
+    if (twin?.type) name = twin.type;
+
     const durationSec = Number(wo.duration);
     const durationMin = !isNaN(durationSec) ? Math.round(durationSec / 60) : null;
 
@@ -642,13 +751,14 @@ export async function POST(request: Request) {
       hrFields.hr_zone_min = wLoad.zoneMin;
     }
 
+    // Durée et kcal seulement si reçues : un renvoi incomplet ne les efface pas
     const { error } = await supabase.from("workouts").upsert(
       {
         started_at: startedAt,
         type: name,
-        duration_min: durationMin,
-        kcal,
         source: "auto-export",
+        ...(durationMin != null ? { duration_min: durationMin } : {}),
+        ...(kcal != null ? { kcal } : {}),
         ...hrFields,
       },
       { onConflict: "started_at,type" },
@@ -702,9 +812,11 @@ export async function POST(request: Request) {
       "content-type": request.headers.get("content-type") ?? "",
     },
   };
-  await supabase.from("sync_logs").insert(
-    logRow as import("@/lib/types").Database["public"]["Tables"]["sync_logs"]["Insert"],
-  );
+  // Le cache des IA se fonde sur ces lignes : un échec doit se voir
+  const { error: logError } = await supabase
+    .from("sync_logs")
+    .insert(logRow as import("@/lib/types").Database["public"]["Tables"]["sync_logs"]["Insert"]);
+  if (logError) console.error("[auto-export] écriture sync_logs échouée:", logError.message);
 
   return NextResponse.json({
     ok: status !== "empty",

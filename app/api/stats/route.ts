@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
@@ -9,16 +8,8 @@ import { loadBalanceSeries } from "@/lib/load-balance";
 import { formSeries } from "@/lib/form";
 import { BODY_METRICS, metricRange, metricStatus } from "@/lib/body-metrics";
 import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 function getWeekRange(offset: number, tz: string): { start: string; end: string; label: string } {
   const now = new Date(`${todayIso(tz)}T12:00:00Z`);
@@ -102,15 +93,19 @@ export async function GET(request: Request) {
     [localMidnightUtcIso(r.start, tz), localMidnightUtcIso(isoDateMinusDays(r.end, -1), tz)] as const;
 
   try {
-    const [metricsRes, workoutsRes, bodyRes, prevWorkoutsRes, configRes, loadRowsRes] = await Promise.all([
+    const [allMetrics, workoutsRes, bodyRes, prevWorkoutsRes, configRes, loadRows] = await Promise.all([
       // Période précédente + 60 jours avant, pour les plages habituelles
-      // (même définition que l'accueil) et la comparaison
-      supabase
-        .from("daily_metrics")
-        .select(METRIC_COLUMNS)
-        .gte("date", isoDateMinusDays(prev.start, 60))
-        .lte("date", current.end)
-        .order("date", { ascending: true }),
+      // (même définition que l'accueil) et la comparaison. Paginé : sur un an,
+      // on dépasse la limite de 1000 lignes de l'API
+      fetchAllRows((from, to) =>
+        supabase
+          .from("daily_metrics")
+          .select(METRIC_COLUMNS)
+          .gte("date", isoDateMinusDays(prev.start, 60))
+          .lte("date", current.end)
+          .order("date", { ascending: true })
+          .range(from, to),
+      ),
       supabase
         .from("workouts")
         .select(WORKOUT_COLUMNS)
@@ -129,21 +124,20 @@ export async function GET(request: Request) {
         .gte("started_at", workoutRange(prev)[0])
         .lt("started_at", workoutRange(prev)[1]),
       supabase.from("dashboard_config").select("sleep_target_min").eq("id", 1).maybeSingle(),
-      // Charge : un an d'historique pour les moyennes 7 j / 42 j
-      supabase
-        .from("daily_metrics")
-        .select("date, cardio_load, active_kcal")
-        .gte("date", isoDateMinusDays(prev.start, 365))
-        .lte("date", current.end)
-        .order("date", { ascending: true }),
+      // Charge : un an d'historique pour les moyennes 7 j / 42 j (paginé)
+      fetchAllRows((from, to) =>
+        supabase
+          .from("daily_metrics")
+          .select("date, cardio_load, active_kcal")
+          .gte("date", isoDateMinusDays(prev.start, 365))
+          .lte("date", current.end)
+          .order("date", { ascending: true })
+          .range(from, to),
+      ),
     ]);
-    if (metricsRes.error) throw metricsRes.error;
-
-    const allMetrics = metricsRes.data ?? [];
     const inRange = (d: string, r: { start: string; end: string }) => d >= r.start && d <= r.end;
 
     // Strain de chaque jour, référence = les 30 jours précédents (comme l'accueil)
-    const loadRows = loadRowsRes.data ?? [];
     const strainByDate: Record<string, number> = {};
     for (const row of loadRows) {
       if (row.date < prev.start) continue;

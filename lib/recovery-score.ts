@@ -28,6 +28,11 @@ export type RecoveryResult = {
     sleep: RecoveryComponent;
     respiratory: RecoveryComponent;
   };
+  // FC réellement utilisée par le composant "FC" (sommeil dès 7 nuits de
+  // référence, sinon FC repos Apple) : l'affichage doit citer la même
+  hrSource?: "sleeping" | "resting";
+  // Nuit ignorée car trop courte pour être complète (montre retirée…)
+  incompleteNight?: boolean;
 };
 
 // Interpolation linéaire entre deux paliers
@@ -227,20 +232,30 @@ function medianOf(values: number[]): number | null {
 // past60 : les jours [J-60, J-1].
 const MIN_SLEEP_HR_NIGHTS = 7;
 
+// Nuit plus courte que ça : probablement incomplète (montre retirée ou en
+// charge). Elle est exclue du score et des moyennes de sommeil.
+export const MIN_NIGHT_MIN = 180;
+
+export function isIncompleteNight(sleepTotalMin: number | null | undefined): boolean {
+  return sleepTotalMin != null && sleepTotalMin < MIN_NIGHT_MIN;
+}
+
 export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow[]): RecoveryResult {
   const sleepHrPast = presentValues(past60, "sleeping_hr_bpm");
   const useSleepHr = day.sleeping_hr_bpm != null && sleepHrPast.length >= MIN_SLEEP_HR_NIGHTS;
-  return computeRecoveryScore({
+  const incompleteNight = isIncompleteNight(day.sleep_total_min);
+  const result = computeRecoveryScore({
     hrvMs: day.hrv_ms,
     hrv7dAvgMs: medianOf(presentValues(past60, "hrv_ms")),
     restingHrBpm: useSleepHr ? day.sleeping_hr_bpm! : day.resting_hr_bpm,
     restingHr7dAvgBpm: useSleepHr ? meanOf(sleepHrPast) : meanOf(presentValues(past60, "resting_hr_bpm")),
-    sleepTotalMin: day.sleep_total_min,
-    sleepRemPct: day.sleep_rem_pct,
-    sleepDeepPct: day.sleep_deep_pct,
+    sleepTotalMin: incompleteNight ? null : day.sleep_total_min,
+    sleepRemPct: incompleteNight ? null : day.sleep_rem_pct,
+    sleepDeepPct: incompleteNight ? null : day.sleep_deep_pct,
     respiratoryRate: day.respiratory_rate,
     respiratoryRate7dAvg: meanOf(presentValues(past60, "respiratory_rate")),
   });
+  return { ...result, hrSource: useSleepHr ? "sleeping" : "resting", incompleteNight };
 }
 
 export function recoveryColor(score: number | null): "green" | "yellow" | "red" | "gray" {

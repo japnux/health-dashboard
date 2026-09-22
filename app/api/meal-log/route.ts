@@ -1,25 +1,18 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
+import { readJson } from "@/lib/http";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/service";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 export async function DELETE(request: Request) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const { id } = await request.json();
+  const parsed = await readJson(request);
+  if (parsed == null) return NextResponse.json({ error: "JSON invalide" }, { status: 400 });
+  const { id } = parsed;
   if (!id) {
     return NextResponse.json({ error: "ID requis" }, { status: 400 });
   }

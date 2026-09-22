@@ -83,8 +83,12 @@ export function backgroundLoad(hourly: HrHourly, busyHours: Set<number>, hrMax: 
   return load;
 }
 
-// FC max : formule de Tanaka (208 − 0,7 × âge), relevée si une séance a
-// déjà dépassé cette valeur.
+// FC max : formule de Tanaka (208 − 0,7 × âge), relevée si des séances l'ont
+// dépassée. Garde-fous contre les artefacts du capteur : valeurs au-delà de
+// 210 ignorées, et il faut deux séances pour relever (la 2ᵉ plus haute FC
+// max observée). Une seule pointe aberrante ne fausse plus toute la charge.
+const HR_MAX_CEILING = 210;
+
 export async function getHrMax(supabase: Client): Promise<number> {
   const [{ data: config }, { data: top }] = await Promise.all([
     supabase.from("dashboard_config").select("user_age").eq("id", 1).maybeSingle(),
@@ -92,13 +96,14 @@ export async function getHrMax(supabase: Client): Promise<number> {
       .from("workouts")
       .select("max_hr_bpm")
       .not("max_hr_bpm", "is", null)
+      .lte("max_hr_bpm", HR_MAX_CEILING)
       .order("max_hr_bpm", { ascending: false })
-      .limit(1),
+      .limit(2),
   ]);
   const age = config?.user_age ?? null;
   const theoretical = age != null ? 208 - 0.7 * age : FALLBACK_HR_MAX;
-  const observed = top?.[0]?.max_hr_bpm ?? 0;
-  return Math.round(Math.max(theoretical, observed));
+  const confirmed = top && top.length >= 2 ? Number(top[1].max_hr_bpm) : 0;
+  return Math.round(Math.max(theoretical, confirmed));
 }
 
 // Recalcule la charge du jour à partir de la FC horaire stockée et des

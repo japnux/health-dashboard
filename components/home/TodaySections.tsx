@@ -47,17 +47,21 @@ const RECOVERY_TITLE: Record<string, string> = {
 
 const RECOVERY_LEVEL: Record<string, string> = { green: "Bonne", yellow: "Moyenne", red: "Faible", gray: "—" };
 
+// Phrase du jour : bâtie sur le niveau du Strain (mêmes seuils que la tuile)
+// et sur la récupération, pour ne jamais contredire les libellés affichés
 function heroText(color: string, strain: DashboardSnapshot["strain"]): string {
   const today = strain.mode === "hr" ? (strain.cardioLoad ?? 0) : strain.activeKcalToday;
   const ratio = strain.hasBaseline && strain.baselineAvg > 0 ? today / strain.baselineAvg : null;
-  const fmt = (r: number) => r.toFixed(1).replace(".", ",");
-  if (ratio != null && ratio >= 1.5) {
-    return `Grosse journée : ${fmt(ratio)}× ta charge habituelle. Place à la récupération ce soir : repas, hydratation, sommeil.`;
-  }
-  if (ratio != null && ratio >= 0.7) {
-    return color === "green"
-      ? "Journée active, dans ta moyenne. Tu as encore de la marge si tu veux une séance de plus."
-      : "Journée active, dans ta moyenne. Garde la suite de la journée légère.";
+  const times = ratio != null ? ` : ${ratio.toFixed(1).replace(".", ",")}× ta charge habituelle` : "";
+  switch (strain.level) {
+    case "very_high":
+      return `Très grosse journée${times}. Place à la récupération ce soir : repas, hydratation, sommeil.`;
+    case "high":
+      return `Journée chargée${times}. Garde la suite légère et soigne ta nuit.`;
+    case "moderate":
+      return color === "green"
+        ? "Journée active, dans ta moyenne. Tu as encore de la marge si tu veux une séance de plus."
+        : "Journée active, dans ta moyenne. Garde la suite de la journée légère.";
   }
   if (color === "green") return "Bon jour pour une séance exigeante.";
   if (color === "yellow") return "Une séance modérée passera bien ; évite l'intensité maximale.";

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
@@ -12,6 +11,7 @@ import { parseObjective, computeBaseTargets, computeAdjustedTargets } from "@/li
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { getDashboardSnapshot } from "@/lib/dashboard-data";
 import { INDICATOR_RULES, dashboardIndicators } from "@/lib/ai-indicators";
+import { SPO2_ALERT } from "@/lib/body-metrics";
 import {
   DEFAULT_SLOTS,
   DEFAULT_PROFILES,
@@ -23,15 +23,6 @@ import {
   type DayProfilesConfig,
 } from "@/lib/meal-slots";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 export type AiTrend = {
   title: string;
@@ -88,7 +79,7 @@ INTERDICTIONS ABSOLUES (violation = réponse rejetée) :
 
 FORMAT :
 1. TENDANCES (exactement 3) : observations sur données MESURÉES (sommeil, HRV, strain${N ? ", nutrition" : ""}). Pas de tendance sur le planning.
-   { title (max 4 mots), emoji, category: ${CATEGORIES_TRENDS}, bullets (2 max, 10 mots max), comparison: "↑ vs moy 7j"|null, confidence: "haute"(5j+)|"moyenne"(3-4j)|"basse", type: "positive"|"warning"|"info" }
+   { title (max 4 mots), emoji, category: ${CATEGORIES_TRENDS}, bullets (2 max, 10 mots max), comparison: "↑ vs plage habituelle"|"↓ vs période précédente"|null, confidence: "haute"(5j+)|"moyenne"(3-4j)|"basse", type: "positive"|"warning"|"info" }
 
 2. RECOMMANDATIONS (exactement 3) : 1 phrase max 15 mots, priorité P1/P2/P3.
    { emoji, text, priority, category: ${CATEGORIES_RECOS} }
@@ -99,7 +90,7 @@ FORMAT :
      (ex : session plus courte, rythme tranquille). Un plan de 2 séances le même jour est un choix de l'utilisateur, pas une erreur.
    - indicators.loadBalance.level "rising" (ratio 1,3-1,5) → intensité modérée ; "spike" (≥ 1,5) → séance courte et facile.
    - Tu ne remplaces une activité planifiée par Repos QUE sur un signal d'alerte :
-     indicators.recovery.score < 5, SpO2 < 95 %, ou respiration "au-dessus de la plage" (indicators.bodyMetrics).
+     indicators.recovery.score < 5, SpO2 < ${SPO2_ALERT} %, ou respiration "au-dessus de la plage" (indicators.bodyMetrics).
      Dans ce cas, la reason le dit explicitement : "Plan : <activité>. Déconseillé aujourd'hui car <signal>."
    - Si hasPlannedActivities=true ET remainingPlanned vide → tout est fait → suggère Repos/Mobilité.
      Si strain ≥ 6 ET tout est fait → repos/récupération active obligatoire.
@@ -172,7 +163,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     await Promise.all([
       supabase
         .from("daily_metrics")
-        .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
+        .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, recovery_score")
         .gte("date", sevenDaysAgo)
         .lte("date", today)
         .order("date", { ascending: true }),

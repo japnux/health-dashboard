@@ -4,7 +4,7 @@
 
 import type { DashboardSnapshot } from "@/lib/dashboard-data";
 import { recoveryColor } from "@/lib/recovery-score";
-import { BODY_METRICS_BY_KEY, formatMetric, isFavorable } from "@/lib/body-metrics";
+import { BODY_METRICS_BY_KEY, SPO2_ALERT, SPO2_NORMAL_FROM, formatMetric, isFavorable } from "@/lib/body-metrics";
 import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
 import { normalizeWorkoutType } from "@/lib/workout-types";
 import { dateInTz } from "@/lib/dates";
@@ -15,7 +15,7 @@ export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement
 - Mesures de la nuit (FC de sommeil, HRV, température, respiration, SpO2) : compare TOUJOURS à la plage habituelle
   fournie (moyenne ± écart-type sur 60 nuits), jamais à une moyenne 7 j que tu calculerais. Statut "dans la plage" = normal,
   même si la valeur a bougé depuis la veille. Hors plage : "favorable" dit si c'est dans le bon sens.
-  SpO2 : sous 95 % c'est inhabituel quelle que soit la plage ; sous 93 %, à signaler comme alerte.
+  SpO2 : sous ${SPO2_NORMAL_FROM} % c'est inhabituel quelle que soit la plage ; sous ${SPO2_ALERT} %, à signaler comme alerte.
 - Charge d'entraînement : strain (0-10) pour la journée, loadBalance (charge 7 j vs 42 j) pour la tendance, form
   (charge 42 j − 7 j) pour la fraîcheur. Une forme négative pendant un bloc d'entraînement est normale ("optimal" de −30 à −10).
   NE recalcule JAMAIS de moyenne de charge depuis dailyMetrics.
@@ -40,7 +40,13 @@ export function dashboardIndicators(snap: DashboardSnapshot, workouts: { started
       level: RECOVERY_LABEL[recoveryColor(r.score)],
       basis: r.basis,
       // Notes /10 de chaque composant (null = non mesuré)
-      components: { hrv: comp(c.hrv), sleepingHr: comp(c.restingHr), sleep: comp(c.sleep), respiration: comp(c.respiratory) },
+      // Le composant FC porte le nom de la FC réellement utilisée
+      components: {
+        hrv: comp(c.hrv),
+        [r.hrSource === "sleeping" ? "sleepingHr" : "restingHr"]: comp(c.restingHr),
+        sleep: comp(c.sleep),
+        respiration: comp(c.respiratory),
+      },
     },
     sleepQuality: c.sleep.available ? SLEEP_QUALITY[c.sleep.score] ?? null : null,
     strain: { score: snap.strain.score, level: snap.strain.label },

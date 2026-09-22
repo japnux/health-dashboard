@@ -1,7 +1,6 @@
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
@@ -12,15 +11,6 @@ import { normalizeWorkoutType } from "@/lib/workout-types";
 import { computeDayStrain } from "@/lib/strain-score";
 import { parseObjective, computeBaseTargets } from "@/lib/nutrition-calc";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 // Sources désactivées : ni envoyées au modèle, ni citées dans le prompt
 const SOURCES_EXTRA = [
@@ -38,7 +28,7 @@ const CROSSINGS = [
 const SYSTEM_PROMPT = `Tu es un analyste de données santé. Tu cherches des corrélations significatives dans les données biologiques et comportementales de l'utilisateur.
 
 DONNÉES DISPONIBLES :
-- dailyMetrics : HRV, FC repos, sommeil (total + phases + sleep_readable), pas, kcal actives, lumière, recovery score
+- dailyMetrics : HRV, FC pendant le sommeil (sleeping_hr_bpm), respiration, SpO2, sommeil (total + phases + sleep_readable), pas, kcal actives, charge cardio, recovery score
 - workouts : type normalisé, durée, kcal (inclut sauna comme modalité de récupération)
 ${SOURCES_EXTRA}
 - bodyComposition : poids, body fat %, masse maigre
@@ -55,6 +45,9 @@ Règles :
 - 3-6 corrélations max, classées par pertinence.
 - HRV en ms, FC en bpm, sommeil en heures (ex: 8h15), poids en kg.
 - Favorise les corrélations actionnables (ce que l'utilisateur peut changer).
+- FC : utilise sleeping_hr_bpm (FC pendant le sommeil). La FC repos Apple n'est pas fournie : elle monte après une séance et fausse les liens.
+- Nuits de moins de 3 h : probablement incomplètes (montre retirée), exclues de toute corrélation sur le sommeil.
+- SpO2 : sous 95 % c'est inhabituel ; ne tire aucune conclusion d'une nuit isolée.
 
 Réponds UNIQUEMENT en JSON valide, sans markdown ni backticks :
 {
@@ -139,7 +132,7 @@ export async function GET(request: Request) {
   const [metricsRes, workoutsRes, proteinRes, mealRes, journalRes, bodyRes, configRes, profile] = await Promise.all([
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score")
+      .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, recovery_score")
       // 30 jours de plus : historique du strain des premiers jours de la fenêtre
       .gte("date", isoDateMinusDays(ninetyDaysAgo, 30))
       .lte("date", today)
@@ -213,7 +206,8 @@ export async function GET(request: Request) {
   const config = (configRes.data ?? {}) as Record<string, number | string | null>;
   const tdee = (config.tdee_kcal ?? 2755) as number;
   const objective = parseObjective(config.user_objective as string | null);
-  const latestBodyCorr = (bodyRes.data ?? [])[0];
+  // Liste triée du plus ancien au plus récent : le dernier poids est en fin
+  const latestBodyCorr = (bodyRes.data ?? []).at(-1);
   const weightKg = (latestBodyCorr?.weight_kg ?? 70) as number;
   const baseTargets = computeBaseTargets({ objective, tdee, weightKg, isTrainingDay: true });
   const targets = {

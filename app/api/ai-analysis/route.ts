@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logApiUsage } from "@/lib/api-usage";
@@ -24,15 +23,6 @@ import {
   type DayProfilesConfig,
 } from "@/lib/meal-slots";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 // ─── Prompts ────────────────────────────────────────────────────────────
 
@@ -227,7 +217,7 @@ async function fetchHealthData(days: number) {
       supabase
         .from("daily_metrics")
         .select(
-          "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, daylight_min, recovery_score",
+          "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, recovery_score",
         )
         .gte("date", startDate)
         .lte("date", today)
@@ -522,6 +512,10 @@ export async function POST(request: Request) {
   }
   if (mode === "question" && (!question || question.trim().length === 0)) {
     return NextResponse.json({ error: "Question requise" }, { status: 400 });
+  }
+  // Question bornée : évite des envois démesurés (et leur coût)
+  if (mode === "question" && question!.length > 500) {
+    return NextResponse.json({ error: "Question trop longue (500 caractères maximum)" }, { status: 400 });
   }
   if (mode === "blood_category" && (!category || category.trim().length === 0)) {
     return NextResponse.json({ error: "Catégorie requise" }, { status: 400 });

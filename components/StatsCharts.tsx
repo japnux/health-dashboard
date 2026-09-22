@@ -22,6 +22,7 @@ import { dateInTz } from "@/lib/dates";
 import { HR_ZONES } from "@/lib/hr-zones";
 import { formZone } from "@/lib/form";
 import { strainColor } from "@/lib/strain-score";
+import { isIncompleteNight } from "@/lib/recovery-score";
 import { BODY_METRICS_BY_KEY, formatMetric, isFavorable, type BodyMetricKey, type MetricStatus } from "@/lib/body-metrics";
 import { normalizeWorkoutType, workoutDisplayLabel, workoutEmoji } from "@/lib/workout-types";
 import { VIVID, sportColor, tint, tintedBackground } from "@/lib/palette";
@@ -366,8 +367,10 @@ function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
   const prevForm = formAt(data.previousPeriod.startDate, prevEnd);
   const hours = data.workouts.reduce((a, w) => a + (w.duration_min ?? 0), 0) / 60;
   const prevHours = prevWorkouts.reduce((a, w) => a + (w.duration_min ?? 0), 0) / 60;
-  const sleep = avgOf(m.map((d) => d.sleep_total_min));
-  const prevSleep = avgOf(pm.map((d) => d.sleep_total_min));
+  // Nuits incomplètes (moins de 3 h) exclues des moyennes
+  const fullSleep = (rows: DailyMetric[]) => rows.map((d) => (isIncompleteNight(d.sleep_total_min) ? null : d.sleep_total_min));
+  const sleep = avgOf(fullSleep(m));
+  const prevSleep = avgOf(fullSleep(pm));
   const hrv = avgOf(m.map((d) => d.hrv_ms));
   const prevHrv = avgOf(pm.map((d) => d.hrv_ms));
   const steps = avgOf(m.map((d) => d.steps));
@@ -780,9 +783,10 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
   const recovery = m.filter((d) => d.recovery_score != null).map((d) => ({ date: d.date, value: Number(d.recovery_score) }));
   const nights = m.filter((d) => d.sleep_total_min != null);
   const target = data.sleepTargetMin;
-  const durations = nights.map((n) => n.sleep_total_min!);
-  const deep = avgOf(nights.map((n) => n.sleep_deep_pct));
-  const rem = avgOf(nights.map((n) => n.sleep_rem_pct));
+  const fullNights = nights.filter((n) => !isIncompleteNight(n.sleep_total_min));
+  const durations = fullNights.map((n) => n.sleep_total_min!);
+  const deep = avgOf(fullNights.map((n) => n.sleep_deep_pct));
+  const rem = avgOf(fullNights.map((n) => n.sleep_rem_pct));
 
   // Régularité : écart-type de l'heure de coucher (23h et 1h restent voisins)
   const bedMinutes = m

@@ -1,18 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 import { createServiceClient } from "@/lib/supabase/service";
 import { BIOMARKERS_BY_KEY } from "@/lib/biomarkers";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 // ─── GET — Liste des bilans sanguins ────────────────────────────────
 

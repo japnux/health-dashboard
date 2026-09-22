@@ -3,7 +3,8 @@ import { formatFrLong, dateInTz, diffDaysIso } from "@/lib/dates";
 import { workoutDisplayLabel } from "@/lib/workout-types";
 import { NutritionTracker } from "@/components/NutritionTracker";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
-import { MissingDataNotice, StaleScaleNotice } from "@/components/Notices";
+import { AlertNotice, MissingDataNotice, StaleScaleNotice } from "@/components/Notices";
+import { SPO2_ALERT } from "@/lib/body-metrics";
 import { JournalDashboard } from "@/components/JournalDashboard";
 import { Reservations } from "@/components/Reservations";
 import { AiAnalysis } from "@/components/AiAnalysis";
@@ -45,25 +46,22 @@ export default async function Home() {
         )}
       </header>
 
+      {snap.dataErrors.length > 0 && (
+        <AlertNotice tone="red" title="Certaines données n'ont pas pu être chargées">
+          {snap.dataErrors.join(", ")}. Recharge la page ; si ça persiste, regarde le journal de synchro dans les réglages.
+        </AlertNotice>
+      )}
       {noDataToday && <MissingDataNotice />}
-      {spo2Today != null && spo2Today < 94 && (
-        <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[#ea2261]/10 border border-[#ea2261]/20 px-3 py-2">
-          <span className="text-sm">🫁</span>
-          <p className="text-xs text-[#ea2261]">
-            SpO₂ à <span className="font-normal">{Math.round(spo2Today * 10) / 10}%</span> — inhabituellement bas. Si ça persiste, consulte un médecin.
-          </p>
-        </div>
+      {spo2Today != null && spo2Today < SPO2_ALERT && (
+        <AlertNotice tone="red" title={`SpO₂ à ${String(Math.round(spo2Today * 10) / 10).replace(".", ",")} % cette nuit`}>
+          Inhabituellement bas (sous {SPO2_ALERT} %). Si ça se répète, parles-en à un médecin.
+        </AlertNotice>
       )}
       {snap.watch.breathingAlert && (
-        <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[#f97316]/10 border border-[#f97316]/20 px-3 py-2">
-          <span className="text-sm">🫁</span>
-          <p className="text-xs text-[#c2410c]">
-            Troubles respiratoires élevés cette nuit :{" "}
-            <span className="font-normal">{snap.watch.breathingAlert.value}</span> contre{" "}
-            {snap.watch.breathingAlert.baseline} habituellement (médiane 30 nuits). Une nuit isolée n&apos;est pas
-            inquiétante ; si ça se répète, regarde Santé → Sommeil ou parles-en à un médecin.
-          </p>
-        </div>
+        <AlertNotice tone="orange" title="Troubles respiratoires élevés cette nuit">
+          {snap.watch.breathingAlert.value} contre {snap.watch.breathingAlert.baseline} habituellement (médiane 30 nuits). Une
+          nuit isolée n&apos;est pas inquiétante ; si ça se répète, regarde Santé &gt; Sommeil ou parles-en à un médecin.
+        </AlertNotice>
       )}
       {showStaleScale && (
         <StaleScaleNotice ageDays={snap.bodyCompositionAgeDays!} />

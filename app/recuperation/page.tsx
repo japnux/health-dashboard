@@ -59,7 +59,8 @@ export default async function RecuperationPage({
   const weight = (k: keyof typeof BASE_WEIGHTS) =>
     c[k].available && availableWeight > 0 ? `${Math.round((BASE_WEIGHTS[k] / availableWeight) * 100)} %` : "—";
 
-  const usesSleepHr = t?.sleeping_hr_bpm != null && snap.sleepHrBaselineAvg != null;
+  // Même FC que celle retenue par le score (sommeil dès 7 nuits de référence)
+  const usesSleepHr = snap.recovery.hrSource === "sleeping" && snap.sleepHrBaselineAvg != null;
   const rows: { key: keyof typeof BASE_WEIGHTS; label: string; value: string; ref: string }[] = [
     {
       key: "hrv",
@@ -84,8 +85,9 @@ export default async function RecuperationPage({
         t?.sleep_total_min != null
           ? `${Math.floor(t.sleep_total_min / 60)}h${String(Math.round(t.sleep_total_min % 60)).padStart(2, "0")}`
           : "—",
-      ref:
-        t?.sleep_rem_pct != null && t?.sleep_deep_pct != null
+      ref: snap.recovery.incompleteNight
+        ? "nuit incomplète (moins de 3 h enregistrées) : ignorée par le score"
+        : t?.sleep_rem_pct != null && t?.sleep_deep_pct != null
           ? `REM ${Math.round(t.sleep_rem_pct)} %, profond ${Math.round(t.sleep_deep_pct)} %`
           : "",
     },

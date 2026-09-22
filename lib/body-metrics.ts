@@ -5,6 +5,11 @@
 // (environ 2 nuits sur 3 y tombent). Elle est personnelle : une valeur hors
 // plage n'est pas anormale médicalement, elle est inhabituelle pour toi.
 
+// SpO₂ : seuils uniques pour l'accueil, les mesures et les IA.
+// Dès 95 % : normal, même hors plage perso. Sous 93 % : alerte.
+export const SPO2_NORMAL_FROM = 95;
+export const SPO2_ALERT = 93;
+
 export type BodyMetricKey = "sleeping_hr" | "hrv" | "wrist_temp" | "respiration" | "spo2";
 
 export type BodyMetricDef = {
@@ -81,7 +86,7 @@ export const BODY_METRICS: BodyMetricDef[] = [
     decimals: 0,
     better: "high",
     minHistory: 14,
-    normalFrom: 95,
+    normalFrom: SPO2_NORMAL_FROM,
     about:
       "Saturation du sang en oxygène pendant la nuit. Normalement entre 95 et 100 %. Une valeur basse répétée peut venir de troubles respiratoires du sommeil ou de l'altitude.",
   },

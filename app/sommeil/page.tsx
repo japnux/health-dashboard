@@ -16,6 +16,7 @@ import {
   parsePeriod,
 } from "@/components/detail/DetailBits";
 import { formatHour } from "@/components/HomeCards";
+import { isIncompleteNight } from "@/lib/recovery-score";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,9 @@ export default async function SommeilPage({
     .lte("date", snap.date)
     .order("date", { ascending: true });
   const nights = (data ?? []).filter((r) => r.sleep_total_min != null);
+  // Nuits incomplètes (moins de 3 h, montre retirée…) : visibles sur le
+  // graphique mais exclues des moyennes et du compte des objectifs
+  const fullNights = nights.filter((n) => !isIncompleteNight(n.sleep_total_min));
 
   const sleep = snap.recovery.components.sleep;
   const quality = sleep.available ? QUALITY[sleep.score] ?? null : null;
@@ -57,11 +61,11 @@ export default async function SommeilPage({
   const awakeMin = t?.sleep_awake_pct != null && total != null ? Math.round((t.sleep_awake_pct * total) / 100) : null;
   const target = snap.sleepTargetMin;
 
-  const durations = nights.map((n) => n.sleep_total_min as number);
+  const durations = fullNights.map((n) => n.sleep_total_min as number);
   const avg = durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
   const onTarget = durations.filter((d) => d >= target).length;
   const avgOf = (k: "sleep_deep_pct" | "sleep_rem_pct") => {
-    const v = nights.map((n) => n[k]).filter((x): x is number => x != null);
+    const v = fullNights.map((n) => n[k]).filter((x): x is number => x != null);
     return v.length > 0 ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
   };
 

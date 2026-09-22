@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
+import { readJson } from "@/lib/http";
 import { createServiceClient } from "@/lib/supabase/service";
 
-async function isAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256")
-    .update(pw + "-hd-session")
-    .digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
-}
 
 export async function GET(request: Request) {
   if (!(await isAuthenticated())) {
@@ -39,7 +30,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const body = await request.json();
+  const body = await readJson(request);
+  if (body == null) return NextResponse.json({ error: "JSON invalide" }, { status: 400 });
   const { date, mood, energy, stress, notes, gratitude } = body;
 
   if (!date) {

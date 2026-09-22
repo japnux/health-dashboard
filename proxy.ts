@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { sessionToken } from "@/lib/session";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/session";
 
 // Garde d'accès global des pages.
 // Avant ce fichier, seules /biologie et /biologie/marqueur vérifiaient la
@@ -9,11 +9,8 @@ import { sessionToken } from "@/lib/session";
 // (cookie de session, ou x-api-key pour /api/auto-export), elles sont donc
 // exclues du matcher.
 export function proxy(request: NextRequest) {
-  const password = process.env.DASHBOARD_PASSWORD;
-  const cookie = request.cookies.get("hd_session")?.value;
-
-  // Sans mot de passe configuré, personne ne peut se connecter : on bloque.
-  if (password && cookie === sessionToken(password)) {
+  // Jeton signé et non expiré (sans mot de passe configuré : refus)
+  if (verifySessionToken(request.cookies.get(SESSION_COOKIE)?.value)) {
     return NextResponse.next();
   }
 
@@ -22,8 +19,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Tout sauf : API, assets Next, page de login, callback OAuth, et les
+    // Tout sauf : API, assets Next, page de login, et les
     // fichiers statiques (tout chemin contenant une extension, ex. .svg).
-    "/((?!api|_next/static|_next/image|login|auth|favicon.ico|.*\\..*).*)",
+    "/((?!api|_next/static|_next/image|login|favicon.ico|.*\\..*).*)",
   ],
 };

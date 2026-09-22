@@ -1,13 +1,8 @@
-// Guard d'auth dashboard partagé par les routes /api/sportigo/*.
-// Reprend exactement la même logique que les autres routes API du dashboard.
+// Guard d'auth dashboard partagé par les routes /api/sportigo/* : même
+// contrôle de session que le reste du dashboard (lib/session.ts).
 
-import { cookies } from "next/headers";
-import { createHash } from "crypto";
+import { isAuthenticated } from "@/lib/session";
 
 export async function isDashboardAuthenticated(): Promise<boolean> {
-  const pw = process.env.DASHBOARD_PASSWORD;
-  if (!pw) return false;
-  const expected = createHash("sha256").update(pw + "-hd-session").digest("hex");
-  const cookieStore = await cookies();
-  return cookieStore.get("hd_session")?.value === expected;
+  return isAuthenticated();
 }
