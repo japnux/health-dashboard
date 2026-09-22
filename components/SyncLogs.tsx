@@ -16,9 +16,9 @@ type SyncLog = {
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  ok: "text-[#108c3d] bg-[#15be53]/10",
-  partial: "text-[#9b6829] bg-[#eab308]/10",
-  error: "text-[#ea2261] bg-[#ea2261]/10",
+  ok: "text-[#1f7a3a] dark:text-[#6ee7a0] bg-[#34c759]/10",
+  partial: "text-[#8a6d00] dark:text-[#ffd60a] bg-[#ffcc00]/10",
+  error: "text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/10",
   empty: "text-[var(--color-body)] bg-[var(--color-border)]/30",
 };
 
@@ -51,12 +51,12 @@ export function SyncLogs() {
         return r.json();
       })
       .then(setLogs)
-      .catch(() => setError("Impossible de charger les logs"));
+      .catch(() => setError("Impossible de charger le journal de synchro"));
   }, []);
 
   if (error) {
     return (
-      <div className="text-sm text-[#ea2261] py-8 text-center">{error}</div>
+      <div className="text-sm text-[#c0271e] dark:text-[#ff8a80] py-8 text-center">{error}</div>
     );
   }
 
@@ -71,10 +71,10 @@ export function SyncLogs() {
   if (logs.length === 0) {
     return (
       <div className="text-sm text-[var(--color-body)] py-8 text-center">
-        Aucun log de synchronisation.
+        Aucune synchronisation enregistrée.
         <br />
         <span className="text-xs">
-          Les logs apparaîtront après le premier envoi depuis Health Auto Export.
+          Les entrées apparaîtront après le premier envoi depuis Health Auto Export.
         </span>
       </div>
     );
@@ -117,9 +117,9 @@ export function SyncLogs() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <MiniInfo label="Source" value={log.source} />
                   <MiniInfo label="Jours" value={String(log.days_processed)} />
-                  <MiniInfo label="Workouts" value={String(log.workouts_processed)} />
+                  <MiniInfo label="Séances" value={String(log.workouts_processed)} />
                   <MiniInfo
-                    label="Automation"
+                    label="Automatisation"
                     value={log.http_headers?.["automation-name"] ?? "—"}
                   />
                 </div>
@@ -133,7 +133,7 @@ export function SyncLogs() {
                       {log.details.map((d, i) => (
                         <p
                           key={i}
-                          className={`text-xs font-mono ${d.includes("erreur") ? "text-[#ea2261]" : "text-[var(--color-body)]"}`}
+                          className={`text-xs font-mono ${d.includes("erreur") ? "text-[#c0271e] dark:text-[#ff8a80]" : "text-[var(--color-body)]"}`}
                         >
                           {d}
                         </p>
@@ -145,7 +145,7 @@ export function SyncLogs() {
                 {log.raw_payload != null && (
                   <details className="text-xs">
                     <summary className="cursor-pointer text-[var(--color-body)] hover:text-[var(--color-heading)] dark:hover:text-white">
-                      Payload brut
+                      Données brutes
                     </summary>
                     <pre className="mt-1 bg-[var(--color-border)]/20 dark:bg-white/5 rounded-[var(--radius-sm)] p-2.5 overflow-x-auto text-[10px] font-mono text-[var(--color-body)] max-h-64 overflow-y-auto">
                       {JSON.stringify(log.raw_payload, null, 2)}

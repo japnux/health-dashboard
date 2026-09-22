@@ -215,8 +215,8 @@ export function SettingsForm() {
             className={inputClass}
           >
             <option value="">—</option>
-            <option value="lean_bulk">Lean bulk</option>
-            <option value="maintenance">Maintenance</option>
+            <option value="lean_bulk">Prise de masse sèche</option>
+            <option value="maintenance">Maintien</option>
             <option value="cut">Sèche</option>
             <option value="recomposition">Recomposition</option>
           </select>
@@ -239,7 +239,7 @@ export function SettingsForm() {
         <div className="text-sm text-[var(--color-body)] space-y-2">
           <p>
             <span className="font-normal text-[var(--color-label)] dark:text-white/80">
-              Timezone
+              Fuseau horaire
             </span>{" "}
             — Europe/Paris
           </p>
@@ -253,11 +253,11 @@ export function SettingsForm() {
             <span className="font-normal text-[var(--color-label)] dark:text-white/80">
               IA
             </span>{" "}
-            — Claude Haiku (tendances, workout, corrélations, analyse)
+            — Claude Haiku (tendances, séance suggérée, corrélations, analyse)
           </p>
           <p>
             <span className="font-normal text-[var(--color-label)] dark:text-white/80">
-              Stack
+              Technologies
             </span>{" "}
             — Next.js + Supabase + Vercel
           </p>
@@ -273,9 +273,9 @@ export function SettingsForm() {
           {saving ? "Sauvegarde…" : "Sauvegarder"}
         </button>
         {saved && (
-          <span className="text-sm text-[#108c3d]">Enregistré</span>
+          <span className="text-sm text-[#1f7a3a] dark:text-[#6ee7a0]">Enregistré</span>
         )}
-        {error && <span className="text-sm text-[#ea2261]">{error}</span>}
+        {error && <span className="text-sm text-[#c0271e] dark:text-[#ff8a80]">{error}</span>}
       </div>
     </form>
   );

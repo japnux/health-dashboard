@@ -83,7 +83,7 @@ function MiniSparkline({
   const lastVal = data[data.length - 1];
   const inRange =
     (refMin == null || lastVal >= refMin) && (refMax == null || lastVal <= refMax);
-  const lineColor = inRange ? "#06b6d4" : "#ea2261";
+  const lineColor = inRange ? "#32ade6" : "#ff3b30";
 
   return (
     <svg width={width} height={height} className="inline-block shrink-0">
@@ -93,7 +93,7 @@ function MiniSparkline({
           y={scaleY(refMax)}
           width={width}
           height={Math.max(0, scaleY(refMin) - scaleY(refMax))}
-          fill="#15be53"
+          fill="#34c759"
           opacity={0.08}
           rx={2}
         />
@@ -104,7 +104,7 @@ function MiniSparkline({
           y={scaleY(refMax)}
           width={width}
           height={Math.max(0, height - pad - scaleY(refMax))}
-          fill="#15be53"
+          fill="#34c759"
           opacity={0.08}
           rx={2}
         />
@@ -115,7 +115,7 @@ function MiniSparkline({
           y={pad}
           width={width}
           height={Math.max(0, scaleY(refMin) - pad)}
-          fill="#15be53"
+          fill="#34c759"
           opacity={0.08}
           rx={2}
         />
@@ -157,13 +157,13 @@ function getDeltaColor(
   const neutral = "text-[var(--color-body)]/40";
   if (delta === 0) return neutral;
   const def = BIOMARKERS_BY_KEY.get(biomarkerKey);
-  if (def?.lowerIsBetter) return delta < 0 ? "text-[#15be53]" : "text-[#ea2261]";
+  if (def?.lowerIsBetter) return delta < 0 ? "text-[#1f7a3a] dark:text-[#6ee7a0]" : "text-[#c0271e] dark:text-[#ff8a80]";
   const distance = (v: number) =>
     effMin != null && v < effMin ? effMin - v : effMax != null && v > effMax ? v - effMax : 0;
   const before = distance(value - delta);
   const after = distance(value);
   if (after === before) return neutral;
-  return after < before ? "text-[#15be53]" : "text-[#ea2261]";
+  return after < before ? "text-[#1f7a3a] dark:text-[#6ee7a0]" : "text-[#c0271e] dark:text-[#ff8a80]";
 }
 
 /** Utilise les plages optimales du registre plutôt que celles stockées en DB (issues du PDF labo) */
@@ -191,9 +191,9 @@ function BiomarkerRow({
   router: ReturnType<typeof useRouter>;
 }) {
   const dotClass =
-    status === "optimal" ? "bg-[#15be53]" : status === "borderline" ? "bg-[#f59e0b]" : "bg-[#ea2261]";
+    status === "optimal" ? "bg-[#34c759]" : status === "borderline" ? "bg-[#ff9500]" : "bg-[#ff3b30]";
   const valClass =
-    status === "optimal" ? "text-[#15be53]" : status === "borderline" ? "text-[#f59e0b]" : "text-[#ea2261]";
+    status === "optimal" ? "text-[#1f7a3a] dark:text-[#6ee7a0]" : status === "borderline" ? "text-[#a15c00] dark:text-[#ffb340]" : "text-[#c0271e] dark:text-[#ff8a80]";
 
   return (
     <button
@@ -264,7 +264,7 @@ function AttentionSummary({ markers, testDate }: { markers: AttentionMarker[]; t
   if (markers.length === 0) {
     return (
       <div
-        className="rounded-[var(--radius-lg)] bg-[#15be53]/5 border border-[#15be53]/20 p-4 flex items-center gap-3"
+        className="rounded-[var(--radius-lg)] bg-[#34c759]/5 border border-[#34c759]/20 p-4 flex items-center gap-3"
       >
         <span className="text-xl">✅</span>
         <div>
@@ -301,11 +301,11 @@ function AttentionSummary({ markers, testDate }: { markers: AttentionMarker[]; t
             </p>
             <p className="text-xs text-[var(--color-body)] mt-0.5">
               {critical.length > 0 && (
-                <span className="text-[#ea2261] font-medium">{critical.length} hors plage</span>
+                <span className="text-[#c0271e] dark:text-[#ff8a80] font-medium">{critical.length} hors plage</span>
               )}
               {critical.length > 0 && degrading.length > 0 && " · "}
               {degrading.length > 0 && (
-                <span className="text-[#f59e0b] font-medium">{degrading.length} en dégradation</span>
+                <span className="text-[#a15c00] dark:text-[#ffb340] font-medium">{degrading.length} en dégradation</span>
               )}
             </p>
           </div>
@@ -322,7 +322,7 @@ function AttentionSummary({ markers, testDate }: { markers: AttentionMarker[]; t
           >
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${
-                m.status === "out_of_range" ? "bg-[#ea2261]" : "bg-[#f59e0b]"
+                m.status === "out_of_range" ? "bg-[#ff3b30]" : "bg-[#ff9500]"
               }`}
             />
             <div>
@@ -336,8 +336,8 @@ function AttentionSummary({ markers, testDate }: { markers: AttentionMarker[]; t
                     ({new Date(`${m.measuredAt}T12:00:00Z`).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })})
                   </span>
                 )}
-                {m.trend === "degrading" && <span className="text-[#ea2261] ml-1">↗ dégradation</span>}
-                {m.trend === "improving" && <span className="text-[#15be53] ml-1">↘ amélioration</span>}
+                {m.trend === "degrading" && <span className="text-[#c0271e] dark:text-[#ff8a80] ml-1">↗ dégradation</span>}
+                {m.trend === "improving" && <span className="text-[#1f7a3a] dark:text-[#6ee7a0] ml-1">↘ amélioration</span>}
               </p>
             </div>
           </button>
@@ -416,9 +416,9 @@ function BloodPatternsSection() {
   );
 
   const severityStyle = {
-    critical: { bg: "bg-[#ea2261]/5", border: "border-[#ea2261]/20", text: "text-[#ea2261]" },
-    warning: { bg: "bg-[#f59e0b]/5", border: "border-[#f59e0b]/20", text: "text-[#f59e0b]" },
-    info: { bg: "bg-[#06b6d4]/5", border: "border-[#06b6d4]/20", text: "text-[#06b6d4]" },
+    critical: { bg: "bg-[#ff3b30]/5", border: "border-[#ff3b30]/20", text: "text-[#c0271e] dark:text-[#ff8a80]" },
+    warning: { bg: "bg-[#ff9500]/5", border: "border-[#ff9500]/20", text: "text-[#a15c00] dark:text-[#ffb340]" },
+    info: { bg: "bg-[#32ade6]/5", border: "border-[#32ade6]/20", text: "text-[#0058b8] dark:text-[#64d2ff]" },
   };
 
   return (
@@ -432,7 +432,7 @@ function BloodPatternsSection() {
             🔗 Synthèses inter-marqueurs
           </h2>
           <p className="text-[11px] text-[var(--color-body)]/60 mt-0.5">
-            Patterns cliniques entre vos marqueurs
+            Schémas cliniques entre vos marqueurs
           </p>
         </div>
         <button
@@ -469,7 +469,7 @@ function BloodPatternsSection() {
                       <p className="text-[13px] font-medium text-[var(--color-heading)] dark:text-white">
                         {p.title}
                       </p>
-                      <span className={`text-[9px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded ${style.text} ${style.bg}`}>
+                      <span className={`text-[10px] uppercase tracking-wider font-medium px-1.5 py-0.5 rounded ${style.text} ${style.bg}`}>
                         {p.severity === "critical" ? "critique" : p.severity === "warning" ? "attention" : "info"}
                       </span>
                     </div>
@@ -519,7 +519,7 @@ function BloodPatternsSection() {
         </div>
       ) : hasCached ? (
         <p className="text-sm text-[var(--color-body)]/60 text-center py-4">
-          ✅ Aucun pattern clinique détecté — vos marqueurs sont cohérents.
+          ✅ Aucun schéma clinique détecté — vos marqueurs sont cohérents.
         </p>
       ) : (
         <p className="text-[12px] text-[var(--color-body)]/50 text-center py-2">
@@ -546,11 +546,11 @@ function BioAgeExplainer({ bioAge, userAge }: { bioAge: number; userAge: number 
       >
         Âge bio : {Math.round(bioAge * 10) / 10} ans
         {diff !== null && (
-          <span className={diff < 0 ? "text-[#15be53]" : diff > 0 ? "text-[#ea2261]" : ""}>
+          <span className={diff < 0 ? "text-[#1f7a3a] dark:text-[#6ee7a0]" : diff > 0 ? "text-[#c0271e] dark:text-[#ff8a80]" : ""}>
             ({diff > 0 ? "+" : ""}{diff})
           </span>
         )}
-        <span className="text-[9px] opacity-60 ml-0.5">{open ? "▲" : "ℹ"}</span>
+        <span className="text-[10px] opacity-60 ml-0.5">{open ? "▲" : "ℹ"}</span>
       </button>
 
       {open && (
@@ -674,11 +674,11 @@ function BloodCategoryAiCard({ category }: { category: string }) {
             <span className="text-base shrink-0">🤖</span>
             <div className="min-w-0">
               {analysis.alert ? (
-                <p className="text-[12px] text-[#ea2261] font-medium truncate">
+                <p className="text-[12px] text-[#c0271e] dark:text-[#ff8a80] font-medium truncate">
                   🚨 {analysis.alert.slice(0, 80)}{analysis.alert.length > 80 ? "…" : ""}
                 </p>
               ) : attentionCount > 0 ? (
-                <p className="text-[12px] text-[#f59e0b] font-medium">
+                <p className="text-[12px] text-[#a15c00] dark:text-[#ffb340] font-medium">
                   {attentionCount} point{attentionCount > 1 ? "s" : ""} d&apos;attention détecté{attentionCount > 1 ? "s" : ""}
                 </p>
               ) : (
@@ -719,7 +719,7 @@ function BloodCategoryAiCard({ category }: { category: string }) {
             )}
           </button>
         </div>
-        {error && <p className="mt-2 text-xs text-[#ea2261]">{error}</p>}
+        {error && <p className="mt-2 text-xs text-[#c0271e] dark:text-[#ff8a80]">{error}</p>}
       </div>
     );
   }
@@ -756,7 +756,7 @@ function BloodCategoryAiCard({ category }: { category: string }) {
 
       <div className="p-4 space-y-3">
         {analysis.alert && (
-          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-[#ea2261]/10 text-[#ea2261] text-[13px]">
+          <div className="flex items-start gap-2 p-2.5 rounded-lg bg-[#ff3b30]/10 text-[#c0271e] dark:text-[#ff8a80] text-[13px]">
             <span className="shrink-0 mt-0.5">🚨</span>
             <span>{analysis.alert}</span>
           </div>
@@ -994,7 +994,7 @@ export function BiologieClient({ tests, attentionMarkers }: Props) {
                     <BioAgeExplainer bioAge={test.biological_age} userAge={userAge} />
                   )}
                   {test.outOfRangeCount > 0 && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#ea2261]/10 text-[#ea2261] whitespace-nowrap">
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#ff3b30]/10 text-[#c0271e] dark:text-[#ff8a80] whitespace-nowrap">
                       {test.outOfRangeCount} hors plage
                     </span>
                   )}

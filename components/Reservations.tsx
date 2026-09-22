@@ -20,8 +20,8 @@ const USER_BADGE: Record<
   },
   lauriane: {
     label: "L",
-    bg: "bg-[#15be53]/10",
-    text: "text-[#108c3d]",
+    bg: "bg-[#34c759]/10",
+    text: "text-[#1f7a3a] dark:text-[#6ee7a0]",
   },
 };
 
@@ -164,7 +164,7 @@ export function Reservations() {
       )}
 
       {state.status === "error" && (
-        <p className="text-sm text-[#ea2261]">{state.message}</p>
+        <p className="text-sm text-[#c0271e] dark:text-[#ff8a80]">{state.message}</p>
       )}
 
       {state.status === "ready" && allReservations.length === 0 && (
@@ -172,7 +172,7 @@ export function Reservations() {
       )}
 
       {cancelError && (
-        <p className="text-xs text-[#ea2261] mb-2">{cancelError}</p>
+        <p className="text-xs text-[#c0271e] dark:text-[#ff8a80] mb-2">{cancelError}</p>
       )}
 
       {state.status === "ready" && allReservations.length > 0 && (
@@ -206,7 +206,7 @@ export function Reservations() {
                   type="button"
                   disabled={isCancelling}
                   onClick={() => handleCancel(r)}
-                  className="ml-auto text-xs text-[#ea2261] hover:underline disabled:opacity-50"
+                  className="ml-auto text-xs text-[#c0271e] dark:text-[#ff8a80] hover:underline disabled:opacity-50"
                 >
                   Annuler
                 </button>

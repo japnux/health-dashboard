@@ -65,7 +65,7 @@ export function BloodTestForm({ onSaved }: Props) {
       setParsed(data);
       setStep("review");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur de parsing");
+      setError(err instanceof Error ? err.message : "Erreur de lecture du PDF");
     } finally {
       setParsing(false);
     }
@@ -139,12 +139,12 @@ export function BloodTestForm({ onSaved }: Props) {
     <div className="space-y-4">
       {/* Messages */}
       {error && (
-        <div className="text-sm text-[#ea2261] bg-[#ea2261]/5 rounded-[var(--radius-md)] p-3">
+        <div className="text-sm text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/5 rounded-[var(--radius-md)] p-3">
           {error}
         </div>
       )}
       {success && (
-        <div className="text-sm text-[#15be53] bg-[#15be53]/5 rounded-[var(--radius-md)] p-3">
+        <div className="text-sm text-[#1f7a3a] dark:text-[#6ee7a0] bg-[#34c759]/5 rounded-[var(--radius-md)] p-3">
           {success}
         </div>
       )}
@@ -216,13 +216,13 @@ export function BloodTestForm({ onSaved }: Props) {
 
           {/* Badges */}
           <div className="flex gap-3 text-[11px]">
-            <span className="px-2 py-1 rounded-full bg-[#15be53]/10 text-[#15be53]">
+            <span className="px-2 py-1 rounded-full bg-[#34c759]/10 text-[#1f7a3a] dark:text-[#6ee7a0]">
               {statusCounts.optimal ?? 0} optimal
             </span>
             <span className="px-2 py-1 rounded-full bg-[#64748d]/10 text-[#64748d]">
               {statusCounts.borderline ?? 0} normal
             </span>
-            <span className="px-2 py-1 rounded-full bg-[#ea2261]/10 text-[#ea2261]">
+            <span className="px-2 py-1 rounded-full bg-[#ff3b30]/10 text-[#c0271e] dark:text-[#ff8a80]">
               {statusCounts.out_of_range ?? 0} hors plage
             </span>
           </div>
@@ -268,7 +268,7 @@ export function BloodTestForm({ onSaved }: Props) {
                             ? "text-[var(--color-heading)] dark:text-white"
                             : status === "borderline"
                               ? "text-[#64748d]"
-                              : "text-[#ea2261]"
+                              : "text-[#c0271e] dark:text-[#ff8a80]"
                         }`}
                       >
                         {fmtVal(r.value, r.unit)} {r.unit}
@@ -286,10 +286,10 @@ export function BloodTestForm({ onSaved }: Props) {
                         <span
                           className={`inline-block w-2 h-2 rounded-full ${
                             status === "optimal"
-                              ? "bg-[#15be53]"
+                              ? "bg-[#34c759]"
                               : status === "borderline"
                                 ? "bg-[#64748d]"
-                                : "bg-[#ea2261]"
+                                : "bg-[#ff3b30]"
                           }`}
                         />
                       </td>

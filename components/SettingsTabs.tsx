@@ -12,9 +12,9 @@ type TabId = "config" | "slots" | "logs" | "api";
 const TABS: { id: TabId; label: string }[] = [
   { id: "config", label: "Configuration" },
   ...(NUTRITION_ENABLED
-    ? [{ id: "slots" as const, label: "Meal Slots" }]
+    ? [{ id: "slots" as const, label: "Créneaux repas" }]
     : []),
-  { id: "logs", label: "Logs sync" },
+  { id: "logs", label: "Journal de synchro" },
   { id: "api", label: "Coûts API" },
 ];
 

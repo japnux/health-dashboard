@@ -92,7 +92,7 @@ function EvolutionChart({
             x={padL - 6}
             y={scaleY(v) + 3}
             textAnchor="end"
-            className="fill-[var(--color-body)]/50 text-[9px]"
+            className="fill-[var(--color-body)]/50 text-[10px]"
           >
             {v < 10 ? v.toFixed(1) : Math.round(v)}
           </text>
@@ -106,7 +106,7 @@ function EvolutionChart({
           y={scaleY(refMax)}
           width={W - padL - padR}
           height={Math.max(0, scaleY(refMin) - scaleY(refMax))}
-          fill="#15be53"
+          fill="#34c759"
           opacity={0.08}
           rx={3}
         />
@@ -117,7 +117,7 @@ function EvolutionChart({
           y={scaleY(refMax)}
           width={W - padL - padR}
           height={Math.max(0, H - padB - scaleY(refMax))}
-          fill="#15be53"
+          fill="#34c759"
           opacity={0.08}
           rx={3}
         />
@@ -128,7 +128,7 @@ function EvolutionChart({
           y={padT}
           width={W - padL - padR}
           height={Math.max(0, scaleY(refMin) - padT)}
-          fill="#15be53"
+          fill="#34c759"
           opacity={0.08}
           rx={3}
         />
@@ -141,7 +141,7 @@ function EvolutionChart({
           y1={scaleY(refMin)}
           x2={W - padR}
           y2={scaleY(refMin)}
-          stroke="#15be53"
+          stroke="#34c759"
           strokeWidth={1}
           strokeDasharray="4 3"
           opacity={0.5}
@@ -153,7 +153,7 @@ function EvolutionChart({
           y1={scaleY(refMax)}
           x2={W - padR}
           y2={scaleY(refMax)}
-          stroke="#15be53"
+          stroke="#34c759"
           strokeWidth={1}
           strokeDasharray="4 3"
           opacity={0.5}
@@ -162,12 +162,12 @@ function EvolutionChart({
 
       {/* Labels ref */}
       {refMin != null && (
-        <text x={W - padR + 3} y={scaleY(refMin) + 3} className="fill-[#15be53] text-[8px]" opacity={0.7}>
+        <text x={W - padR + 3} y={scaleY(refMin) + 3} className="fill-[#1f7a3a] dark:fill-[#6ee7a0] text-[10px]" opacity={0.7}>
           {refMin}
         </text>
       )}
       {refMax != null && (
-        <text x={W - padR + 3} y={scaleY(refMax) + 3} className="fill-[#15be53] text-[8px]" opacity={0.7}>
+        <text x={W - padR + 3} y={scaleY(refMax) + 3} className="fill-[#1f7a3a] dark:fill-[#6ee7a0] text-[10px]" opacity={0.7}>
           {refMax}
         </text>
       )}
@@ -176,7 +176,7 @@ function EvolutionChart({
       <polyline
         points={points}
         fill="none"
-        stroke="#06b6d4"
+        stroke="#32ade6"
         strokeWidth={2}
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -185,7 +185,7 @@ function EvolutionChart({
       {/* Points + labels */}
       {history.map((h, i) => {
         const status = statusWithLabRefs(h.value, refMin, refMax, h.ref_min, h.ref_max);
-        const color = status === "optimal" ? "#06b6d4" : status === "borderline" ? "#64748d" : "#ea2261";
+        const color = status === "optimal" ? "#32ade6" : status === "borderline" ? "#64748d" : "#ff3b30";
         return (
           <g key={i}>
             <circle cx={scaleX(i)} cy={scaleY(h.value)} r={4} fill={color} />
@@ -194,7 +194,7 @@ function EvolutionChart({
               x={scaleX(i)}
               y={scaleY(h.value) - 10}
               textAnchor="middle"
-              className="text-[9px] font-medium"
+              className="text-[10px] font-medium"
               fill={color}
             >
               {h.value < 10 ? h.value.toFixed(2) : h.value < 100 ? h.value.toFixed(1) : Math.round(h.value)}
@@ -204,7 +204,7 @@ function EvolutionChart({
               x={scaleX(i)}
               y={H - padB + 16}
               textAnchor="middle"
-              className="fill-[var(--color-body)]/50 text-[8px]"
+              className="fill-[var(--color-body)]/50 text-[10px]"
             >
               {fmtDate(h.date)}
             </text>
@@ -293,10 +293,10 @@ export function MarqueurClient({
 
   const statusColor =
     latestStatus === "optimal"
-      ? "text-[#15be53]"
+      ? "text-[#1f7a3a] dark:text-[#6ee7a0]"
       : latestStatus === "borderline"
         ? "text-[#64748d]"
-        : "text-[#ea2261]";
+        : "text-[#c0271e] dark:text-[#ff8a80]";
 
   const statusLabel =
     latestStatus === "optimal" ? "Optimal" : latestStatus === "borderline" ? "Limite" : "Hors plage";
@@ -345,7 +345,7 @@ export function MarqueurClient({
         )}
 
         <div className="mt-3 flex items-center gap-3 text-[11px] text-[var(--color-body)]/60">
-          <span className="inline-block w-3 h-1.5 rounded-sm bg-[#15be53]/20" />
+          <span className="inline-block w-3 h-1.5 rounded-sm bg-[#34c759]/20" />
           Plage optimale : {refMin ?? "—"} – {refMax ?? "—"} {unit}
         </div>
       </div>
@@ -400,12 +400,12 @@ export function MarqueurClient({
                       {new Date(h.date + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
                     </td>
                     <td className={`py-2 text-right tabular-nums text-[13px] font-medium ${
-                      status === "optimal" ? "text-[var(--color-heading)] dark:text-white" : status === "borderline" ? "text-[#64748d]" : "text-[#ea2261]"
+                      status === "optimal" ? "text-[var(--color-heading)] dark:text-white" : status === "borderline" ? "text-[#64748d]" : "text-[#c0271e] dark:text-[#ff8a80]"
                     }`}>
                       {h.value < 10 ? h.value.toFixed(2) : h.value < 100 ? h.value.toFixed(1) : Math.round(h.value)} {unit}
                     </td>
                     <td className={`py-2 text-right tabular-nums text-[11px] ${
-                      deltaGood === null ? "text-[var(--color-body)]/40" : deltaGood ? "text-[#15be53]" : "text-[#ea2261]"
+                      deltaGood === null ? "text-[var(--color-body)]/40" : deltaGood ? "text-[#1f7a3a] dark:text-[#6ee7a0]" : "text-[#c0271e] dark:text-[#ff8a80]"
                     }`}>
                       {delta != null && delta !== 0
                         ? `${delta > 0 ? "+" : ""}${Math.abs(delta) < 10 ? delta.toFixed(2) : delta.toFixed(1)}`
@@ -453,7 +453,7 @@ export function MarqueurClient({
                 )}
               </button>
             </div>
-            {aiError && <p className="mt-2 text-xs text-[#ea2261]">{aiError}</p>}
+            {aiError && <p className="mt-2 text-xs text-[#c0271e] dark:text-[#ff8a80]">{aiError}</p>}
           </div>
         ) : aiAnalysis ? (
           <>
@@ -502,7 +502,7 @@ export function MarqueurClient({
                 {aiLoading ? "Analyse…" : "Analyser"}
               </button>
             </div>
-            {aiError && <p className="mt-2 text-xs text-[#ea2261]">{aiError}</p>}
+            {aiError && <p className="mt-2 text-xs text-[#c0271e] dark:text-[#ff8a80]">{aiError}</p>}
           </div>
         )}
       </section>

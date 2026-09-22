@@ -2,6 +2,12 @@ import { login } from "./actions";
 
 type Search = Promise<{ error?: string }>;
 
+// Messages lisibles pour les codes d'erreur passés dans l'URL
+const ERRORS: Record<string, string> = {
+  "mot-de-passe-incorrect": "Mot de passe incorrect.",
+  "trop-de-tentatives": "Trop de tentatives. Réessaie dans 15 minutes.",
+};
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -16,7 +22,7 @@ export default async function LoginPage({
         style={{ boxShadow: "var(--shadow-elevated)" }}
       >
         <h1 className="text-xl font-light text-[var(--color-heading)] dark:text-white mb-1" style={{ letterSpacing: "-0.22px" }}>
-          Health Dashboard
+          Tableau de bord santé
         </h1>
         <p className="text-sm text-[var(--color-body)] mb-6">Accès protégé.</p>
 
@@ -36,7 +42,7 @@ export default async function LoginPage({
             Entrer
           </button>
           {params.error && (
-            <p className="text-xs text-[#ea2261]">{params.error}</p>
+            <p className="text-xs text-[#c0271e] dark:text-[#ff8a80]">{ERRORS[params.error] ?? "Connexion impossible."}</p>
           )}
         </form>
       </div>

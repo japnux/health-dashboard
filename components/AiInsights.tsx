@@ -38,29 +38,29 @@ type AiInsightsData = {
 };
 
 const TREND_STYLE: Record<string, string> = {
-  positive: "border-[#15be53]/20 bg-[#15be53]/5",
-  warning: "border-[#eab308]/20 bg-[#eab308]/5",
+  positive: "border-[#34c759]/20 bg-[#34c759]/5",
+  warning: "border-[#ffcc00]/20 bg-[#ffcc00]/5",
   info: "border-[var(--color-border)] bg-white dark:bg-white/5",
 };
 
 const TREND_TITLE_COLOR: Record<string, string> = {
-  positive: "text-[#108c3d]",
-  warning: "text-[#9b6829]",
+  positive: "text-[#1f7a3a] dark:text-[#6ee7a0]",
+  warning: "text-[#8a6d00] dark:text-[#ffd60a]",
   info: "text-[var(--color-heading)] dark:text-white",
 };
 
 const INTENSITY_COLOR: Record<string, string> = {
-  repos: "text-[#108c3d] bg-[#15be53]/10 border-[#15be53]/20",
-  "légère": "text-[#108c3d] bg-[#15be53]/10 border-[#15be53]/20",
-  "modérée": "text-[#9b6829] bg-[#eab308]/10 border-[#eab308]/20",
-  haute: "text-[#ea2261] bg-[#ea2261]/10 border-[#ea2261]/20",
+  repos: "text-[#1f7a3a] dark:text-[#6ee7a0] bg-[#34c759]/10 border-[#34c759]/20",
+  "légère": "text-[#1f7a3a] dark:text-[#6ee7a0] bg-[#34c759]/10 border-[#34c759]/20",
+  "modérée": "text-[#8a6d00] dark:text-[#ffd60a] bg-[#ffcc00]/10 border-[#ffcc00]/20",
+  haute: "text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/10 border-[#ff3b30]/20",
 };
 
 const INTENSITY_BG: Record<string, string> = {
-  repos: "bg-[#15be53]/5 border-[#15be53]/15",
-  "légère": "bg-[#15be53]/5 border-[#15be53]/15",
-  "modérée": "bg-[#eab308]/5 border-[#eab308]/15",
-  haute: "bg-[#ea2261]/5 border-[#ea2261]/15",
+  repos: "bg-[#34c759]/5 border-[#34c759]/15",
+  "légère": "bg-[#34c759]/5 border-[#34c759]/15",
+  "modérée": "bg-[#ffcc00]/5 border-[#ffcc00]/15",
+  haute: "bg-[#ff3b30]/5 border-[#ff3b30]/15",
 };
 
 const WORKOUT_ICON: Record<string, string> = {
@@ -104,7 +104,7 @@ function useAiInsightsData() {
         return r.json();
       })
       .then(setData)
-      .catch(() => setError("Impossible de charger les insights"))
+      .catch(() => setError("Impossible de charger les analyses"))
       .finally(() => { setLoading(false); setRefreshing(false); });
   };
 
@@ -330,8 +330,8 @@ const CONFIDENCE_LABEL: Record<string, string> = {
 };
 
 const CONFIDENCE_STYLE: Record<string, string> = {
-  haute: "text-[#108c3d] bg-[#15be53]/10",
-  moyenne: "text-[#9b6829] bg-[#eab308]/10",
+  haute: "text-[#1f7a3a] dark:text-[#6ee7a0] bg-[#34c759]/10",
+  moyenne: "text-[#8a6d00] dark:text-[#ffd60a] bg-[#ffcc00]/10",
   basse: "text-[var(--color-body)] bg-[var(--color-border)]/30",
 };
 
@@ -395,8 +395,8 @@ function TrendItem({ trend }: { trend: AiTrend }) {
 }
 
 const PRIORITY_STYLE: Record<string, string> = {
-  P1: "text-[#ea2261] bg-[#ea2261]/10 border-[#ea2261]/20",
-  P2: "text-[#9b6829] bg-[#eab308]/10 border-[#eab308]/20",
+  P1: "text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/10 border-[#ff3b30]/20",
+  P2: "text-[#8a6d00] dark:text-[#ffd60a] bg-[#ffcc00]/10 border-[#ffcc00]/20",
   P3: "text-[var(--color-body)] bg-[var(--color-border)]/20 border-[var(--color-border)]",
 };
 
@@ -421,7 +421,7 @@ function WorkoutItem({
       style={{ boxShadow: "var(--shadow-ambient)" }}
     >
       <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal px-5 pt-5">
-        Suggestion workout
+        Séance suggérée
       </h2>
       <div className="px-5 pb-4">
         <div className="flex items-start gap-3">

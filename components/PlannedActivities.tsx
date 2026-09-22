@@ -88,7 +88,7 @@ export function PlannedActivities({ date, activities }: Props) {
                   type="button"
                   disabled={isPending || regenerating}
                   onClick={() => updateCount(a.type, -1)}
-                  className="text-[10px] text-[var(--color-body)] hover:text-[#ea2261] transition-colors disabled:opacity-50 px-0.5"
+                  className="text-[10px] text-[var(--color-body)] hover:text-[#c0271e] dark:hover:text-[#ff8a80] transition-colors disabled:opacity-50 px-0.5"
                 >
                   ✕
                 </button>
@@ -101,7 +101,7 @@ export function PlannedActivities({ date, activities }: Props) {
       {regenerating && (
         <div className="mt-2 flex items-center gap-2 text-xs text-[var(--color-body)]">
           <span className="inline-block w-3 h-3 border-2 border-[var(--color-brand-purple)]/30 border-t-[var(--color-brand-purple)] rounded-full animate-spin" />
-          Mise à jour des recos…
+          Mise à jour des recommandations…
         </div>
       )}
       {!regenerating && hasPlanned && (

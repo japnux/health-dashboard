@@ -78,10 +78,10 @@ export function AiCorrelations() {
         {correlations.map((c) => {
           const isPositive = c.direction === "positive";
           const arrow = isPositive ? "↑" : "↓";
-          const arrowColor = isPositive ? "text-[#108c3d]" : "text-[#ea2261]";
+          const arrowColor = isPositive ? "text-[#1f7a3a] dark:text-[#6ee7a0]" : "text-[#c0271e] dark:text-[#ff8a80]";
           const magnitudeColor = isPositive
-            ? "text-[#108c3d] bg-[#15be53]/8 border-[#15be53]/15"
-            : "text-[#ea2261] bg-[#ea2261]/8 border-[#ea2261]/15";
+            ? "text-[#1f7a3a] dark:text-[#6ee7a0] bg-[#34c759]/8 border-[#34c759]/15"
+            : "text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/8 border-[#ff3b30]/15";
 
           return (
             <div

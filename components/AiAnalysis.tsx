@@ -180,7 +180,7 @@ export function AiAnalysis() {
       {/* Bulle flottante */}
       <div className="fixed bottom-5 right-5 z-50">
         {!open && hasContent && (
-          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#15be53] border-2 border-white dark:border-[#0d1520] pointer-events-none" />
+          <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#34c759] border-2 border-white dark:border-[#0d1520] pointer-events-none" />
         )}
         <button
           onClick={() => setOpen((o) => !o)}
@@ -266,7 +266,7 @@ export function AiAnalysis() {
 
             {/* Erreur */}
             {analysisError && (
-              <div className="text-[13px] text-[#ea2261] bg-[#ea2261]/5 rounded-[4px] p-3 flex items-start gap-2">
+              <div className="text-[13px] text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/5 rounded-[4px] p-3 flex items-start gap-2">
                 <span className="text-sm shrink-0">⚠️</span>
                 <p>{analysisError}</p>
               </div>
@@ -326,14 +326,14 @@ function WeeklyResultCard({ result }: { result: WeeklyResult }) {
     <div className="space-y-3">
       {/* Alerte */}
       {result.alert && (
-        <div className="rounded-[4px] bg-[#ea2261]/5 border border-[#ea2261]/20 p-3">
+        <div className="rounded-[4px] bg-[#ff3b30]/5 border border-[#ff3b30]/20 p-3">
           <div className="flex items-start gap-2">
-            <div className="w-5 h-5 rounded-full bg-[#ea2261]/15 flex items-center justify-center shrink-0 mt-0.5">
+            <div className="w-5 h-5 rounded-full bg-[#ff3b30]/15 flex items-center justify-center shrink-0 mt-0.5">
               <span className="text-[10px]">🚨</span>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wide text-[#ea2261] font-medium mb-1">Alerte</p>
-              <p className="text-[13px] text-[#ea2261] leading-relaxed">{result.alert}</p>
+              <p className="text-[10px] uppercase tracking-wide text-[#c0271e] dark:text-[#ff8a80] font-medium mb-1">Alerte</p>
+              <p className="text-[13px] text-[#c0271e] dark:text-[#ff8a80] leading-relaxed">{result.alert}</p>
             </div>
           </div>
         </div>
@@ -381,8 +381,8 @@ function WeeklyResultCard({ result }: { result: WeeklyResult }) {
 
       {/* Recommandations */}
       {result.recommendations.length > 0 && (
-        <div className="rounded-[4px] border border-[#15be53]/15 dark:border-[#15be53]/10 p-3">
-          <p className="text-[10px] uppercase tracking-wide text-[#15be53] font-medium mb-2">
+        <div className="rounded-[4px] border border-[#34c759]/15 dark:border-[#34c759]/10 p-3">
+          <p className="text-[10px] uppercase tracking-wide text-[#1f7a3a] dark:text-[#6ee7a0] font-medium mb-2">
             Recommandations
           </p>
           <div className="space-y-2">
@@ -421,7 +421,7 @@ function ChatBubble({ entry }: { entry: ChatEntry }) {
       )}
 
       {entry.error && (
-        <div className="text-[13px] text-[#ea2261] bg-[#ea2261]/5 rounded-[4px] p-2.5 flex items-start gap-2">
+        <div className="text-[13px] text-[#c0271e] dark:text-[#ff8a80] bg-[#ff3b30]/5 rounded-[4px] p-2.5 flex items-start gap-2">
           <span className="text-xs shrink-0">⚠️</span>
           <p>{entry.error}</p>
         </div>
@@ -452,7 +452,7 @@ function FormattedText({ text }: { text: string }) {
         if (/^[-•]\s/.test(trimmed)) {
           return (
             <div key={i} className="flex items-start gap-2 pl-1">
-              <span className="text-[var(--color-brand-purple)] text-[8px] mt-[6px] shrink-0">●</span>
+              <span className="text-[var(--color-brand-purple)] text-[10px] mt-[6px] shrink-0">●</span>
               <span>{formatInlineText(trimmed.replace(/^[-•]\s*/, ""))}</span>
             </div>
           );

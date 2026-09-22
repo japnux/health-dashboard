@@ -371,7 +371,7 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
         </div>
 
         {conflict && (
-          <p className="mt-2 text-xs text-[#ea2261]">
+          <p className="mt-2 text-xs text-[#c0271e] dark:text-[#ff8a80]">
             Déjà réservé pour {usersFromChoice.map((u) => USER_LABELS[u]).join(" et ")}{" "}
             sur ce créneau.
           </p>
@@ -398,7 +398,7 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
               </div>
             )}
             {loadError && (
-              <p className="text-xs text-[#ea2261]">{loadError}</p>
+              <p className="text-xs text-[#c0271e] dark:text-[#ff8a80]">{loadError}</p>
             )}
             {!loading && !loadError && planning && planning.accesLibre.length === 0 && (
               <p className="text-xs text-[var(--color-body)]">
@@ -438,7 +438,7 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                             {bookedBy.map((u) => (
                               <span
                                 key={u}
-                                className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
+                                className="text-[10px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
                                 title={u}
                               >
                                 {u === "geoffrey" ? "G" : "L"}
@@ -490,8 +490,8 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                   disabled={submitting}
                   className={`w-full flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border px-2.5 py-1.5 text-xs transition-colors disabled:opacity-50 ${
                     resetSelection.mode === "auto"
-                      ? "border-[#15be53]/60 bg-[#15be53]/10 text-[#108c3d]"
-                      : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[#15be53]/40 hover:text-[#108c3d]"
+                      ? "border-[#34c759]/60 bg-[#34c759]/10 text-[#1f7a3a] dark:text-[#6ee7a0]"
+                      : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[#34c759]/40 hover:text-[#1f7a3a] dark:hover:text-[#6ee7a0]"
                   }`}
                 >
                   <span>
@@ -536,10 +536,10 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                       isBooked
                         ? "border-[var(--color-brand-purple)]/60 bg-[var(--color-brand-purple)]/10 text-[var(--color-brand-purple)]"
                         : isSelected
-                        ? "border-[#15be53]/60 bg-[#15be53]/10 text-[#108c3d]"
+                        ? "border-[#34c759]/60 bg-[#34c759]/10 text-[#1f7a3a] dark:text-[#6ee7a0]"
                         : slot.full
                         ? "border-[var(--color-border)] dark:border-white/10 text-[var(--color-body)]"
-                        : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[#15be53]/40 hover:text-[#108c3d]"
+                        : "border-[var(--color-border)] dark:border-white/10 bg-white dark:bg-white/5 text-[var(--color-label)] dark:text-white/70 hover:border-[#34c759]/40 hover:text-[#1f7a3a] dark:hover:text-[#6ee7a0]"
                     }`}
                   >
                     <span className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
@@ -553,7 +553,7 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                             {bookedBy.map((u) => (
                               <span
                                 key={u}
-                                className="text-[9px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
+                                className="text-[10px] font-medium rounded-full w-3.5 h-3.5 flex items-center justify-center bg-[var(--color-brand-purple)]/20 text-[var(--color-brand-purple)]"
                                 title={u}
                               >
                                 {u === "geoffrey" ? "G" : "L"}
@@ -588,12 +588,12 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
         </div>
 
         {notEnoughSeats && (
-          <p className="mt-3 text-xs text-[#ea2261]">
+          <p className="mt-3 text-xs text-[#c0271e] dark:text-[#ff8a80]">
             Accès libre : pas assez de places pour {needed} personne{needed > 1 ? "s" : ""} ({remaining} dispo).
           </p>
         )}
         {notEnoughResetSeats && (
-          <p className="mt-1 text-xs text-[#ea2261]">
+          <p className="mt-1 text-xs text-[#c0271e] dark:text-[#ff8a80]">
             Reset : pas assez de places pour {needed} personne{needed > 1 ? "s" : ""} ({resetRemaining} dispo).
           </p>
         )}
@@ -607,9 +607,9 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
                   <span key={s.kind + i}>
                     {" "}· {s.kind === "accesLibre" ? "Accès libre" : "Reset"} :{" "}
                     {s.ok ? (
-                      <span className="text-[#15be53]">ok</span>
+                      <span className="text-[#1f7a3a] dark:text-[#6ee7a0]">ok</span>
                     ) : (
-                      <span className="text-[#ea2261]">{s.error}</span>
+                      <span className="text-[#c0271e] dark:text-[#ff8a80]">{s.error}</span>
                     )}
                   </span>
                 ))}
@@ -647,7 +647,7 @@ function ModalContent({ onClose, bookedUsers, onBooked, existingAccesEnd, booked
       </div>
 
       {toast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] rounded-[var(--radius-sm)] bg-[#ea2261] text-white px-3 py-2 text-xs shadow-lg">
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] rounded-[var(--radius-sm)] bg-[#ff3b30] text-white px-3 py-2 text-xs shadow-lg">
           {toast}
         </div>
       )}
