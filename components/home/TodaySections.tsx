@@ -87,10 +87,10 @@ function ScoreTile({
 }) {
   return (
     <Link href={href} className={`${CARD} !p-3 sm:!p-5 flex flex-col`} style={tinted(statusColor)}>
-      <div className="flex items-center justify-center sm:justify-between gap-1">
+      <div className="flex items-center justify-center sm:justify-between xl:justify-center gap-1">
         <p className="text-[10px] sm:text-xs uppercase sm:tracking-wide text-[var(--color-body)] truncate">{title}</p>
         {/* Chevron masqué sur mobile : place pour le titre, la tuile entière reste cliquable */}
-        <span className="hidden sm:inline">
+        <span className="hidden sm:inline xl:hidden">
           <Chevron />
         </span>
       </div>
@@ -262,7 +262,15 @@ function ZoneSparkline({
   const last = series[series.length - 1];
   const lastZone = zones.find((z) => last.value < z.to) ?? zones[zones.length - 1];
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="block max-w-full overflow-visible shrink-0" aria-hidden>
+    // Largeur fluide (le viewBox garde les proportions) : tient dans une tuile
+    // étroite, en colonne sur grand écran comme sur mobile
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="block w-[120px] sm:w-[140px] md:w-[120px] 2xl:w-[150px] h-auto overflow-visible shrink-0"
+      aria-hidden
+    >
       {zones
         .filter((z) => highlight.includes(z.level))
         .map((z) => {
@@ -321,7 +329,8 @@ export function TrainingBalance({ snap }: { snap: DashboardSnapshot }) {
   return (
     <>
       <SectionTitle>Équilibre d&apos;entraînement</SectionTitle>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Côte à côte, sauf en disposition trois colonnes (colonne étroite) : empilées */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
         {lb && (
           <ZoneTile
             href="/charge"
