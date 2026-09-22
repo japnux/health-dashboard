@@ -68,7 +68,7 @@ export const WORKOUT_TYPE_MAP: Record<string, string> = {
 /** Labels d'affichage avec emoji par type normalisé */
 const WORKOUT_DISPLAY: Record<string, { label: string; emoji: string }> = {
   surf: { label: "Surf", emoji: "🏄" },
-  musculation: { label: "Muscu", emoji: "💪" },
+  musculation: { label: "Muscu", emoji: "🏋️" },
   yoga: { label: "Yoga", emoji: "🧘" },
   pilates: { label: "Pilates", emoji: "🧘" },
   natation: { label: "Natation", emoji: "🏊" },

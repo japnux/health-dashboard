@@ -76,7 +76,9 @@ export function BodyValue({
         <span className="text-xs text-[var(--color-body)] ml-1">{unit}</span>
       </p>
       {sub && <p className="text-[10px] text-[var(--color-body)]">{sub}</p>}
-      <p className="text-[11px] tabular-nums mt-0.5" style={{ color: trend ? color : undefined }}>
+      {/* Texte neutre (lisible), sens porté par une pastille de couleur */}
+      <p className="flex items-center gap-1 text-[11px] tabular-nums mt-0.5 text-[var(--color-heading)] dark:text-white">
+        {trend && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} aria-hidden />}
         {formatSlope(trend, trendUnit)}
       </p>
       {date && date !== today && <p className="text-[10px] text-[var(--color-body)]/80">mesure du {shortDate(date)}</p>}

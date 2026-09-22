@@ -3,20 +3,15 @@
 
 import Link from "next/link";
 import { tintedBackground, tint } from "@/lib/palette";
+import { BackButton } from "@/components/detail/BackButton";
 
 export function DetailPage({ children }: { children: React.ReactNode }) {
   return <main className="mx-auto max-w-2xl p-4 pb-24 sm:p-6 space-y-5">{children}</main>;
 }
 
-export function BackLink({ href = "/", label = "Accueil" }: { href?: string; label?: string }) {
-  return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-1 text-sm text-[var(--color-body)] hover:text-[var(--color-heading)] dark:hover:text-white"
-    >
-      ‹ {label}
-    </Link>
-  );
+// Retour vers la page précédente du dashboard (accueil par défaut)
+export function BackLink({ href = "/" }: { href?: string }) {
+  return <BackButton fallback={href} />;
 }
 
 // En-tête : sur-titre, grand chiffre, statut (pastille + libellé), date, conseil.

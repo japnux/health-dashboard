@@ -285,7 +285,7 @@ export default async function SeancePage({
               const pct = Math.round((min / zoneTotal) * 100);
               return (
                 <div key={z.key} className="flex items-center gap-3 text-sm">
-                  <span className="w-32 sm:w-40 shrink-0 text-[var(--color-heading)] dark:text-white">
+                  <span className="w-28 sm:w-40 shrink-0 text-[var(--color-heading)] dark:text-white">
                     {z.label} {z.name}
                     <span className="block text-[10px] text-[var(--color-body)]">
                       {z.range} FC max

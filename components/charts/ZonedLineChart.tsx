@@ -44,7 +44,7 @@ const CONFIG = {
     zoneOf: balanceZone,
     format: (v: number) => v.toFixed(2).replace(".", ","),
     ticks: [0, 0.8, 1.3, 1.5],
-    name: "Équilibre",
+    name: "Ratio de charge",
   },
   form: {
     zones: FORM_ZONES,

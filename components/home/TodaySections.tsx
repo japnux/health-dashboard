@@ -8,7 +8,7 @@ import { strainColor } from "@/lib/strain-score";
 import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
 import { FORM_ZONES, formZone } from "@/lib/form";
 import { BODY_METRICS_BY_KEY, formatMetric, isFavorable } from "@/lib/body-metrics";
-import { workoutDisplayLabel, normalizeWorkoutType } from "@/lib/workout-types";
+import { workoutDisplayLabel, normalizeWorkoutType, workoutEmoji } from "@/lib/workout-types";
 import { dateInTz } from "@/lib/dates";
 import { ScoreRing } from "@/components/ScoreRing";
 import { sportColor, tint, tintedBackground } from "@/lib/palette";
@@ -167,23 +167,10 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
 
 // ── Séances du jour ──
 
-const WORKOUT_EMOJI: Record<string, string> = {
-  surf: "🏄",
-  musculation: "🏋️",
-  yoga: "🧘",
-  natation: "🏊",
-  course: "🏃",
-  marche: "🚶",
-  rando: "🥾",
-  vélo: "🚴",
-  sauna: "🥵",
-  tennis: "🎾",
-};
-
 function fmtDuration(min: number | null): string {
   if (min == null) return "—";
   const h = Math.floor(min / 60);
-  const m = min % 60;
+  const m = Math.round(min % 60);
   return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
 }
 
@@ -200,7 +187,7 @@ export function WorkoutsToday({ snap }: { snap: DashboardSnapshot }) {
           <Link key={w.id} href={`/seance/${w.id}`} className={CARD} style={tinted(sportColor(normalizeWorkoutType(w.type ?? "")))}>
             <div className="flex items-center gap-4">
               <span className="text-3xl" aria-hidden>
-                {WORKOUT_EMOJI[normalizeWorkoutType(w.type ?? "")] ?? "💪"}
+                {workoutEmoji(w.type ?? "")}
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-base text-[var(--color-heading)] dark:text-white">{workoutDisplayLabel(w.type ?? "Séance")}</p>
@@ -232,12 +219,15 @@ export function WorkoutsToday({ snap }: { snap: DashboardSnapshot }) {
 type Zone = { level: string; from: number; to: number; color: string; long: string };
 
 // Pictogramme de statut (toujours accompagné du libellé)
+// Glyphe foncé sur les fonds clairs (jaune, vert anis) : le blanc y est illisible
+const LIGHT_BADGES = new Set(["#ffcc00", "#a4de02", "#32ade6"]);
+
 function StatusBadge({ good, color }: { good: boolean | null; color: string }) {
   const glyph = good === true ? "✓" : good === false ? "!" : "·";
   return (
     <span
-      className="inline-flex items-center justify-center w-4 h-4 rounded-[4px] text-[10px] font-semibold text-white shrink-0"
-      style={{ backgroundColor: color }}
+      className="inline-flex items-center justify-center w-4 h-4 rounded-[4px] text-[10px] font-semibold shrink-0"
+      style={{ backgroundColor: color, color: LIGHT_BADGES.has(color.toLowerCase()) ? "#061b31" : "#ffffff" }}
       aria-hidden
     >
       {glyph}
@@ -420,7 +410,7 @@ export function BodyMetricsRow({ snap }: { snap: DashboardSnapshot }) {
               {m.value != null && m.range ? (
                 <RangeBar value={m.value} low={m.range.low} high={m.range.high} color={color} />
               ) : (
-                <span className="text-[9px] text-[var(--color-body)]/70 mt-2 text-center leading-tight">
+                <span className="text-[10px] text-[var(--color-body)]/80 mt-2 text-center leading-tight">
                   réf. {m.history}/{def.minHistory} nuits
                 </span>
               )}

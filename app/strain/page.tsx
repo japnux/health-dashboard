@@ -114,7 +114,7 @@ export default async function StrainPage({
                   <span className="w-5 text-center" aria-hidden>
                     {workoutEmoji(w.type ?? "")}
                   </span>
-                  <span className="w-28 sm:w-36 shrink-0 text-[var(--color-heading)] dark:text-white group-hover:underline truncate">
+                  <span className="w-24 sm:w-36 shrink-0 text-[var(--color-heading)] dark:text-white group-hover:underline truncate">
                     {workoutDisplayLabel(w.type ?? "Séance")}{" "}
                     <span className="text-[var(--color-body)]">
                       {new Date(w.started_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: snap.tz })}
@@ -137,7 +137,7 @@ export default async function StrainPage({
               <span className="w-5 text-center" aria-hidden>
                 🚶
               </span>
-              <span className="w-28 sm:w-36 shrink-0 text-[var(--color-heading)] dark:text-white">Hors séances</span>
+              <span className="w-24 sm:w-36 shrink-0 text-[var(--color-heading)] dark:text-white">Hors séances</span>
               <div className="flex-1 h-2.5 rounded-full bar-track overflow-hidden">
                 <div className="h-full rounded-full bg-[#8e8e93]" style={{ width: `${share(background)}%` }} />
               </div>

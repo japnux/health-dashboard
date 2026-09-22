@@ -86,7 +86,7 @@ FORMAT :
 
 3. SUGGESTION WORKOUT : l'utilisateur décide de son plan, tu adaptes son exécution.
    - Si remainingPlanned n'est PAS vide → type = la prochaine activité de remainingPlanned.
-     Tu ajustes intensity et duration selon indicators (récupération, équilibre de charge, forme, mesures de la nuit)
+     Tu ajustes intensity et duration selon indicators (récupération, ratio de charge, forme, mesures de la nuit)
      (ex : session plus courte, rythme tranquille). Un plan de 2 séances le même jour est un choix de l'utilisateur, pas une erreur.
    - indicators.loadBalance.level "rising" (ratio 1,3-1,5) → intensité modérée ; "spike" (≥ 1,5) → séance courte et facile.
    - Tu ne remplaces une activité planifiée par Repos QUE sur un signal d'alerte :

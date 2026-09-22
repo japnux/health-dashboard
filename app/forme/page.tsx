@@ -93,7 +93,7 @@ export default async function FormePage({
           <div className="space-y-2.5">
             {distribution.map((z) => (
               <div key={z.level} className="flex items-center gap-3 text-sm">
-                <span className="w-36 sm:w-44 shrink-0 text-[var(--color-heading)] dark:text-white">{z.long}</span>
+                <span className="w-28 sm:w-44 shrink-0 leading-tight text-[var(--color-heading)] dark:text-white">{z.long}</span>
                 <div className="flex-1 h-2.5 rounded-full bar-track overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${z.pct}%`, backgroundColor: z.color }} />
                 </div>

@@ -637,6 +637,7 @@ function TrainingTab({ data, period }: { data: StatsPayload; period: Period }) {
       )}
       <ZonesChart workouts={data.workouts} period={period} tz={data.tz} />
       <SportTable workouts={data.workouts} />
+      <WorkoutList workouts={data.workouts} tz={data.tz} />
       {strainPoints.length > 0 && (
         <ChartCard title="Strain jour par jour">
           <ZonedLineChart kind="strain" points={strainPoints} />
@@ -763,6 +764,54 @@ function SportTable({ workouts }: { workouts: Workout[] }) {
           sport : une baisse plus forte signe une meilleure forme cardio.
         </p>
       </div>
+    </ChartCard>
+  );
+}
+
+// Séances de la période, de la plus récente à la plus ancienne, vers leur détail
+function WorkoutList({ workouts, tz }: { workouts: Workout[]; tz: string }) {
+  const [all, setAll] = useState(false);
+  if (workouts.length === 0) return null;
+  const sorted = [...workouts].sort((a, b) => b.started_at.localeCompare(a.started_at));
+  const shown = all ? sorted : sorted.slice(0, 10);
+  return (
+    <ChartCard title={`Séances (${workouts.length})`}>
+      <div className="divide-y divide-black/5 dark:divide-white/10">
+        {shown.map((w) => {
+          const color = sportColor(normalizeWorkoutType(w.type));
+          return (
+            <Link key={w.id} href={`/seance/${w.id}`} className="flex items-center gap-3 py-2.5 text-sm hover:opacity-80">
+              <span
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                style={{ backgroundColor: tint(color, 0.18) }}
+                aria-hidden
+              >
+                {workoutEmoji(w.type)}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[var(--color-heading)] dark:text-white truncate">{workoutDisplayLabel(w.type)}</p>
+                <p className="text-[11px] text-[var(--color-body)]">
+                  {new Date(w.started_at).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short", timeZone: tz })}
+                  {w.duration_min != null ? ` · ${w.duration_min < 60 ? `${Math.round(w.duration_min)} min` : fmtHM(w.duration_min)}` : ""}
+                  {w.avg_hr_bpm != null ? ` · ${w.avg_hr_bpm} bpm` : ""}
+                </p>
+              </div>
+              {w.cardio_load != null && (
+                <span className="text-right shrink-0">
+                  <span className="block tabular-nums text-[var(--color-heading)] dark:text-white">{w.cardio_load}</span>
+                  <span className="block text-[10px] text-[var(--color-body)]">charge</span>
+                </span>
+              )}
+              <span className="text-[var(--color-body)]">›</span>
+            </Link>
+          );
+        })}
+      </div>
+      {sorted.length > 10 && (
+        <button onClick={() => setAll((v) => !v)} className="mt-2 text-sm text-[var(--color-brand-purple)] hover:underline">
+          {all ? "Réduire" : `Voir les ${sorted.length} séances`}
+        </button>
+      )}
     </ChartCard>
   );
 }

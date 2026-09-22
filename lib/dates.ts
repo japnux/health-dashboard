@@ -80,3 +80,11 @@ export function diffDaysIso(a: string, b: string): number {
   const db = new Date(`${b}T00:00:00Z`).getTime();
   return Math.round((da - db) / (1000 * 60 * 60 * 24));
 }
+
+// Heure locale "HH:MM" d'un instant ISO, dans le fuseau donné (null si illisible)
+export function formatHour(iso: string | null, tz: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("fr-FR", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(d);
+}

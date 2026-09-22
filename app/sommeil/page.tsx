@@ -15,7 +15,7 @@ import {
   formatLongDate,
   parsePeriod,
 } from "@/components/detail/DetailBits";
-import { formatHour } from "@/components/HomeCards";
+import { formatHour } from "@/lib/dates";
 import { isIncompleteNight } from "@/lib/recovery-score";
 
 export const dynamic = "force-dynamic";

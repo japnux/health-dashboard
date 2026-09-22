@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
@@ -198,7 +199,10 @@ const DEFAULTS = {
   bmr_kcal: 1670,
 };
 
-export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
+// Un seul calcul par requête, même si plusieurs composants le demandent
+export const getDashboardSnapshot = cache(loadDashboardSnapshot);
+
+async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
   const supabase = createServiceClient();
   // Fuseau du téléphone (voyage) : "aujourd'hui" et les séances du jour suivent
   // les mêmes jours que les données reçues

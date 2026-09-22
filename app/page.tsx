@@ -112,10 +112,8 @@ export default async function Home() {
 
       {/* ── Activité rapide ── */}
       <div>
-        <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal mb-2">
-          Activité
-        </p>
-        <div className="grid grid-cols-3 gap-3">
+        <SectionTitle>Activité</SectionTitle>
+        <div className="grid grid-cols-3 gap-3 mt-3">
           <QuickStat
             icon="👟"
             label="Pas"
@@ -128,7 +126,7 @@ export default async function Home() {
               snap.yesterdayMetrics?.steps != null
                 ? `hier ${snap.yesterdayMetrics.steps.toLocaleString("fr-FR")}`
                 : snap.weekAvgSteps != null
-                  ? `moy ${(snap.weekAvgSteps / 1000).toFixed(1)}k`
+                  ? `moy. ${Math.round(snap.weekAvgSteps).toLocaleString("fr-FR")}`
                   : undefined
             }
           />
@@ -216,25 +214,11 @@ function QuickStat({
   );
 }
 
+// "Surf auj.", "Muscu hier", "Surf il y a 3 j" (jours calendaires du fuseau)
 function lastWorkoutLabel(type: string | null, startedAt: string, tz: string): string {
-  const typeMap: Record<string, string> = {
-    SurfingSports: "Surf",
-    FunctionalStrengthTraining: "Muscu",
-    "Entraînement de Force Fonctionnelle": "Muscu",
-    "Functional Strength Training": "Muscu",
-    Running: "Course",
-    "Outdoor Run": "Course",
-    "Extérieur Course": "Course",
-    Swimming: "Natation",
-    Hiking: "Rando",
-    Walking: "Marche",
-    Cycling: "Vélo",
-  };
-  const cleanType = type ? (typeMap[type] ?? workoutDisplayLabel(type)) : "?";
-  // Écart en jours calendaires (heure de Paris), pas en tranches de 24 h :
-  // une séance d'hier 23h vue ce matin à 8h est bien "hier"
+  const label = type ? workoutDisplayLabel(type) : "?";
   const daysDiff = diffDaysIso(dateInTz(new Date(), tz), dateInTz(startedAt, tz));
-  if (daysDiff === 0) return `${cleanType} auj.`;
-  if (daysDiff === 1) return `${cleanType} hier`;
-  return `${cleanType} il y a ${daysDiff}j`;
+  if (daysDiff === 0) return `${label} auj.`;
+  if (daysDiff === 1) return `${label} hier`;
+  return `${label} il y a ${daysDiff} j`;
 }
