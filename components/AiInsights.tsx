@@ -3,6 +3,7 @@
 import { NUTRITION_ENABLED } from "@/lib/features";
 import { useEffect, useState } from "react";
 import { MusculationBookButton } from "./MusculationBookButton";
+import { SPORTIGO_ENABLED } from "@/lib/features";
 
 type AiTrend = {
   title: string;
@@ -190,10 +191,8 @@ export function AiTrends() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
-          Tendances & recommandations
-        </p>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg text-[var(--color-heading)] dark:text-white">Tendances</h2>
         <div className="flex items-center gap-2">
           {data.generatedAt && (
             <span className="text-[10px] text-[var(--color-body)]/50">
@@ -455,7 +454,7 @@ function WorkoutItem({
               <p className="text-xs text-[var(--color-body)]">
                 {/^\d+$/.test(suggestion.duration) ? `${suggestion.duration} min` : suggestion.duration}
               </p>
-              {displayWorkoutType(suggestion.type) === "Musculation" && (
+              {SPORTIGO_ENABLED && displayWorkoutType(suggestion.type) === "Musculation" && (
                 <MusculationBookButton />
               )}
             </div>

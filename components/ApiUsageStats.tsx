@@ -31,11 +31,17 @@ const MODEL_COLORS: Record<string, string> = {
   "claude-haiku-4-5-20251001": VIVID.cyan,
   "claude-sonnet-4-6": VIVID.purple,
   "claude-opus-4-6": VIVID.indigo,
+  "claude-haiku-4-5": VIVID.cyan,
+  "claude-sonnet-5": VIVID.purple,
+  "claude-opus-5-5": VIVID.orange,
 };
 const MODEL_LABELS: Record<string, string> = {
   "claude-haiku-4-5-20251001": "Haiku 4.5",
   "claude-sonnet-4-6": "Sonnet 4.6",
   "claude-opus-4-6": "Opus 4.6",
+  "claude-haiku-4-5": "Haiku 4.5",
+  "claude-sonnet-5": "Sonnet 5",
+  "claude-opus-5-5": "Opus 5.5",
 };
 
 function formatCost(usd: number): string {

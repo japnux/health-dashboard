@@ -9,3 +9,7 @@ export const NUTRITION_ENABLED = false;
 // Journal (humeur, énergie, stress) : carte et rappel de l'accueil, onglet
 // Journal des stats, et données journal envoyées aux analyses IA.
 export const JOURNAL_ENABLED = false;
+
+// Réservations en salle (Sportigo) : bloc Réservations de l'accueil et bouton
+// de réservation de la séance suggérée "Musculation". Abonnement arrêté.
+export const SPORTIGO_ENABLED = false;

@@ -122,7 +122,8 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
 
   return (
     <>
-      <div>
+      {/* Même marge haute que les titres de section : colonnes alignées */}
+      <div className="pt-2">
         <p className="text-lg text-[var(--color-heading)] dark:text-white">{RECOVERY_TITLE[color]}</p>
         <p className="text-sm text-[var(--color-body)] mt-1 leading-relaxed">{heroText(color, strain)}</p>
       </div>
@@ -174,14 +175,14 @@ function fmtDuration(min: number | null): string {
   return h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
 }
 
-export function WorkoutsToday({ snap }: { snap: DashboardSnapshot }) {
+export function WorkoutsToday({ snap, title = "Séances du jour" }: { snap: DashboardSnapshot; title?: string | null }) {
   const workouts = snap.recentWorkouts
     .filter((w) => dateInTz(w.started_at, snap.tz) === snap.date)
     .sort((a, b) => a.started_at.localeCompare(b.started_at));
   if (workouts.length === 0) return null;
   return (
     <>
-      <SectionTitle>Séances du jour</SectionTitle>
+      {title && <SectionTitle>{title}</SectionTitle>}
       <div className="space-y-3">
         {workouts.map((w) => (
           <Link key={w.id} href={`/seance/${w.id}`} className={CARD} style={tinted(sportColor(normalizeWorkoutType(w.type ?? "")))}>

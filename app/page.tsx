@@ -2,7 +2,11 @@ import { getDashboardSnapshot } from "@/lib/dashboard-data";
 import { formatFrLong, dateInTz, diffDaysIso } from "@/lib/dates";
 import { workoutDisplayLabel } from "@/lib/workout-types";
 import { NutritionTracker } from "@/components/NutritionTracker";
-import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
+import {
+  JOURNAL_ENABLED,
+  NUTRITION_ENABLED,
+  SPORTIGO_ENABLED,
+} from "@/lib/features";
 import {
   AlertNotice,
   MissingDataNotice,
@@ -119,7 +123,7 @@ export default async function Home() {
         <div className="contents md:flex md:flex-col md:gap-5 md:col-span-7 xl:col-span-8 xl:grid xl:grid-cols-2 xl:items-start">
           <div className="contents xl:flex xl:flex-col xl:gap-5">
             {/* Récupération, Strain, Sommeil (détail au clic) */}
-            <div className="order-1 md:order-none">
+            <div className="order-1 md:order-none flex flex-col gap-3">
               <TodayHero snap={snap} />
             </div>
             {/* Équilibre d'entraînement, mesures de la nuit */}
@@ -131,8 +135,20 @@ export default async function Home() {
             <div className="order-5 md:order-none flex flex-col gap-3 empty:hidden">
               <BodyMetricsRow snap={snap} />
             </div>
+            {/* Composition corporelle (détail au clic) */}
+            {snap.composition.weight && (
+              <div className="order-6 md:order-none flex flex-col gap-3">
+                <SectionTitle>Composition corporelle</SectionTitle>
+                <BodyCompositionTile
+                  composition={snap.composition}
+                  trends={snap.bodyTrends}
+                  objective={snap.objective}
+                  today={snap.date}
+                />
+              </div>
+            )}
             {/* Activité rapide */}
-            <div className="order-7 md:order-none">
+            <div className="order-8 md:order-none">
               <SectionTitle>Activité</SectionTitle>
               <div className="grid grid-cols-3 gap-3 mt-3">
                 <QuickStat
@@ -181,29 +197,16 @@ export default async function Home() {
                 />
               </div>
             </div>
-            {/* Composition corporelle (détail au clic) */}
-            {snap.composition.weight && (
-              <div className="order-8 md:order-none flex flex-col gap-3">
-                <SectionTitle>Composition corporelle</SectionTitle>
-                <BodyCompositionTile
-                  composition={snap.composition}
-                  trends={snap.bodyTrends}
-                  objective={snap.objective}
-                  today={snap.date}
-                />
-              </div>
-            )}
           </div>
         </div>
 
         {/* ── Colonne latérale : quoi faire aujourd'hui ── */}
         <div className="contents md:flex md:flex-col md:gap-5 md:col-span-5 xl:col-span-4">
-          {/* Séances du jour (détail au clic) */}
-          <div className="order-2 md:order-none flex flex-col gap-3 empty:hidden">
-            <WorkoutsToday snap={snap} />
-          </div>
-          {/* Suggestion de séance + activités prévues (et nutrition si activée) */}
-          <div className="order-3 md:order-none grid grid-cols-1 gap-4">
+          {/* Au programme : séances du jour (détail au clic), séance suggérée et
+              activités prévues ; titre aligné sur celui de la colonne de gauche */}
+          <div className="order-2 md:order-none flex flex-col gap-3">
+            <SectionTitle>Au programme</SectionTitle>
+            <WorkoutsToday snap={snap} title={null} />
             {NUTRITION_ENABLED && (
               <NutritionTracker
                 date={snap.date}
@@ -223,7 +226,7 @@ export default async function Home() {
             </AiWorkoutSuggestion>
           </div>
           {/* Tendances et recommandations (IA) */}
-          <div className="order-6 md:order-none empty:hidden">
+          <div className="order-7 md:order-none empty:hidden">
             <AiTrends />
           </div>
         </div>
@@ -236,10 +239,12 @@ export default async function Home() {
         </div>
       )}
 
-      {/* ── Réservations Sportigo ── */}
-      <div className="order-10">
-        <Reservations />
-      </div>
+      {/* ── Réservations Sportigo (désactivées : lib/features) ── */}
+      {SPORTIGO_ENABLED && (
+        <div className="order-10">
+          <Reservations />
+        </div>
+      )}
 
       <div className="order-11 pb-8" />
 
