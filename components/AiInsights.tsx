@@ -1,16 +1,10 @@
 "use client";
 
 import { NUTRITION_ENABLED, SPORTIGO_ENABLED } from "@/lib/features";
-import { createContext, useContext, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useDismiss } from "./useDismiss";
 import { MusculationBookButton } from "./MusculationBookButton";
 import { workoutEmoji } from "@/lib/workout-types";
-
-// État "Détails" de la séance suggérée, partagé avec son contenu (activités
-// prévues : les activités secondaires ne s'affichent qu'une fois déplié)
-const SuggestionDetailsContext = createContext(false);
-export function useSuggestionDetailsOpen() {
-  return useContext(SuggestionDetailsContext);
-}
 
 type AiTrend = {
   title: string;
@@ -442,18 +436,21 @@ function WorkoutItem({
 }) {
   const [open, setOpen] = useState(false);
   const intensity = suggestion.intensity.toLowerCase();
+  // Grand écran : les détails s'ouvrent en panneau flottant, sans agrandir la
+  // carte (la rangée et la colonne de gauche ne bougent pas)
+  const detailsRef = useRef<HTMLDivElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(detailsRef, open, close);
 
   return (
     <section
-      // Repère CSS : la rangée de l'accueil n'étire plus les tuiles voisines
-      data-details-open={open || undefined}
-      className={`rounded-[var(--radius-lg)] border ${INTENSITY_BG[intensity] ?? INTENSITY_BG["modérée"]} overflow-hidden h-full`}
+      className={`rounded-[var(--radius-lg)] border ${INTENSITY_BG[intensity] ?? INTENSITY_BG["modérée"]} h-full`}
       style={{ boxShadow: "var(--shadow-ambient)" }}
     >
       <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal px-5 pt-5">
         Séance suggérée
       </h2>
-      <div className="px-5 pb-4">
+      <div ref={detailsRef} className="relative px-5 pb-4">
         <div className="flex items-start gap-3">
           <span className="text-3xl flex-shrink-0">{suggestionIcon(suggestion.type, intensity)}</span>
           <div className="flex-1 min-w-0">
@@ -490,9 +487,8 @@ function WorkoutItem({
           </span>
           {open ? "Moins" : "Détails"}
         </button>
-      </div>
-      {open && (
-        <div className="px-5 pb-5 pt-0">
+        {open && (
+        <div className="mt-3 md:absolute md:inset-x-3 md:top-full md:-mt-2 md:z-30 md:p-4 md:rounded-[var(--radius-lg)] md:border md:border-[var(--color-border)] md:dark:border-white/10 md:bg-white md:dark:bg-[#131c28] md:shadow-[var(--shadow-elevated)]">
           {suggestion.reason && (
             <p className="text-sm text-[var(--color-body)] mb-3">{suggestion.reason}</p>
           )}
@@ -514,12 +510,9 @@ function WorkoutItem({
             </p>
           )}
         </div>
-      )}
-      {children && (
-        <SuggestionDetailsContext.Provider value={open}>
-          <div className="px-5 pb-4 -mt-2">{children}</div>
-        </SuggestionDetailsContext.Provider>
-      )}
+        )}
+      </div>
+      {children && <div className="px-5 pb-4 -mt-2">{children}</div>}
     </section>
   );
 }

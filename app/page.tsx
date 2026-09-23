@@ -120,7 +120,7 @@ export default async function Home() {
           la première rangée s'étire pour que tuiles et carte finissent ensemble */}
       <div className="home-grid">
         {/* Récupération, Strain, Sommeil (détail au clic) */}
-        <div className="home-hero [grid-area:hero] self-stretch flex flex-col gap-3">
+        <div className="[grid-area:hero] self-stretch flex flex-col gap-3">
           <TodayHero snap={snap} />
         </div>
 
