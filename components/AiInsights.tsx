@@ -1,9 +1,15 @@
 "use client";
 
-import { NUTRITION_ENABLED } from "@/lib/features";
-import { useEffect, useState } from "react";
+import { NUTRITION_ENABLED, SPORTIGO_ENABLED } from "@/lib/features";
+import { createContext, useContext, useEffect, useState } from "react";
 import { MusculationBookButton } from "./MusculationBookButton";
-import { SPORTIGO_ENABLED } from "@/lib/features";
+
+// État "Détails" de la séance suggérée, partagé avec son contenu (activités
+// prévues : les activités secondaires ne s'affichent qu'une fois déplié)
+const SuggestionDetailsContext = createContext(false);
+export function useSuggestionDetailsOpen() {
+  return useContext(SuggestionDetailsContext);
+}
 
 type AiTrend = {
   title: string;
@@ -498,7 +504,11 @@ function WorkoutItem({
           )}
         </div>
       )}
-      {children && <div className="px-5 pb-4 -mt-2">{children}</div>}
+      {children && (
+        <SuggestionDetailsContext.Provider value={open}>
+          <div className="px-5 pb-4 -mt-2">{children}</div>
+        </SuggestionDetailsContext.Provider>
+      )}
     </section>
   );
 }

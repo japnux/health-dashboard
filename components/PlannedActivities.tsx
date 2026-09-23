@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { useSuggestionDetailsOpen } from "./AiInsights";
 
-type Activity = { type: string; emoji: string };
+type Activity = { type: string; emoji: string; main?: boolean };
 
 const ACTIVITY_TYPES: Activity[] = [
-  { type: "Surf", emoji: "🏄" },
-  { type: "Musculation", emoji: "🏋️" },
+  { type: "Surf", emoji: "🏄", main: true },
+  { type: "Musculation", emoji: "🏋️", main: true },
   { type: "Yoga", emoji: "🧘" },
   { type: "Natation", emoji: "🏊" },
   { type: "Course", emoji: "🏃" },
   { type: "Sauna", emoji: "🥵" },
-  { type: "Repos", emoji: "😴" },
+  { type: "Repos", emoji: "😴", main: true },
 ];
 
 type PlannedActivity = {
@@ -27,6 +28,8 @@ type Props = {
 export function PlannedActivities({ date, activities }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // Hors "Détails" : seulement les activités principales et celles déjà prévues
+  const detailsOpen = useSuggestionDetailsOpen();
 
   const countMap = new Map(activities.map((a) => [a.type, a.count]));
 
@@ -58,7 +61,7 @@ export function PlannedActivities({ date, activities }: Props) {
         Activités prévues
       </p>
       <div className="flex flex-wrap gap-1.5">
-        {ACTIVITY_TYPES.map((a) => {
+        {ACTIVITY_TYPES.filter((a) => detailsOpen || a.main || (countMap.get(a.type) ?? 0) > 0).map((a) => {
           const count = countMap.get(a.type) ?? 0;
           const isActive = count > 0;
           const isPending = pending === a.type;
