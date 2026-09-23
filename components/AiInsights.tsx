@@ -445,6 +445,8 @@ function WorkoutItem({
 
   return (
     <section
+      // Repère CSS : la rangée de l'accueil n'étire plus les tuiles voisines
+      data-details-open={open || undefined}
       className={`rounded-[var(--radius-lg)] border ${INTENSITY_BG[intensity] ?? INTENSITY_BG["modérée"]} overflow-hidden h-full`}
       style={{ boxShadow: "var(--shadow-ambient)" }}
     >

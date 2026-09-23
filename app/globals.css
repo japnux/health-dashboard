@@ -110,3 +110,9 @@ h1, h2, h3, h4, h5, h6 {
       "equi acti tend";
   }
 }
+
+/* Détails de la séance suggérée ouverts : la carte grandit seule, les tuiles
+   du jour gardent leur hauteur au lieu de s'étirer avec elle */
+.home-grid:has([data-details-open]) > .home-hero {
+  align-self: start;
+}
