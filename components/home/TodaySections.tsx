@@ -122,12 +122,12 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
 
   return (
     <>
-      {/* Même marge haute que les titres de section : colonnes alignées */}
-      <div className="pt-2">
-        <p className="text-lg text-[var(--color-heading)] dark:text-white">{RECOVERY_TITLE[color]}</p>
-        <p className="text-sm text-[var(--color-body)] mt-1 leading-relaxed">{heroText(color, strain)}</p>
-      </div>
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      {/* Même marge haute que les titres de section : rangées alignées */}
+      <p className="text-lg text-[var(--color-heading)] dark:text-white pt-2">{RECOVERY_TITLE[color]}</p>
+      {/* Phrase du jour : sous le titre sur mobile, sous les tuiles sur grand
+          écran (les tuiles démarrent alors à la hauteur de la carte voisine) */}
+      <p className="text-sm text-[var(--color-body)] leading-relaxed -mt-2 md:mt-0 md:order-last">{heroText(color, strain)}</p>
+      <div className="flex-1 grid grid-cols-3 gap-3 sm:gap-4">
         <ScoreTile
           href="/recuperation"
           title="Récupération"

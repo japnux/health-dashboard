@@ -197,7 +197,8 @@ export function AiTrends() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      {/* Même hauteur d'en-tête que les titres de section (rangées alignées) */}
+      <div className="flex items-center justify-between pt-2 mb-3">
         <h2 className="text-lg text-[var(--color-heading)] dark:text-white">Tendances</h2>
         <div className="flex items-center gap-2">
           {data.generatedAt && (

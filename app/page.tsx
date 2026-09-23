@@ -40,9 +40,8 @@ export default async function Home() {
   const spo2Today = snap.today?.spo2_pct ?? null;
 
   return (
-    // Mobile : une colonne, blocs dans l'ordre des "order-*". À partir de md :
-    // tableau de bord en deux colonnes (les enveloppes passent de "contents"
-    // à de vraies colonnes), pour tout voir sans faire défiler
+    // Mobile : une colonne. À partir de md : tableau de bord en rangées
+    // (deux colonnes, trois sur très grand écran), pour tout voir sans défiler
     <main className="mx-auto max-w-2xl md:max-w-5xl xl:max-w-[1440px] p-4 pb-24 sm:p-6 sm:pb-24 flex flex-col gap-5">
       <header className="pt-3 pb-1">
         <p className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal">
@@ -117,107 +116,31 @@ export default async function Home() {
         </div>
       )}
 
-      <div className="contents md:grid md:grid-cols-12 md:gap-6 md:items-start">
-        {/* ── Colonne principale : l'état du jour et les mesures (dédoublée en
-            deux sous-colonnes sur très grand écran) ── */}
-        <div className="contents md:flex md:flex-col md:gap-5 md:col-span-7 xl:col-span-8 xl:grid xl:grid-cols-2 xl:items-start">
-          <div className="contents xl:flex xl:flex-col xl:gap-5">
-            {/* Récupération, Strain, Sommeil (détail au clic) */}
-            <div className="order-1 md:order-none flex flex-col gap-3">
-              <TodayHero snap={snap} />
-            </div>
-            {/* Équilibre d'entraînement, mesures de la nuit */}
-            <div className="order-4 md:order-none flex flex-col gap-3 empty:hidden">
-              <TrainingBalance snap={snap} />
-            </div>
-          </div>
-          <div className="contents xl:flex xl:flex-col xl:gap-5">
-            <div className="order-5 md:order-none flex flex-col gap-3 empty:hidden">
-              <BodyMetricsRow snap={snap} />
-            </div>
-            {/* Composition corporelle (détail au clic) */}
-            {snap.composition.weight && (
-              <div className="order-6 md:order-none flex flex-col gap-3">
-                <SectionTitle>Composition corporelle</SectionTitle>
-                <BodyCompositionTile
-                  composition={snap.composition}
-                  trends={snap.bodyTrends}
-                  objective={snap.objective}
-                  today={snap.date}
-                />
-              </div>
-            )}
-            {/* Activité rapide */}
-            <div className="order-8 md:order-none">
-              <SectionTitle>Activité</SectionTitle>
-              <div className="grid grid-cols-3 gap-3 mt-3">
-                <QuickStat
-                  icon="👟"
-                  label="Pas"
-                  value={
-                    snap.today?.steps != null
-                      ? snap.today.steps.toLocaleString("fr-FR")
-                      : "—"
-                  }
-                  sub={
-                    snap.yesterdayMetrics?.steps != null
-                      ? `hier ${snap.yesterdayMetrics.steps.toLocaleString("fr-FR")}`
-                      : snap.weekAvgSteps != null
-                        ? `moy. ${Math.round(snap.weekAvgSteps).toLocaleString("fr-FR")}`
-                        : undefined
-                  }
-                />
-                <QuickStat
-                  icon="🔥"
-                  label="Kcal actives"
-                  value={
-                    snap.today?.active_kcal != null
-                      ? `${snap.today.active_kcal}`
-                      : "—"
-                  }
-                  sub={
-                    snap.yesterdayMetrics?.active_kcal != null
-                      ? `hier ${snap.yesterdayMetrics.active_kcal}`
-                      : undefined
-                  }
-                />
-                <QuickStat
-                  icon="💪"
-                  label="Séances 7j"
-                  value={`${snap.weekWorkoutCount}`}
-                  sub={
-                    snap.lastWorkout
-                      ? lastWorkoutLabel(
-                          snap.lastWorkout.type,
-                          snap.lastWorkout.started_at,
-                          snap.tz,
-                        )
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-          </div>
+      {/* Grille par rangées (zones définies dans globals.css : .home-grid) ;
+          la première rangée s'étire pour que tuiles et carte finissent ensemble */}
+      <div className="home-grid">
+        {/* Récupération, Strain, Sommeil (détail au clic) */}
+        <div className="[grid-area:hero] self-stretch flex flex-col gap-3">
+          <TodayHero snap={snap} />
         </div>
 
-        {/* ── Colonne latérale : quoi faire aujourd'hui ── */}
-        <div className="contents md:flex md:flex-col md:gap-5 md:col-span-5 xl:col-span-4">
-          {/* Au programme : séances du jour (détail au clic), séance suggérée et
-              activités prévues ; titre aligné sur celui de la colonne de gauche */}
-          <div className="order-2 md:order-none flex flex-col gap-3">
-            <SectionTitle>Au programme</SectionTitle>
-            <WorkoutsToday snap={snap} title={null} />
-            {NUTRITION_ENABLED && (
-              <NutritionTracker
-                date={snap.date}
-                macros={snap.macrosToday}
-                targets={snap.macrosTargets}
-                proteinFromLogs={snap.proteinTotalToday}
-                adjustedTargets={snap.adjustedTargets}
-                estimatedRemainingKcal={snap.estimatedRemainingKcal}
-                activeSlot={snap.activeSlot}
-              />
-            )}
+        {/* Au programme : séances du jour (détail au clic), séance suggérée et
+            activités prévues */}
+        <div className="[grid-area:prog] self-stretch flex flex-col gap-3">
+          <SectionTitle>Au programme</SectionTitle>
+          <WorkoutsToday snap={snap} title={null} />
+          {NUTRITION_ENABLED && (
+            <NutritionTracker
+              date={snap.date}
+              macros={snap.macrosToday}
+              targets={snap.macrosTargets}
+              proteinFromLogs={snap.proteinTotalToday}
+              adjustedTargets={snap.adjustedTargets}
+              estimatedRemainingKcal={snap.estimatedRemainingKcal}
+              activeSlot={snap.activeSlot}
+            />
+          )}
+          <div className="flex-1 grid">
             <AiWorkoutSuggestion>
               <PlannedActivities
                 date={snap.date}
@@ -225,28 +148,105 @@ export default async function Home() {
               />
             </AiWorkoutSuggestion>
           </div>
-          {/* Tendances et recommandations (IA) */}
-          <div className="order-7 md:order-none empty:hidden">
-            <AiTrends />
+        </div>
+
+        {/* Équilibre d'entraînement */}
+        <div className="[grid-area:equi] flex flex-col gap-3 empty:hidden">
+          <TrainingBalance snap={snap} />
+        </div>
+
+        {/* Mesures de la nuit */}
+        <div className="[grid-area:mesu] flex flex-col gap-3 empty:hidden">
+          <BodyMetricsRow snap={snap} />
+        </div>
+
+        {/* Composition corporelle (détail au clic) */}
+        {snap.composition.weight && (
+          <div className="[grid-area:comp] self-stretch flex flex-col gap-3">
+            <SectionTitle>Composition corporelle</SectionTitle>
+            <div className="flex-1 grid">
+              <BodyCompositionTile
+                composition={snap.composition}
+                trends={snap.bodyTrends}
+                objective={snap.objective}
+                today={snap.date}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Tendances et recommandations (IA) */}
+        <div className="[grid-area:tend] empty:hidden">
+          <AiTrends />
+        </div>
+
+        {/* Activité rapide */}
+        <div className="[grid-area:acti]">
+          <SectionTitle>Activité</SectionTitle>
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            <QuickStat
+              icon="👟"
+              label="Pas"
+              value={
+                snap.today?.steps != null
+                  ? snap.today.steps.toLocaleString("fr-FR")
+                  : "—"
+              }
+              sub={
+                snap.yesterdayMetrics?.steps != null
+                  ? `hier ${snap.yesterdayMetrics.steps.toLocaleString("fr-FR")}`
+                  : snap.weekAvgSteps != null
+                    ? `moy. ${Math.round(snap.weekAvgSteps).toLocaleString("fr-FR")}`
+                    : undefined
+              }
+            />
+            <QuickStat
+              icon="🔥"
+              label="Kcal actives"
+              value={
+                snap.today?.active_kcal != null
+                  ? `${snap.today.active_kcal}`
+                  : "—"
+              }
+              sub={
+                snap.yesterdayMetrics?.active_kcal != null
+                  ? `hier ${snap.yesterdayMetrics.active_kcal}`
+                  : undefined
+              }
+            />
+            <QuickStat
+              icon="💪"
+              label="Séances 7j"
+              value={`${snap.weekWorkoutCount}`}
+              sub={
+                snap.lastWorkout
+                  ? lastWorkoutLabel(
+                      snap.lastWorkout.type,
+                      snap.lastWorkout.started_at,
+                      snap.tz,
+                    )
+                  : undefined
+              }
+            />
           </div>
         </div>
       </div>
 
       {/* ── Journal ── */}
       {JOURNAL_ENABLED && (
-        <div className="order-9">
+        <div>
           <JournalDashboard date={snap.date} impact={snap.journalImpact} />
         </div>
       )}
 
       {/* ── Réservations Sportigo (désactivées : lib/features) ── */}
       {SPORTIGO_ENABLED && (
-        <div className="order-10">
+        <div>
           <Reservations />
         </div>
       )}
 
-      <div className="order-11 pb-8" />
+      <div className="pb-8" />
 
       {/* Chatbox IA flottante */}
       <AiAnalysis />

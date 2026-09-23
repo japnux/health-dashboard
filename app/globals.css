@@ -79,3 +79,34 @@ h1, h2, h3, h4, h5, h6 {
     background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.08) 0 2px, transparent 2px 6px);
   }
 }
+
+/* Accueil : grille par rangées (et non deux colonnes indépendantes), pour que
+   les blocs d'une même rangée démarrent à la même hauteur.
+   Mobile : une colonne dans l'ordre de lecture. */
+.home-grid {
+  display: grid;
+  gap: 1.25rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "hero" "prog" "equi" "mesu" "comp" "tend" "acti";
+}
+@media (min-width: 48rem) {
+  .home-grid {
+    column-gap: 1.5rem;
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    grid-template-areas:
+      "hero prog"
+      "equi tend"
+      "mesu tend"
+      "comp acti";
+  }
+}
+@media (min-width: 80rem) {
+  .home-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "hero comp prog"
+      "equi mesu tend"
+      "equi acti tend";
+  }
+}
