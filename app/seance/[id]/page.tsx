@@ -17,6 +17,7 @@ import {
   DetailPage,
   Delta,
   StatGrid,
+  PageWash,
 } from "@/components/detail/DetailBits";
 import { WorkoutHrChart } from "@/components/charts/WorkoutHrChart";
 import { RouteMap } from "@/components/charts/RouteMap";
@@ -105,6 +106,8 @@ export default async function SeancePage({
   return (
     <DetailPage>
       <BackLink />
+      {/* Voile de page dans la couleur du sport */}
+      <PageWash color={accent} />
       {/* En-tête teinté par la couleur du sport, carte du tracé en tête comme l'app de référence */}
       <header
         // Grand écran : carte à gauche, titre et chiffres à droite

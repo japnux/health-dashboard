@@ -2,7 +2,7 @@
 // mesures, sommeil) : même en-tête, mêmes cartes, même choix de période.
 
 import Link from "next/link";
-import { tintedBackground, tint } from "@/lib/palette";
+import { tint } from "@/lib/palette";
 import { BackButton } from "@/components/detail/BackButton";
 
 export function DetailPage({ children }: { children: React.ReactNode }) {
@@ -27,6 +27,21 @@ export function BackLink({ href = "/" }: { href?: string }) {
 // Élément sur toute la largeur dans la mise en page en colonnes
 export const FULL_WIDTH = "[column-span:all]";
 
+// Voile de couleur pleine largeur en haut de page, qui s'estompe vers le bas :
+// la page entière prend la couleur du statut (immersif, comme l'app de
+// référence). Positionné sur le document, derrière le contenu.
+export function PageWash({ color }: { color: string }) {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[90vh] max-h-[1000px]"
+      style={{
+        background: `linear-gradient(180deg, ${tint(color, 0.36)} 0%, ${tint(color, 0.2)} 30%, ${tint(color, 0.07)} 65%, ${tint(color, 0)} 100%)`,
+      }}
+    />
+  );
+}
+
 // En-tête : sur-titre, grand chiffre, statut (pastille + libellé), date, conseil.
 // Carte teintée par la couleur du statut (ou `accent`), comme l'app de référence.
 export function DetailHeader({
@@ -49,11 +64,11 @@ export function DetailHeader({
   advice?: string | null;
 }) {
   const color = accent ?? status?.color ?? null;
+  // Avec une couleur : l'en-tête est posé directement sur le voile de la page
+  // (plus de carte), les cartes blanches flottent ensuite par-dessus
   return (
-    <header
-      className={`${FULL_WIDTH} ${color ? "rounded-[var(--radius-lg)] border p-5 sm:p-6" : ""}`}
-      style={color ? { background: tintedBackground(color), borderColor: tint(color, 0.3) } : undefined}
-    >
+    <header className={`${FULL_WIDTH} ${color ? "pt-2 pb-4 sm:pb-6" : ""}`}>
+      {color && <PageWash color={color} />}
       <p className="text-xs uppercase tracking-wide text-[var(--color-body)]">{eyebrow}</p>
       <p className="mt-2 text-[var(--color-heading)] dark:text-white">
         <span className="text-6xl font-light">{value}</span>
