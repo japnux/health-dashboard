@@ -3,6 +3,7 @@
 import { NUTRITION_ENABLED, SPORTIGO_ENABLED } from "@/lib/features";
 import { createContext, useContext, useEffect, useState } from "react";
 import { MusculationBookButton } from "./MusculationBookButton";
+import { workoutEmoji } from "@/lib/workout-types";
 
 // État "Détails" de la séance suggérée, partagé avec son contenu (activités
 // prévues : les activités secondaires ne s'affichent qu'une fois déplié)
@@ -95,6 +96,13 @@ const WORKOUT_TYPE_DISPLAY: Record<string, string> = {
 
 function displayWorkoutType(raw: string): string {
   return WORKOUT_TYPE_DISPLAY[raw.toLowerCase()] ?? raw;
+}
+
+// Emoji du sport suggéré (🏄 pour Surf...) ; pour un type sans sport connu
+// (repos, mobilité), l'icône d'intensité
+function suggestionIcon(type: string, intensity: string): string {
+  const sport = workoutEmoji(type);
+  return sport !== "🏅" ? sport : (WORKOUT_ICON[intensity] ?? "🏃");
 }
 
 // Requête en cours partagée par les composants qui montent en même temps
@@ -445,7 +453,7 @@ function WorkoutItem({
       </h2>
       <div className="px-5 pb-4">
         <div className="flex items-start gap-3">
-          <span className="text-3xl flex-shrink-0">{WORKOUT_ICON[intensity] ?? "🏃"}</span>
+          <span className="text-3xl flex-shrink-0">{suggestionIcon(suggestion.type, intensity)}</span>
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 flex-wrap">
               <h3 className="font-normal text-base text-[var(--color-heading)] dark:text-white">
