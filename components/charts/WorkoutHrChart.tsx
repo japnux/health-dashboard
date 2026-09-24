@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { HR_ZONES } from "@/lib/hr-zones";
+import { TOOLTIP_PROPS } from "@/components/charts/tooltip-style";
 
 // Bornes des zones en % de la FC max (Z1 50-60 %, …, Z5 90-100 %)
 const ZONE_BOUNDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
@@ -97,7 +98,7 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
           />
           <YAxis domain={domain} tick={{ fontSize: 11, fill: "#a1a1aa" }} axisLine={false} tickLine={false} width={36} />
           <Tooltip
-            contentStyle={{ backgroundColor: "#27272a", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
+            {...TOOLTIP_PROPS}
             labelFormatter={(v) => fmtMin(Number(v))}
             formatter={(val, key) => {
               const bpm = Number(val);

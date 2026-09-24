@@ -18,6 +18,7 @@ import {
   ReferenceLine,
   LabelList,
 } from "recharts";
+import { TOOLTIP_PROPS } from "@/components/charts/tooltip-style";
 
 // color : couleur de la barre (verdict) ; sinon vert à l'objectif, bleu en dessous
 type Point = { date: string; value: number; color?: string };
@@ -51,7 +52,12 @@ export function HistoryChart({
   if (points.length === 0) return null;
   const short = points.length <= 14;
   const data = points.map((p) => ({ ...p, label: dayLabel(p.date, short) }));
-  const fmt = (v: number) => v.toFixed(decimals).replace(".", ",") + valueSuffix;
+  // Durées en heures lues en heures-minutes (6h24 plutôt que 6,4 h)
+  const hours = unit === "h";
+  const fmt = (v: number) =>
+    hours
+      ? `${Math.floor(Math.round(v * 60) / 60)}h${String(Math.round(v * 60) % 60).padStart(2, "0")}`
+      : v.toFixed(decimals).replace(".", ",") + valueSuffix;
   const values = points.map((p) => p.value);
   const extra = [band?.low, band?.high, target?.value].filter((v): v is number => v != null);
   const lo = Math.min(...values, ...extra);
@@ -91,8 +97,8 @@ export function HistoryChart({
           tickFormatter={(v: number) => String(Math.round(v * 10) / 10).replace(".", ",")}
         />
         <Tooltip
-          contentStyle={{ backgroundColor: "#27272a", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
-          formatter={(val) => [`${fmt(val as number)} ${unit}`.trim(), ""]}
+          {...TOOLTIP_PROPS}
+          formatter={(val) => [hours ? fmt(val as number) : `${fmt(val as number)} ${unit}`.trim(), ""]}
           separator=""
         />
         {mode === "bar" ? (

@@ -41,6 +41,7 @@ import {
   sleepDurationColor,
   stepsColor,
 } from "@/lib/stat-colors";
+import { TOOLTIP_PROPS } from "@/components/charts/tooltip-style";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -129,7 +130,6 @@ const C = {
 };
 const ZONES = HR_ZONES;
 const RECOVERY_COLOR = (v: number) => (v >= 7 ? VIVID.green : v >= 5 ? VIVID.yellow : VIVID.red);
-const TOOLTIP_STYLE = { backgroundColor: C.zinc800, border: "none", borderRadius: 8, color: "#fff", fontSize: 12 };
 
 // ── Petits calculs ───────────────────────────────────────────────────────
 
@@ -708,7 +708,7 @@ function LoadBySport({ data, period }: { data: StatsPayload; period: Period }) {
           <YAxis tick={{ fontSize: 11, fill: C.zinc400 }} axisLine={false} tickLine={false} width={36} />
           <Tooltip
             cursor={{ fill: "rgba(100,116,141,0.08)" }}
-            contentStyle={TOOLTIP_STYLE}
+            {...TOOLTIP_PROPS}
             formatter={(val, name) => [String(val), name === "_hors" ? "Hors séances" : sports.get(String(name)) ?? String(name)]}
           />
           <Legend
@@ -1149,13 +1149,7 @@ function ZonesChart({ workouts, period, tz }: { workouts: Workout[]; period: Per
           />
           <Tooltip
             cursor={{ fill: "rgba(100,116,141,0.08)" }}
-            contentStyle={{
-              backgroundColor: C.zinc800,
-              border: "none",
-              borderRadius: 8,
-              color: "#fff",
-              fontSize: 12,
-            }}
+            {...TOOLTIP_PROPS}
             formatter={(val, name) => {
               const z = ZONES.find((zz) => zz.key === name);
               return [fmtMinutes(val as number), z ? `${z.label} ${z.name} (${z.range})` : String(name)];

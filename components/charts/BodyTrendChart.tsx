@@ -5,6 +5,7 @@
 // Un graphique par mesure : jamais deux échelles sur le même graphique.
 
 import { ResponsiveContainer, ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { TOOLTIP_PROPS } from "@/components/charts/tooltip-style";
 
 type Point = { date: string; value: number };
 
@@ -67,7 +68,7 @@ export function BodyTrendChart({
           tickFormatter={(v: number) => String(v).replace(".", ",")}
         />
         <Tooltip
-          contentStyle={{ backgroundColor: "#27272a", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
+          {...TOOLTIP_PROPS}
           formatter={(val, name) => [fmt(Number(val)), name === "trend" ? "tendance" : "mesure"]}
         />
         <Line

@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
 import { FORM_ZONES, formZone } from "@/lib/form";
+import { TOOLTIP_PROPS } from "@/components/charts/tooltip-style";
 
 type Point = { date: string; value: number; load?: number };
 type Kind = "balance" | "form" | "recovery" | "strain";
@@ -127,7 +128,7 @@ export function ZonedLineChart({ points, kind }: { points: Point[]; kind: Kind }
           width={32}
         />
         <Tooltip
-          contentStyle={{ backgroundColor: "#27272a", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 }}
+          {...TOOLTIP_PROPS}
           formatter={(val, _name, item) => {
             const v = val as number;
             const load = (item?.payload as Point | undefined)?.load;
