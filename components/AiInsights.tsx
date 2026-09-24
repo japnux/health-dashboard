@@ -4,7 +4,7 @@ import { NUTRITION_ENABLED, SPORTIGO_ENABLED } from "@/lib/features";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDismiss } from "./useDismiss";
 import { MusculationBookButton } from "./MusculationBookButton";
-import { workoutEmoji } from "@/lib/workout-types";
+import { normalizeWorkoutType, workoutDisplayLabel, workoutEmoji } from "@/lib/workout-types";
 
 type AiTrend = {
   title: string;
@@ -72,24 +72,11 @@ const WORKOUT_ICON: Record<string, string> = {
   haute: "🔥",
 };
 
-// Normalise les noms Apple Health bruts en noms lisibles
-const WORKOUT_TYPE_DISPLAY: Record<string, string> = {
-  surfingsports: "Surf",
-  "sports de surf": "Surf",
-  functionalstrengthtraining: "Musculation",
-  crosstraining: "Musculation",
-  yoga: "Yoga",
-  swimming: "Natation",
-  "pool swim": "Natation",
-  running: "Course",
-  "outdoor run": "Course",
-  "extérieur course": "Course",
-  hiking: "Randonnée",
-  walking: "Marche",
-};
-
+// Nom lisible du sport suggéré, via la normalisation commune de l'app
+// (libellés longs ici : la carte a la place)
+const LONG_LABEL: Record<string, string> = { musculation: "Musculation", rando: "Randonnée" };
 function displayWorkoutType(raw: string): string {
-  return WORKOUT_TYPE_DISPLAY[raw.toLowerCase()] ?? raw;
+  return LONG_LABEL[normalizeWorkoutType(raw)] ?? workoutDisplayLabel(raw);
 }
 
 // Emoji du sport suggéré (🏄 pour Surf...) ; pour un type sans sport connu

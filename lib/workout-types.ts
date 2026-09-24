@@ -89,7 +89,10 @@ const WORKOUT_DISPLAY: Record<string, { label: string; emoji: string }> = {
 
 /** Normalise un type de workout DB vers un type planned activity */
 export function normalizeWorkoutType(raw: string): string {
-  return WORKOUT_TYPE_MAP[raw.toLowerCase()] ?? raw.toLowerCase();
+  // Casse et espaces tolérés : selon la langue et la version de l'iPhone, le
+  // même sport arrive en "SurfingSports", "Surfing Sports" ou "Sports de Surf"
+  const key = raw.toLowerCase().trim().replace(/\s+/g, " ");
+  return WORKOUT_TYPE_MAP[key] ?? WORKOUT_TYPE_MAP[key.replace(/ /g, "")] ?? key;
 }
 
 /** Retourne le label d'affichage propre pour un type brut */
