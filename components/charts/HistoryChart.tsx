@@ -19,7 +19,8 @@ import {
   LabelList,
 } from "recharts";
 
-type Point = { date: string; value: number };
+// color : couleur de la barre (verdict) ; sinon vert à l'objectif, bleu en dessous
+type Point = { date: string; value: number; color?: string };
 
 function dayLabel(date: string, short: boolean): string {
   return new Intl.DateTimeFormat(
@@ -99,7 +100,7 @@ export function HistoryChart({
             {data.map((d, i) => (
               <Cell
                 key={d.date}
-                fill={target && d.value >= target.value ? "#34c759" : "#7ab8ff"}
+                fill={d.color ?? (target && d.value >= target.value ? "#34c759" : "#7ab8ff")}
                 fillOpacity={i === lastIndex ? 1 : 0.75}
               />
             ))}

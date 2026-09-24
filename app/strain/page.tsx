@@ -95,13 +95,18 @@ export default async function StrainPage({
       <DetailCard title="Ta journée">
         <StatGrid
           items={[
-            { label: hr ? "Charge cardio" : "Énergie active", value: `${Math.round(dayTotal)}${unit}` },
+            { label: hr ? "Charge cardio" : "Énergie active", value: `${Math.round(dayTotal)}${unit}`, color: strainColor(strain.score) },
             {
               label: "Ta moyenne",
               value: strain.hasBaseline ? `${strain.baselineAvg}${unit}` : "—",
               sub: "jours actifs, 30 j",
             },
-            { label: "Rapport", value: ratio != null ? `${ratio.toFixed(1).replace(".", ",")}×` : "—", sub: "ta moyenne" },
+            {
+              label: "Rapport",
+              value: ratio != null ? `${ratio.toFixed(1).replace(".", ",")}×` : "—",
+              sub: "ta moyenne",
+              color: ratio != null ? strainColor(strain.score) : undefined,
+            },
           ]}
         />
 
@@ -162,9 +167,14 @@ export default async function StrainPage({
             <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
               <StatGrid
                 items={[
-                  { label: "Moyenne", value: fmt1(Math.round(avg * 10) / 10) },
-                  { label: "Max", value: fmt1(Math.max(...scores)) },
-                  { label: "Jours ≥ 8", value: String(scores.filter((v) => v >= 8).length), sub: `sur ${scores.length}` },
+                  { label: "Moyenne", value: fmt1(Math.round(avg * 10) / 10), color: strainColor(avg) },
+                  { label: "Max", value: fmt1(Math.max(...scores)), color: strainColor(Math.max(...scores)) },
+                  {
+                    label: "Jours ≥ 8",
+                    value: String(scores.filter((v) => v >= 8).length),
+                    sub: `sur ${scores.length}`,
+                    color: strainColor(8),
+                  },
                 ]}
               />
             </div>

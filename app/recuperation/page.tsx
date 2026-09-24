@@ -2,6 +2,7 @@
 // (valeur, référence, note, poids réel) et son historique.
 
 import { getDashboardSnapshot } from "@/lib/dashboard-data";
+import { recoveryValueColor } from "@/lib/stat-colors";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isoDaysAgo } from "@/lib/dates";
 import { recoveryColor } from "@/lib/recovery-score";
@@ -149,9 +150,9 @@ export default async function RecuperationPage({
             <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
               <StatGrid
                 items={[
-                  { label: "Moyenne", value: fmt1(avg) },
-                  { label: "Max", value: fmt1(Math.max(...scores)) },
-                  { label: "Min", value: fmt1(Math.min(...scores)) },
+                  { label: "Moyenne", value: fmt1(avg), color: recoveryValueColor(avg) },
+                  { label: "Max", value: fmt1(Math.max(...scores)), color: recoveryValueColor(Math.max(...scores)) },
+                  { label: "Min", value: fmt1(Math.min(...scores)), color: recoveryValueColor(Math.min(...scores)) },
                 ]}
               />
             </div>

@@ -78,9 +78,9 @@ export default async function FormePage({
             <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
               <StatGrid
                 items={[
-                  { label: "Moyenne", value: fmtForm(avg), sub: formZone(avg).label },
-                  { label: "Max", value: fmtForm(maxP.form), sub: shortDate(maxP.date) },
-                  { label: "Min", value: fmtForm(minP.form), sub: shortDate(minP.date) },
+                  { label: "Moyenne", value: fmtForm(avg), sub: formZone(avg).label, color: formZone(avg).color },
+                  { label: "Max", value: fmtForm(maxP.form), sub: shortDate(maxP.date), color: formZone(maxP.form).color },
+                  { label: "Min", value: fmtForm(minP.form), sub: shortDate(minP.date), color: formZone(minP.form).color },
                 ]}
               />
             </div>

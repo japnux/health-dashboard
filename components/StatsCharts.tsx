@@ -32,6 +32,15 @@ import { Delta, StatGrid } from "@/components/detail/DetailBits";
 import { BodyTrendChart } from "@/components/charts/BodyTrendChart";
 import { CompositionBar } from "@/components/body/CompositionBits";
 import { FAT_COLOR, LEAN_COLOR, latestComposition } from "@/lib/body-composition";
+import {
+  DAYLIGHT_TARGET_MIN,
+  daylightColor,
+  deepSleepColor,
+  remSleepColor,
+  shareColor,
+  sleepDurationColor,
+  stepsColor,
+} from "@/lib/stat-colors";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -52,6 +61,7 @@ type DailyMetric = {
   sleep_end: string | null;
   steps: number | null;
   active_kcal: number | null;
+  daylight_min: number | null;
   cardio_load: number | null;
   recovery_score: number | null;
 };
@@ -469,11 +479,13 @@ function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
               label: "🚶 Pas / jour",
               value: steps != null ? Math.round(steps).toLocaleString("fr-FR") : "—",
               sub: vs(diff(steps, prevSteps), "up", (v) => Math.round(v).toLocaleString("fr-FR")),
+              color: steps != null ? stepsColor(steps) : undefined,
             },
             {
               label: "🔥 Kcal actives / jour",
               value: kcal != null ? String(Math.round(kcal)) : "—",
               sub: vs(diff(kcal, prevKcal), "up", (v) => String(Math.round(v))),
+              color: VIVID.orange,
             },
           ]}
         />
@@ -837,6 +849,15 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
   const durations = fullNights.map((n) => n.sleep_total_min!);
   const deep = avgOf(fullNights.map((n) => n.sleep_deep_pct));
   const rem = avgOf(fullNights.map((n) => n.sleep_rem_pct));
+  const onTarget = durations.filter((d) => d >= target).length;
+
+  // Lumière du jour (minutes passées dehors, mesurées par la montre)
+  const daylight = m.filter((d) => d.daylight_min != null && d.date <= data.today);
+  const daylightAvg = avgOf(daylight.map((d) => d.daylight_min));
+  const daylightDays = daylight.filter((d) => d.daylight_min! >= DAYLIGHT_TARGET_MIN).length;
+  const daylightMax = daylight.length > 0 ? Math.max(...daylight.map((d) => d.daylight_min!)) : null;
+  const prevEnd = comparableEnd(data, lastDayOf(data.endDate, data.today));
+  const prevDaylightAvg = avgOf(data.previousPeriod.dailyMetrics.filter((d) => d.date <= prevEnd).map((d) => d.daylight_min));
 
   // Régularité : écart-type de l'heure de coucher (23h et 1h restent voisins)
   const bedMinutes = m
@@ -881,7 +902,7 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
           <HistoryChart
             mode="bar"
             height={200}
-            points={nights.map((n) => ({ date: n.date, value: r1(n.sleep_total_min! / 60) }))}
+            points={nights.map((n) => ({ date: n.date, value: r1(n.sleep_total_min! / 60), color: sleepDurationColor(n.sleep_total_min!, target) }))}
             unit="h"
             decimals={1}
             target={{ value: target / 60, label: `objectif ${fmtHM(target)}` }}
@@ -890,10 +911,29 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
             <StatGrid
               cols={4}
               items={[
-                { label: "Moyenne", value: fmtHM(avgOf(durations)!) },
-                { label: "Objectif atteint", value: `${durations.filter((d) => d >= target).length}/${durations.length}`, sub: "nuits" },
-                { label: "Profond moy.", value: deep != null ? `${Math.round(deep)} %` : "—", sub: "vise ≥ 15 %" },
-                { label: "REM moy.", value: rem != null ? `${Math.round(rem)} %` : "—", sub: "vise ≥ 20 %" },
+                {
+                  label: "Moyenne",
+                  value: durations.length > 0 ? fmtHM(avgOf(durations)!) : "—",
+                  color: durations.length > 0 ? sleepDurationColor(avgOf(durations)!, target) : undefined,
+                },
+                {
+                  label: "Objectif atteint",
+                  value: `${onTarget}/${durations.length}`,
+                  sub: `nuits à ${fmtHM(target)} ou plus`,
+                  color: durations.length > 0 ? shareColor(onTarget / durations.length) : undefined,
+                },
+                {
+                  label: "Profond moy.",
+                  value: deep != null ? `${Math.round(deep)} %` : "—",
+                  sub: "vise ≥ 15 %",
+                  color: deep != null ? deepSleepColor(deep) : undefined,
+                },
+                {
+                  label: "REM moy.",
+                  value: rem != null ? `${Math.round(rem)} %` : "—",
+                  sub: "vise ≥ 20 %",
+                  color: rem != null ? remSleepColor(rem) : undefined,
+                },
               ]}
             />
           </div>
@@ -904,6 +944,43 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
               {bedMinutes.length} nuit{bedMinutes.length > 1 ? "s" : ""} avec horaires
             </p>
           )}
+        </ChartCard>
+      )}
+
+      {daylight.length > 0 && daylightAvg != null && (
+        <ChartCard title="☀️ Lumière du jour">
+          <HistoryChart
+            mode="bar"
+            height={180}
+            points={daylight.map((d) => ({ date: d.date, value: r1(d.daylight_min! / 60), color: daylightColor(d.daylight_min!) }))}
+            unit="h"
+            decimals={1}
+            target={{ value: DAYLIGHT_TARGET_MIN / 60, label: "vise 2 h" }}
+          />
+          <div className="mt-4">
+            <StatGrid
+              items={[
+                {
+                  label: "Moyenne / jour",
+                  value: fmtMinutes(Math.round(daylightAvg)),
+                  sub: diff(daylightAvg, prevDaylightAvg) != null ? (
+                    <Delta diff={diff(daylightAvg, prevDaylightAvg)} betterWhen="up" format={(v) => fmtMinutes(Math.round(v))} />
+                  ) : undefined,
+                  color: daylightColor(daylightAvg),
+                },
+                {
+                  label: "Jours ≥ 2 h",
+                  value: `${daylightDays}/${daylight.length}`,
+                  color: shareColor(daylightDays / daylight.length),
+                },
+                { label: "Max", value: fmtMinutes(daylightMax!), color: VIVID.yellow },
+              ]}
+            />
+          </div>
+          <p className="text-xs text-[var(--color-body)] mt-3">
+            Temps passé dehors, mesuré par la montre. La lumière naturelle cale ton horloge interne : elle aide à
+            s&apos;endormir plus tôt et à mieux dormir.
+          </p>
         </ChartCard>
       )}
     </>
@@ -1121,6 +1198,13 @@ function slopePerWeek(points: { date: string; value: number }[]): number | null 
 }
 
 // Sens d'une variation : couleur + mot (le poids seul ne dit pas si c'est bien)
+// Variation : vert dans le bon sens, rouge dans le mauvais, couleur de la
+// mesure quand il n'y a pas de bon sens (poids) ou qu'elle est stable
+function changeColor(change: number, better: "up" | "down" | "none", neutral: string): string {
+  if (Math.abs(change) < 0.2 || better === "none") return neutral;
+  return (better === "up") === change > 0 ? VIVID.green : VIVID.red;
+}
+
 function changeWord(change: number, better: "up" | "down" | "none"): React.ReactNode {
   if (Math.abs(change) < 0.2) return "stable";
   if (better === "none") return change > 0 ? "en hausse" : "en baisse";
@@ -1166,13 +1250,14 @@ function BodyStats({ bodies }: { bodies: BodyComp[] }) {
               <div className="mt-3">
                 <StatGrid
                   items={[
-                    { label: "Dernière", value: `${fr1(points[points.length - 1].value)} ${m.unit}` },
+                    { label: "Dernière", value: `${fr1(points[points.length - 1].value)} ${m.unit}`, color: m.color },
                     {
                       label: "Variation (tendance)",
                       value: change != null ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${fr1(Math.abs(change))} ${m.changeUnit}` : "—",
                       sub: change != null ? changeWord(change, m.better) : "3 mesures minimum",
+                      color: change != null ? changeColor(change, m.better, m.color) : undefined,
                     },
-                    { label: "Mesures", value: String(points.length) },
+                    { label: "Mesures", value: String(points.length), color: m.color },
                   ]}
                 />
               </div>

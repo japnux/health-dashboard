@@ -86,9 +86,9 @@ export default async function ChargePage({
             <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
               <StatGrid
                 items={[
-                  { label: "Moyenne", value: fmtRatio(avg), sub: balanceZone(avg).label },
-                  { label: "Max", value: fmtRatio(max), sub: balanceZone(max).label },
-                  { label: "Min", value: fmtRatio(min), sub: balanceZone(min).label },
+                  { label: "Moyenne", value: fmtRatio(avg), sub: balanceZone(avg).label, color: balanceZone(avg).color },
+                  { label: "Max", value: fmtRatio(max), sub: balanceZone(max).label, color: balanceZone(max).color },
+                  { label: "Min", value: fmtRatio(min), sub: balanceZone(min).label, color: balanceZone(min).color },
                 ]}
               />
             </div>

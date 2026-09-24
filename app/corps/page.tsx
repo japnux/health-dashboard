@@ -116,9 +116,14 @@ export default async function CorpsPage({
                 label: "Tendance",
                 value: formatSlope(trend, trendUnit),
                 sub: trend ? <TrendWord color={trendColor(kind, trend, objective)} /> : undefined,
+                color: trend ? trendColor(kind, trend, objective) : undefined,
               },
-              { label: `Sur ${period} j`, value: periodChange(trend, period, trendUnit) },
-              { label: "Mesures", value: String(pts.length) },
+              {
+                label: `Sur ${period} j`,
+                value: periodChange(trend, period, trendUnit),
+                color: trend ? trendColor(kind, trend, objective) : undefined,
+              },
+              { label: "Mesures", value: String(pts.length), color },
             ]}
           />
         </div>

@@ -68,7 +68,7 @@ function getPeriodRange(period: string, offset: number, tz: string) {
 
 // Colonnes de daily_metrics utilisées par les statistiques
 const METRIC_COLUMNS =
-  "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, wrist_temp_c, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, cardio_load, recovery_score";
+  "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, wrist_temp_c, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, cardio_load, recovery_score";
 const WORKOUT_COLUMNS =
   "id, started_at, type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_zone_min, hr_recovery, distance_km, max_speed_kmh";
 

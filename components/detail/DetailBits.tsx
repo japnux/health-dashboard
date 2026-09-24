@@ -2,7 +2,7 @@
 // mesures, sommeil) : même en-tête, mêmes cartes, même choix de période.
 
 import Link from "next/link";
-import { tint } from "@/lib/palette";
+import { tint, tintedBackground } from "@/lib/palette";
 import { BackButton } from "@/components/detail/BackButton";
 
 export function DetailPage({ children }: { children: React.ReactNode }) {
@@ -141,15 +141,24 @@ export function StatGrid({
   items,
   cols = 3,
 }: {
-  items: { label: string; value: string; sub?: React.ReactNode }[];
+  // color : verdict (vert, jaune, orange, rouge) ou couleur propre à la mesure ;
+  // sans couleur, pavé neutre
+  items: { label: string; value: string; sub?: React.ReactNode; color?: string }[];
   cols?: 2 | 3 | 4;
 }) {
   const grid = cols === 2 ? "grid-cols-2" : cols === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3";
   return (
     <div className={`grid ${grid} gap-2 sm:gap-3`}>
       {items.map((i) => (
-        <div key={i.label} className="min-w-0 rounded-[var(--radius-md)] bg-[#061b31]/[0.04] dark:bg-white/[0.06] px-3 py-2.5">
-          <p className="text-xs text-[var(--color-body)]">{i.label}</p>
+        <div
+          key={i.label}
+          className={`min-w-0 rounded-[var(--radius-md)] px-3 py-2.5 ${i.color ? "border" : "bg-[#061b31]/[0.04] dark:bg-white/[0.06]"}`}
+          style={i.color ? { background: tintedBackground(i.color, 0.7), borderColor: tint(i.color, 0.25) } : undefined}
+        >
+          <p className="flex items-baseline gap-1.5 text-xs text-[var(--color-body)] leading-snug">
+            {i.color && <span className="inline-block w-2 h-2 rounded-full shrink-0 translate-y-[-1px]" style={{ backgroundColor: i.color }} />}
+            <span>{i.label}</span>
+          </p>
           <p className="text-xl font-light tabular-nums text-[var(--color-heading)] dark:text-white">{i.value}</p>
           {i.sub && <div className="text-[11px] text-[var(--color-body)] mt-0.5">{i.sub}</div>}
         </div>

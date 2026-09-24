@@ -17,6 +17,7 @@ import {
 } from "@/components/detail/DetailBits";
 import { formatHour } from "@/lib/dates";
 import { isIncompleteNight } from "@/lib/recovery-score";
+import { deepSleepColor, remSleepColor, shareColor, sleepDurationColor, regularityColor } from "@/lib/stat-colors";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,8 @@ export default async function SommeilPage({
     const v = fullNights.map((n) => n[k]).filter((x): x is number => x != null);
     return v.length > 0 ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
   };
+  const deepAvg = avgOf("sleep_deep_pct");
+  const remAvg = avgOf("sleep_rem_pct");
 
   const bedtime = formatHour(snap.watch.bedtime, snap.tz);
   const wake = formatHour(snap.watch.wakeTime, snap.tz);
@@ -96,9 +99,9 @@ export default async function SommeilPage({
                 <StatGrid
                   cols={4}
                   items={[
-                    { label: "Profond", value: fmtHM((deep * total) / 100), sub: `${Math.round(deep)} % · vise ≥ 15 %` },
-                    { label: "REM", value: fmtHM((rem * total) / 100), sub: `${Math.round(rem)} % · vise ≥ 20 %` },
-                    { label: "Léger", value: fmtHM((light * total) / 100), sub: `${Math.round(light)} %` },
+                    { label: "Profond", value: fmtHM((deep * total) / 100), sub: `${Math.round(deep)} % · vise ≥ 15 %`, color: deepSleepColor(deep) },
+                    { label: "REM", value: fmtHM((rem * total) / 100), sub: `${Math.round(rem)} % · vise ≥ 20 %`, color: remSleepColor(rem) },
+                    { label: "Léger", value: fmtHM((light * total) / 100), sub: `${Math.round(light)} %`, color: "#7ab8ff" },
                     { label: "Éveillé", value: awakeMin != null ? `${awakeMin} min` : "—", sub: "hors temps de sommeil" },
                   ]}
                 />
@@ -114,6 +117,7 @@ export default async function SommeilPage({
                   {
                     label: "Régularité",
                     value: snap.watch.bedtimeSpreadMin != null ? `±${snap.watch.bedtimeSpreadMin} min` : "—",
+                    color: snap.watch.bedtimeSpreadMin != null ? regularityColor(snap.watch.bedtimeSpreadMin) : undefined,
                     sub:
                       snap.watch.bedtimeSpreadMin != null
                         ? `heure de coucher, ${snap.watch.bedtimeNights} nuits`
@@ -130,7 +134,11 @@ export default async function SommeilPage({
         <DetailCard title="Durée des nuits" right={<PeriodSwitch base="/sommeil" current={period} />}>
           <HistoryChart
             mode="bar"
-            points={nights.map((n) => ({ date: n.date, value: Math.round(((n.sleep_total_min as number) / 60) * 10) / 10 }))}
+            points={nights.map((n) => ({
+              date: n.date,
+              value: Math.round(((n.sleep_total_min as number) / 60) * 10) / 10,
+              color: sleepDurationColor(n.sleep_total_min as number, target),
+            }))}
             unit="h"
             decimals={1}
             target={{ value: target / 60, label: `objectif ${fmtHM(target)}` }}
@@ -140,10 +148,25 @@ export default async function SommeilPage({
               <StatGrid
                 cols={4}
                 items={[
-                  { label: "Moyenne", value: fmtHM(avg) },
-                  { label: "Objectif atteint", value: `${onTarget}/${durations.length}`, sub: "nuits" },
-                  { label: "Profond moy.", value: avgOf("sleep_deep_pct") != null ? `${avgOf("sleep_deep_pct")} %` : "—" },
-                  { label: "REM moy.", value: avgOf("sleep_rem_pct") != null ? `${avgOf("sleep_rem_pct")} %` : "—" },
+                  { label: "Moyenne", value: fmtHM(avg), color: sleepDurationColor(avg, target) },
+                  {
+                    label: "Objectif atteint",
+                    value: `${onTarget}/${durations.length}`,
+                    sub: `nuits à ${fmtHM(target)} ou plus`,
+                    color: durations.length > 0 ? shareColor(onTarget / durations.length) : undefined,
+                  },
+                  {
+                    label: "Profond moy.",
+                    value: deepAvg != null ? `${deepAvg} %` : "—",
+                    sub: "vise ≥ 15 %",
+                    color: deepAvg != null ? deepSleepColor(deepAvg) : undefined,
+                  },
+                  {
+                    label: "REM moy.",
+                    value: remAvg != null ? `${remAvg} %` : "—",
+                    sub: "vise ≥ 20 %",
+                    color: remAvg != null ? remSleepColor(remAvg) : undefined,
+                  },
                 ]}
               />
             </div>

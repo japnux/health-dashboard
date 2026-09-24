@@ -2,6 +2,7 @@
 // respiration, SpO₂) : valeur, position dans ta plage normale, historique.
 
 import { notFound } from "next/navigation";
+import { metricValueColor } from "@/lib/stat-colors";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo, isoDateMinusDays } from "@/lib/dates";
@@ -133,9 +134,9 @@ export default async function MesurePage({
             <div className="mt-4 pt-4 border-t border-black/5 dark:border-white/10">
               <StatGrid
                 items={[
-                  { label: "Moyenne", value: `${fmt(avg)} ${def.unit}` },
-                  { label: "Max", value: `${fmt(Math.max(...values))} ${def.unit}` },
-                  { label: "Min", value: `${fmt(Math.min(...values))} ${def.unit}` },
+                  { label: "Moyenne", value: `${fmt(avg)} ${def.unit}`, color: metricValueColor(def, avg, range) },
+                  { label: "Max", value: `${fmt(Math.max(...values))} ${def.unit}`, color: metricValueColor(def, Math.max(...values), range) },
+                  { label: "Min", value: `${fmt(Math.min(...values))} ${def.unit}`, color: metricValueColor(def, Math.min(...values), range) },
                 ]}
               />
             </div>
