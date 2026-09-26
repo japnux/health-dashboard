@@ -125,9 +125,14 @@ FORMAT :
    - Tu ne remplaces une activité planifiée par Repos QUE sur un signal d'alerte :
      indicators.recovery.score < 5, SpO2 < ${SPO2_ALERT} %, ou respiration "au-dessus de la plage" (indicators.bodyMetrics).
      Dans ce cas, la reason le dit explicitement : "Plan : <activité>. Déconseillé aujourd'hui car <signal>."
-   - Si hasPlannedActivities=true ET remainingPlanned vide → tout est fait → suggère Repos/Mobilité.
-     Si strain ≥ 6 ET tout est fait → repos/récupération active obligatoire.
-   - Si hasPlannedActivities=false → propose selon recovery, HRV, strain, sommeil.
+   - "Repos" dans plannedActivities n'est PAS une séance à faire : c'est le choix de ne plus s'entraîner
+     aujourd'hui (restPlanned=true). Il n'est jamais dans remainingPlanned.
+   - Si dayDone=true (repos choisi, plan fait, ou séance faite et 18h passées sans plan) → la journée d'entraînement est finie :
+     type = "Repos", intensity = "", duration = "". Aucune séance supplémentaire, pas de "mobilité 15 min".
+     reason = 1 phrase : constate la journée (séances faites, durée, charge) puis LE conseil de récupération le plus utile
+     pour ce soir (heure de coucher pour tenir l'objectif de sommeil, hydratation, étirements légers...).
+   - Si hasPlannedActivities=false ET dayDone=false → propose selon recovery, HRV, strain, sommeil.
+   - Toute suggestion "Repos" : intensity et duration vides (le repos n'a ni intensité ni durée).
    - type : nom normalisé (Surf, Musculation, Yoga, Course, Natation, Repos)
    - duration : avec unité (ex: "45 min")
    - reason : 1 phrase ; cite le plan s'il existe
@@ -270,10 +275,13 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     doneCountByType.set(normalized, (doneCountByType.get(normalized) ?? 0) + 1);
   }
 
-  // Calculer sessions restantes
+  // Calculer sessions restantes. "Repos" coché n'est pas une séance à faire :
+  // c'est le choix de ne plus s'entraîner aujourd'hui
+  const restPlanned = planned.some((p) => normalizeWorkoutType(p.type) === "repos");
   const completedToday: { type: string; count: number }[] = [];
   const remainingPlanned: { type: string; count: number }[] = [];
   for (const p of planned) {
+    if (normalizeWorkoutType(p.type) === "repos") continue;
     const done = doneCountByType.get(p.type.toLowerCase()) ?? 0;
     if (done > 0) {
       completedToday.push({ type: p.type, count: Math.min(done, p.count) });
@@ -351,6 +359,12 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
 
   const nowParis = new Date().toLocaleString("en-GB", { hour: "numeric", hour12: false, timeZone: tz });
   const currentHour = parseInt(nowParis, 10);
+
+  // Journée d'entraînement terminée : repos choisi, plan entièrement fait, ou
+  // (sans plan) une séance déjà faite et la soirée entamée
+  const planDone = planned.length > 0 && remainingPlanned.length === 0;
+  const eveningAfterSession = planned.length === 0 && currentHour >= 18;
+  const dayDone = restPlanned || (todayWorkouts.length > 0 && (planDone || eveningAfterSession));
 
   const todayMeals = (mealRes.data ?? []).filter((m) => m.date === today).map((m) => ({
     id: m.id,
@@ -460,6 +474,8 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     hasPlannedActivities: (plannedRes.data ?? []).length > 0,
     completedToday,
     remainingPlanned,
+    restPlanned,
+    dayDone,
     ...(JOURNAL_ENABLED ? { journal: journalRes.data ?? [] } : {}),
   };
 }
@@ -546,13 +562,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Réponse IA invalide" }, { status: 502 });
     }
 
+    const suggestion = (raw.workoutSuggestion ?? raw.workout_suggestion ?? {
+      type: "Repos", intensity: "", duration: "",
+      reason: "Données insuffisantes", factors: [],
+    }) as AiWorkoutReco;
+    // Garde-fou : journée finie = repos, et le repos n'a ni intensité ni durée
+    if (data.dayDone) suggestion.type = "Repos";
+    if (normalizeWorkoutType(suggestion.type ?? "") === "repos") {
+      suggestion.intensity = "";
+      suggestion.duration = "";
+    }
     const parsed = {
       trends: (Array.isArray(raw.trends) ? raw.trends : []) as AiTrend[],
       recommendations: (Array.isArray(raw.recommendations) ? raw.recommendations : []) as AiRecommendation[],
-      workoutSuggestion: (raw.workoutSuggestion ?? raw.workout_suggestion ?? {
-        type: "Repos", intensity: "légère", duration: "30 min",
-        reason: "Données insuffisantes", factors: [],
-      }) as AiWorkoutReco,
+      workoutSuggestion: suggestion,
     };
 
     const now = new Date().toISOString();

@@ -423,6 +423,8 @@ function WorkoutItem({
 }) {
   const [open, setOpen] = useState(false);
   const intensity = suggestion.intensity.toLowerCase();
+  // Repos : ni intensité ni durée, la phrase de récupération tient lieu de détail
+  const isRest = normalizeWorkoutType(suggestion.type) === "repos";
   // Grand écran : les détails s'ouvrent en panneau flottant, sans agrandir la
   // carte (la rangée et la colonne de gauche ne bougent pas)
   const detailsRef = useRef<HTMLDivElement>(null);
@@ -431,11 +433,11 @@ function WorkoutItem({
 
   return (
     <section
-      className={`rounded-[var(--radius-lg)] border ${INTENSITY_BG[intensity] ?? INTENSITY_BG["modérée"]} h-full`}
+      className={`rounded-[var(--radius-lg)] border ${isRest ? INTENSITY_BG.repos : (INTENSITY_BG[intensity] ?? INTENSITY_BG["modérée"])} h-full`}
       style={{ boxShadow: "var(--shadow-ambient)" }}
     >
       <h2 className="text-xs uppercase tracking-wide text-[var(--color-body)] font-normal px-5 pt-5">
-        Séance suggérée
+        {isRest ? "Suite de la journée" : "Séance suggérée"}
       </h2>
       <div ref={detailsRef} className="relative px-5 pb-4">
         <div className="flex items-start gap-3">
@@ -445,20 +447,26 @@ function WorkoutItem({
               <h3 className="font-normal text-base text-[var(--color-heading)] dark:text-white">
                 {displayWorkoutType(suggestion.type)}
               </h3>
-              <span
-                className={`text-xs font-normal px-2 py-0.5 rounded-[var(--radius-sm)] border ${INTENSITY_COLOR[intensity] ?? INTENSITY_COLOR["modérée"]}`}
-              >
-                {suggestion.intensity}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 mt-1">
-              <p className="text-xs text-[var(--color-body)]">
-                {/^\d+$/.test(suggestion.duration) ? `${suggestion.duration} min` : suggestion.duration}
-              </p>
-              {SPORTIGO_ENABLED && displayWorkoutType(suggestion.type) === "Musculation" && (
-                <MusculationBookButton />
+              {!isRest && suggestion.intensity && (
+                <span
+                  className={`text-xs font-normal px-2 py-0.5 rounded-[var(--radius-sm)] border ${INTENSITY_COLOR[intensity] ?? INTENSITY_COLOR["modérée"]}`}
+                >
+                  {suggestion.intensity}
+                </span>
               )}
             </div>
+            {isRest ? (
+              suggestion.reason && <p className="text-xs text-[var(--color-body)] mt-1 leading-snug">{suggestion.reason}</p>
+            ) : (
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-xs text-[var(--color-body)]">
+                  {/^\d+$/.test(suggestion.duration) ? `${suggestion.duration} min` : suggestion.duration}
+                </p>
+                {SPORTIGO_ENABLED && displayWorkoutType(suggestion.type) === "Musculation" && (
+                  <MusculationBookButton />
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -476,7 +484,7 @@ function WorkoutItem({
         </button>
         {open && (
         <div className="mt-3 md:absolute md:inset-x-3 md:top-full md:-mt-2 md:z-30 md:p-4 md:rounded-[var(--radius-lg)] md:border md:border-[var(--color-border)] md:dark:border-white/10 md:bg-white md:dark:bg-[#131c28] md:shadow-[var(--shadow-elevated)]">
-          {suggestion.reason && (
+          {!isRest && suggestion.reason && (
             <p className="text-sm text-[var(--color-body)] mb-3">{suggestion.reason}</p>
           )}
           {suggestion.factors.length > 0 && (

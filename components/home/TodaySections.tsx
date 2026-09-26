@@ -49,7 +49,9 @@ const RECOVERY_LEVEL: Record<string, string> = { green: "Bonne", yellow: "Moyenn
 
 // Phrase du jour : bâtie sur le niveau du Strain (mêmes seuils que la tuile)
 // et sur la récupération, pour ne jamais contredire les libellés affichés
-function heroText(color: string, strain: DashboardSnapshot["strain"]): string {
+// dayDone : séance déjà faite et 18h passées (même règle que la séance suggérée),
+// on ne pousse plus à s'entraîner
+function heroText(color: string, strain: DashboardSnapshot["strain"], dayDone: boolean): string {
   const today = strain.mode === "hr" ? (strain.cardioLoad ?? 0) : strain.activeKcalToday;
   const ratio = strain.hasBaseline && strain.baselineAvg > 0 ? today / strain.baselineAvg : null;
   const times = ratio != null ? ` : ${ratio.toFixed(1).replace(".", ",")}× ta charge habituelle` : "";
@@ -59,10 +61,12 @@ function heroText(color: string, strain: DashboardSnapshot["strain"]): string {
     case "high":
       return `Journée chargée${times}. Garde la suite légère et soigne ta nuit.`;
     case "moderate":
+      if (dayDone) return "Journée active, dans ta moyenne. Séance faite : place à la récupération ce soir.";
       return color === "green"
         ? "Journée active, dans ta moyenne. Tu as encore de la marge si tu veux une séance de plus."
         : "Journée active, dans ta moyenne. Garde la suite de la journée légère.";
   }
+  if (dayDone) return "Séance faite. Place à la récupération ce soir.";
   if (color === "green") return "Bon jour pour une séance exigeante.";
   if (color === "yellow") return "Une séance modérée passera bien ; évite l'intensité maximale.";
   if (color === "red") return "Privilégie une séance légère, de la mobilité ou du repos.";
@@ -111,6 +115,8 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const color = recoveryColor(snap.recovery.score);
   const strain = snap.strain;
   const workoutsToday = snap.recentWorkouts.filter((w) => dateInTz(w.started_at, snap.tz) === snap.date).length;
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: snap.tz }).format(new Date()));
+  const dayDone = workoutsToday > 0 && hour >= 18;
 
   // Sommeil : anneau = durée rapportée à l'objectif, couleur = qualité
   const t = snap.today;
@@ -126,7 +132,7 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
       <p className="text-lg text-[var(--color-heading)] dark:text-white pt-2">{RECOVERY_TITLE[color]}</p>
       {/* Phrase du jour : sous le titre sur mobile, sous les tuiles sur grand
           écran (les tuiles démarrent alors à la hauteur de la carte voisine) */}
-      <p className="text-sm text-[var(--color-body)] leading-relaxed -mt-2 md:mt-0 md:order-last">{heroText(color, strain)}</p>
+      <p className="text-sm text-[var(--color-body)] leading-relaxed -mt-2 md:mt-0 md:order-last">{heroText(color, strain, dayDone)}</p>
       <div className="flex-1 grid grid-cols-3 gap-3 sm:gap-4">
         <ScoreTile
           href="/recuperation"

@@ -85,6 +85,8 @@ const WORKOUT_DISPLAY: Record<string, { label: string; emoji: string }> = {
   racquetball: { label: "Racquetball", emoji: "🎾" },
   tennis: { label: "Tennis", emoji: "🎾" },
   sauna: { label: "Sauna", emoji: "🥵" },
+  repos: { label: "Repos", emoji: "😴" },
+  mobilité: { label: "Mobilité", emoji: "🧘" },
 };
 
 /** Normalise un type de workout DB vers un type planned activity */
