@@ -148,7 +148,7 @@ async function main() {
   if (!DRY) {
     const dates = [...hourly.keys()].sort();
     for (const date of dates) {
-      const line = await recomputeDailyLoad(supabase, date, hrMax);
+      const line = await recomputeDailyLoad(supabase, date);
       if (line?.includes("erreur")) console.error(line);
     }
     console.log(`charge recalculée sur ${dates.length} jours (${dates[0]} → ${dates[dates.length - 1]})`);

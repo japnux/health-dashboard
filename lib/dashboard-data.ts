@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/service";
 import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
+import { sessionLoadByDay } from "@/lib/cardio-load";
 import { getUserTz } from "@/lib/user-tz";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { balanceZone, loadBalanceSeries, type BalanceLevel } from "@/lib/load-balance";
@@ -271,15 +272,14 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       .select("created_at")
       .order("created_at", { ascending: false })
       .limit(1),
-    // Charge cardio sur un an : la moyenne exponentielle 42 j a le temps de
-    // se stabiliser
+    // Charge d'entraînement (séances seulement) sur un an : la moyenne
+    // exponentielle 42 j a le temps de se stabiliser
     supabase
-      .from("daily_metrics")
-      .select("date, cardio_load")
+      .from("workouts")
+      .select("started_at, cardio_load")
       .not("cardio_load", "is", null)
-      .gte("date", isoDaysAgo(365, tz))
-      .lte("date", date)
-      .order("date", { ascending: true }),
+      .gte("started_at", localMidnightUtcIso(isoDaysAgo(365, tz), tz))
+      .order("started_at", { ascending: true }),
   ]);
 
   // Une requête en échec ne doit pas passer pour "pas de données" : on la
@@ -565,8 +565,8 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
     watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60, tz),
-    loadBalance: computeLoadBalance(loadRows ?? [], date),
-    form: computeForm(loadRows ?? [], date),
+    loadBalance: computeLoadBalance(sessionLoadByDay(loadRows ?? [], tz), date),
+    form: computeForm(sessionLoadByDay(loadRows ?? [], tz), date),
     bodyMetrics: BODY_METRICS.map((def) => {
       const value = (today?.[def.column] as number | null | undefined) ?? null;
       const past = baseline60.map((r) => (r as Record<string, unknown>)[def.column] as number | null);

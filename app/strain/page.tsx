@@ -153,7 +153,7 @@ export default async function StrainPage({
             </div>
             <p className="text-[11px] text-[var(--color-body)]">
               {hr
-                ? "Hors séances : effort mesuré par ta FC le reste de la journée (marche, vélo, escaliers…)."
+                ? "Hors séances : estimé à partir des kcal actives de la montre le reste de la journée (marche, vélo, escaliers…)."
                 : "Pas assez de fréquence cardiaque aujourd'hui : le Strain est calculé sur l'énergie active."}
             </p>
           </div>

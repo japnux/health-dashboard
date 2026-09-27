@@ -5,6 +5,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo } from "@/lib/dates";
+import { sessionLoadRows } from "@/lib/cardio-load";
 import {
   ACUTE_DAYS,
   BALANCE_ZONES,
@@ -45,13 +46,14 @@ export default async function ChargePage({
   const tz = await getUserTz(supabase);
   const today = todayIso(tz);
 
-  const { data, error } = await supabase
-    .from("daily_metrics")
-    .select("date, cardio_load")
-    .not("cardio_load", "is", null)
-    .gte("date", isoDaysAgo(365, tz))
-    .lte("date", today)
-    .order("date", { ascending: true });
+  // Charge d'entraînement : séances seulement (lib/cardio-load)
+  let data: { date: string; cardio_load: number }[] = [];
+  let error = false;
+  try {
+    data = await sessionLoadRows(supabase, isoDaysAgo(365, tz), today, tz);
+  } catch {
+    error = true;
+  }
 
   const series = error ? [] : loadBalanceSeries(data ?? [], today);
   const withRatio = series.filter((p): p is typeof p & { ratio: number } => p.ratio != null);
@@ -113,6 +115,11 @@ export default async function ChargePage({
           <p>
             Le ratio de charge compare ce que tu as fait ces derniers jours à ce à quoi ton corps est habitué. Il dit si
             tu maintiens, augmentes ou dépasses ta capacité.
+          </p>
+          <p>
+            Seules tes séances comptent (charge cardio de chaque séance). La marche et l&apos;activité du quotidien
+            n&apos;entrent pas dans ce calcul : elles pèsent peu sur le risque de blessure. Elles restent comptées dans
+            le Strain du jour.
           </p>
           <div className="rounded-[var(--radius-md)] bg-[var(--color-border)]/30 dark:bg-white/5 p-4">
             <p className="text-lg text-[var(--color-heading)] dark:text-white">Ratio = charge aiguë ÷ charge chronique</p>

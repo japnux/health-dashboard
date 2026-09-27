@@ -5,6 +5,7 @@ import { todayIso, isoDateMinusDays, localMidnightUtcIso } from "@/lib/dates";
 import { getUserTz } from "@/lib/user-tz";
 import { computeDayStrain } from "@/lib/strain-score";
 import { loadBalanceSeries } from "@/lib/load-balance";
+import { sessionLoadRows } from "@/lib/cardio-load";
 import { formSeries } from "@/lib/form";
 import { BODY_METRICS, metricRange, metricStatus } from "@/lib/body-metrics";
 import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
@@ -148,8 +149,9 @@ export async function GET(request: Request) {
 
     // Équilibre de charge et forme de chaque jour (lib/load-balance, lib/form)
     const lastDay = current.end < userToday ? current.end : userToday;
+    // Ratio de charge et forme : séances seulement (lib/cardio-load)
     const balance = loadBalanceSeries(
-      loadRows.filter((r) => r.cardio_load != null),
+      await sessionLoadRows(supabase, isoDateMinusDays(prev.start, 365), lastDay, tz),
       lastDay,
     );
     const formByDate = new Map(formSeries(balance).map((p) => [p.date, p.form]));

@@ -3,6 +3,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { getUserTz } from "@/lib/user-tz";
 import { todayIso, isoDaysAgo } from "@/lib/dates";
+import { sessionLoadRows } from "@/lib/cardio-load";
 import { loadBalanceSeries } from "@/lib/load-balance";
 import { FORM_ZONES, formSeries, formZone } from "@/lib/form";
 import { ZonedLineChart } from "@/components/charts/ZonedLineChart";
@@ -30,13 +31,14 @@ export default async function FormePage({
   const tz = await getUserTz(supabase);
   const today = todayIso(tz);
 
-  const { data, error } = await supabase
-    .from("daily_metrics")
-    .select("date, cardio_load")
-    .not("cardio_load", "is", null)
-    .gte("date", isoDaysAgo(365, tz))
-    .lte("date", today)
-    .order("date", { ascending: true });
+  // Charge d'entraînement : séances seulement (lib/cardio-load)
+  let data: { date: string; cardio_load: number }[] = [];
+  let error = false;
+  try {
+    data = await sessionLoadRows(supabase, isoDaysAgo(365, tz), today, tz);
+  } catch {
+    error = true;
+  }
 
   const series = error ? [] : formSeries(loadBalanceSeries(data ?? [], today));
   const latest = series[series.length - 1] ?? null;

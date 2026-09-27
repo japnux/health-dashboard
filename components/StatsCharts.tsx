@@ -660,33 +660,31 @@ function TrainingTab({ data, period }: { data: StatsPayload; period: Period }) {
   );
 }
 
-// Charge cardio empilée par sport, plus l'activité hors séances (même
-// décomposition que la page Strain)
+// Charge d'entraînement empilée par sport (séances seulement, comme le ratio
+// de charge et la forme). L'activité du quotidien est dans les pas et kcal.
 function LoadBySport({ data, period }: { data: StatsPayload; period: Period }) {
   const lastDay = lastDayOf(data.endDate, data.today);
   const sports = new Map<string, string>(); // clé normalisée → libellé
   const buckets = new Map<string, Record<string, number>>();
-  const add = (key: string, sport: string, v: number) => {
-    const b = buckets.get(key) ?? {};
-    b[sport] = (b[sport] ?? 0) + v;
-    buckets.set(key, b);
-  };
-  // Charge des séances par jour, pour déduire le hors-séances
-  const workoutLoadByDay = new Map<string, number>();
+  // Tous les jours de la période, même sans séance (barre vide)
+  for (const p of data.loadSeries) {
+    if (!inPeriod(p.date, data.startDate, lastDay)) continue;
+    const key = bucketKey(p.date, period);
+    if (!buckets.has(key)) buckets.set(key, {});
+  }
+  let sessions = 0;
   for (const w of data.workouts) {
     if (w.cardio_load == null) continue;
     const day = dateInTz(w.started_at, data.tz);
+    if (!inPeriod(day, data.startDate, lastDay)) continue;
     const sport = normalizeWorkoutType(w.type);
     sports.set(sport, workoutDisplayLabel(w.type));
-    add(bucketKey(day, period), sport, w.cardio_load);
-    workoutLoadByDay.set(day, (workoutLoadByDay.get(day) ?? 0) + w.cardio_load);
+    const b = buckets.get(bucketKey(day, period)) ?? {};
+    b[sport] = (b[sport] ?? 0) + w.cardio_load;
+    buckets.set(bucketKey(day, period), b);
+    sessions++;
   }
-  for (const p of data.loadSeries) {
-    if (!inPeriod(p.date, data.startDate, lastDay) || p.load == null) continue;
-    const rest = Math.max(0, p.load - (workoutLoadByDay.get(p.date) ?? 0));
-    add(bucketKey(p.date, period), "_hors", rest);
-  }
-  if (buckets.size === 0) return null;
+  if (sessions === 0) return null;
 
   const keys = [...sports.keys()];
   const chartData = [...buckets.entries()]
@@ -698,8 +696,8 @@ function LoadBySport({ data, period }: { data: StatsPayload; period: Period }) {
   return (
     <ChartCard title={title}>
       <p className="text-sm text-[var(--color-body)] mb-3">
-        Total <span className="text-[var(--color-heading)] dark:text-white">{Math.round(total)}</span>, dont{" "}
-        {Math.round((1 - [...buckets.values()].reduce((a, b) => a + (b._hors ?? 0), 0) / Math.max(1, total)) * 100)} % en séance.
+        Total <span className="text-[var(--color-heading)] dark:text-white">{Math.round(total)}</span> sur {sessions} séance
+        {sessions > 1 ? "s" : ""}.
       </p>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={chartData}>
@@ -709,16 +707,20 @@ function LoadBySport({ data, period }: { data: StatsPayload; period: Period }) {
           <Tooltip
             cursor={{ fill: "rgba(100,116,141,0.08)" }}
             {...TOOLTIP_PROPS}
-            formatter={(val, name) => [String(val), name === "_hors" ? "Hors séances" : sports.get(String(name)) ?? String(name)]}
+            formatter={(val, name) => [String(val), sports.get(String(name)) ?? String(name)]}
           />
-          <Legend
-            wrapperStyle={{ fontSize: 11 }}
-            formatter={(v: string) => (v === "_hors" ? "Hors séances" : `${workoutEmoji(v)} ${sports.get(v) ?? v}`)}
-          />
+          <Legend wrapperStyle={{ fontSize: 11 }} formatter={(v: string) => `${workoutEmoji(v)} ${sports.get(v) ?? v}`} />
           {keys.map((k) => (
-            <Bar key={k} dataKey={k} stackId="load" fill={sportColor(k)} strokeWidth={2} className="stroke-white dark:stroke-[#0d1520]" />
+            <Bar
+              key={k}
+              dataKey={k}
+              stackId="load"
+              fill={sportColor(k)}
+              strokeWidth={2}
+              className="stroke-white dark:stroke-[#0d1520]"
+              radius={[4, 4, 0, 0]}
+            />
           ))}
-          <Bar dataKey="_hors" stackId="load" fill="#c7c7cc" strokeWidth={2} className="stroke-white dark:stroke-[#0d1520]" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </ChartCard>

@@ -484,7 +484,7 @@ export async function POST(request: Request) {
 
   const supabase = createServiceClient();
   const results: string[] = [...skippedSleep];
-  // FC max de référence pour la charge cardio (séances et fond)
+  // FC max de référence pour la charge cardio des séances
   const hrMax = await getHrMax(supabase);
   // Jours dont la charge cardio doit être recalculée en fin de traitement
   const loadDates = new Set<string>();
@@ -653,7 +653,8 @@ export async function POST(request: Request) {
       results.push(`daily_metrics ${date}: erreur ${error.message}`);
     } else {
       results.push(`daily_metrics ${date}: ok (recovery ${recovery.score ?? "n/a"}/10)`);
-      if (day.hr_hourly) loadDates.add(date);
+      // Kcal actives reçues : la charge de la journée (Strain) change
+      loadDates.add(date);
       // Le jour suivant du même envoi s'appuie sur ces valeurs
       history.set(date, { ...(existing ?? { date }), ...dayFields, date } as HistoryRow);
     }
@@ -765,7 +766,7 @@ export async function POST(request: Request) {
     );
     if (!error) {
       workoutCount++;
-      if (wLoad) loadDates.add(extractDate(startStr));
+      loadDates.add(extractDate(startStr));
       // Détails (courbe FC, récupération, tracé GPS) : écrits à part pour qu'un
       // souci sur ces colonnes n'empêche jamais d'enregistrer la séance
       const details = extractWorkoutDetails(wo);
@@ -781,9 +782,9 @@ export async function POST(request: Request) {
   }
   if (workoutCount > 0) results.push(`workouts: ${workoutCount} insérés`);
 
-  // ── Charge cardio des jours touchés (FC horaire + séances en base) ──
+  // ── Charge de la journée des jours touchés (séances + kcal hors séances) ──
   for (const date of loadDates) {
-    const line = await recomputeDailyLoad(supabase, date, hrMax);
+    const line = await recomputeDailyLoad(supabase, date);
     if (line) results.push(line);
   }
 
