@@ -76,7 +76,6 @@ type Workout = {
   avg_hr_bpm: number | null;
   cardio_load: number | null;
   hr_zone_min?: number[] | null; // minutes par zone de FC (50-60 … 90-100 % FC max)
-  hr_drop_1min: number | null; // baisse de FC 1 min après la fin
   distance_km: number | null;
   max_speed_kmh: number | null;
 };
@@ -745,7 +744,6 @@ function SportTable({ workouts }: { workouts: Workout[] }) {
           const minutes = ws.reduce((a, w) => a + (w.duration_min ?? 0), 0);
           const load = avgOf(ws.map((w) => w.cardio_load));
           const hr = avgOf(ws.map((w) => w.avg_hr_bpm));
-          const drop = avgOf(ws.map((w) => w.hr_drop_1min));
           const dist = ws.reduce((a, w) => a + Number(w.distance_km ?? 0), 0);
           const vmax = Math.max(0, ...ws.map((w) => Number(w.max_speed_kmh ?? 0)));
           return (
@@ -764,20 +762,12 @@ function SportTable({ workouts }: { workouts: Workout[] }) {
               <div className="grid grid-cols-3 gap-2 mt-2 text-xs">
                 <Mini label="Charge moy." value={load != null ? String(Math.round(load)) : "—"} />
                 <Mini label="FC moy." value={hr != null ? `${Math.round(hr)} bpm` : "—"} />
-                <Mini
-                  label="Récup. 1 min"
-                  value={drop != null ? `${drop >= 0 ? "−" : "+"}${Math.abs(Math.round(drop))} bpm` : "—"}
-                />
                 {dist > 0 && <Mini label="Distance" value={`${fr1(dist)} km`} />}
                 {vmax > 0 && <Mini label="Vitesse max" value={`${fr1(vmax)} km/h`} />}
               </div>
             </div>
           );
         })}
-        <p className="text-[10px] text-[var(--color-body)]">
-          Récup. 1 min : baisse de FC dans la minute après la séance. À comparer d&apos;une période à l&apos;autre pour un même
-          sport : une baisse plus forte signe une meilleure forme cardio.
-        </p>
       </div>
     </ChartCard>
   );

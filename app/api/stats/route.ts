@@ -8,7 +8,6 @@ import { loadBalanceSeries } from "@/lib/load-balance";
 import { sessionLoadRows } from "@/lib/cardio-load";
 import { formSeries } from "@/lib/form";
 import { BODY_METRICS, metricRange, metricStatus } from "@/lib/body-metrics";
-import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 
 
@@ -71,7 +70,7 @@ function getPeriodRange(period: string, offset: number, tz: string) {
 const METRIC_COLUMNS =
   "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, wrist_temp_c, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, cardio_load, recovery_score";
 const WORKOUT_COLUMNS =
-  "id, started_at, type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_zone_min, hr_recovery, distance_km, max_speed_kmh";
+  "id, started_at, type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_zone_min, distance_km, max_speed_kmh";
 
 export async function GET(request: Request) {
   if (!(await isAuthenticated())) {
@@ -189,9 +188,6 @@ export async function GET(request: Request) {
       return { key: def.key, points };
     });
 
-    const withRecovery = (w: { hr_recovery?: unknown }) =>
-      heartRateRecoveryDrop(w.hr_recovery as RecoveryPoint[] | null)?.drop1 ?? null;
-
     return NextResponse.json({
       period,
       offset,
@@ -205,10 +201,9 @@ export async function GET(request: Request) {
       loadSeries,
       nightMetrics,
       dailyMetrics: allMetrics.filter((r) => inRange(r.date, current)),
-      workouts: (workoutsRes.data ?? []).map(({ hr_recovery, ...w }) => ({
+      workouts: (workoutsRes.data ?? []).map((w) => ({
         ...w,
         cardio_load: w.cardio_load != null ? Math.round(Number(w.cardio_load)) : null,
-        hr_drop_1min: withRecovery({ hr_recovery }),
       })),
       bodyComposition: bodyRes.data ?? [],
       previousPeriod: {

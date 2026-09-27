@@ -75,7 +75,7 @@ export function HistoryChart({
             y2={band.high}
             fill="#34c759"
             fillOpacity={0.12}
-            label={{ value: "ta plage normale", position: "insideTopLeft", fontSize: 10, fill: "#1f7a3a" }}
+            label={{ value: "ta plage normale", position: "insideTopLeft", fontSize: 10, fill: "#1f7a3a", className: "dark:fill-[#6ee7a0]" }}
           />
         )}
         {target && (
@@ -83,7 +83,7 @@ export function HistoryChart({
             y={target.value}
             stroke="#34c759"
             strokeDasharray="4 4"
-            label={{ value: target.label, position: "insideTopRight", fontSize: 10, fill: "#1f7a3a" }}
+            label={{ value: target.label, position: "insideTopRight", fontSize: 10, fill: "#1f7a3a", className: "dark:fill-[#6ee7a0]" }}
           />
         )}
         <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.4} vertical={false} />
@@ -111,7 +111,13 @@ export function HistoryChart({
               />
             ))}
             {short && (
-              <LabelList dataKey="value" position="top" formatter={(v) => fmt(Number(v))} style={{ fontSize: 10, fill: "#64748d" }} />
+              <LabelList
+                dataKey="value"
+                position="top"
+                formatter={(v) => fmt(Number(v))}
+                fontSize={10}
+                className="fill-[#64748d] dark:fill-[#c7cbd1]"
+              />
             )}
           </Bar>
         ) : (

@@ -82,7 +82,7 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
                 fill={z.color}
                 fillOpacity={0.1}
                 ifOverflow="hidden"
-                label={{ value: z.label, position: "insideRight", fontSize: 10, fill: "#71717a" }}
+                label={{ value: z.label, position: "insideRight", fontSize: 10, fill: "#71717a", className: "dark:fill-[#c7cbd1]" }}
               />
             );
           })}
@@ -110,7 +110,7 @@ export function WorkoutHrChart({ series, hrMax }: { series: [number, number, num
             y={meanHr}
             stroke="#a1a1aa"
             strokeWidth={1.5}
-            label={{ value: `moy. ${meanHr}`, position: "insideTopLeft", fontSize: 11, fill: "#52525b" }}
+            label={{ value: `moy. ${meanHr}`, position: "insideTopLeft", fontSize: 11, fill: "#52525b", className: "dark:fill-[#c7cbd1]" }}
           />
           <Line
             type="monotone"

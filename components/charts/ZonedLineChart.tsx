@@ -105,8 +105,10 @@ export function ZonedLineChart({ points, kind }: { points: Point[]; kind: Kind }
               value: z.label,
               position: z.level === "low" || z.level === "high_risk" || z.level === "red" ? "insideBottomLeft" : "insideTopLeft",
               fontSize: 10,
-              // Libellé en gris lisible : le jaune ou le vert anis seraient illisibles en texte
+              // Libellé en gris lisible : le jaune ou le vert anis seraient illisibles en texte ;
+              // gris clair en mode sombre (la classe l'emporte sur l'attribut fill)
               fill: "#52525b",
+              className: "dark:fill-[#c7cbd1]",
             }}
           />
         ))}
