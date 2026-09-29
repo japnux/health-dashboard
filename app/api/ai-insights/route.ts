@@ -132,7 +132,7 @@ FORMAT :
    - Si dayDone=true (repos choisi, plan fait, ou séance faite et 18h passées sans plan) → la journée d'entraînement est finie :
      type = "Repos", intensity = "", duration = "". Aucune séance supplémentaire, pas de "mobilité 15 min".
      reason = 1 phrase : constate la journée (séances faites, durée, charge) puis LE conseil de récupération le plus utile
-     pour ce soir (heure de coucher pour tenir l'objectif de sommeil, hydratation, étirements légers...).
+     pour ce soir (heure de coucher pour couvrir son besoin de sommeil, hydratation, étirements légers...).
    - Si hasPlannedActivities=false ET dayDone=false → propose selon recovery, HRV, strain, sommeil.
    - Toute suggestion "Repos" : intensity et duration vides (le repos n'a ni intensité ni durée).
    - type : nom normalisé (Surf, Musculation, Yoga, Course, Natation, Repos)

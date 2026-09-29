@@ -149,6 +149,10 @@ export function deepRange(history: SleepRow[]): PersonalRange | null {
   return rangeOf(history.filter(isCompleteNight).map((r) => nightPhases(r)?.deepMin).filter((v): v is number => v != null));
 }
 
+export function remRange(history: SleepRow[]): PersonalRange | null {
+  return rangeOf(history.filter(isCompleteNight).map((r) => nightPhases(r)?.remMin).filter((v): v is number => v != null));
+}
+
 export function awakeRange(history: SleepRow[]): PersonalRange | null {
   return rangeOf(history.filter(isCompleteNight).map((r) => nightPhases(r)?.awakeMin).filter((v): v is number => v != null));
 }

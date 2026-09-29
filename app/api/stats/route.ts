@@ -205,7 +205,8 @@ export async function GET(request: Request) {
       scores: sleepScores,
       sri: sleepRegularityIndex(sleepRows, lastDay, tz, periodDays),
       bedtimeSpreadMin: bedtimeSpread(sleepRows.filter((r) => inRange(r.date, current)), tz),
-      deepRange: deepRange(sleepRows.filter((r) => r.date < current.start && r.date >= isoDateMinusDays(current.start, 60))),
+      // Même référence que l'accueil : les 60 nuits précédant le dernier jour
+      deepRange: deepRange(sleepRows.filter((r) => r.date < lastDay && r.date >= isoDateMinusDays(lastDay, 60))),
       debt: sleepDebt(sleepRows, lastDay, sleepNeed),
     };
 

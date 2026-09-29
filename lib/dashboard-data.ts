@@ -13,6 +13,7 @@ import {
   awakeRange,
   bedtimeSpread,
   deepRange,
+  remRange,
   isCompleteNight,
   napMinutes,
   nightPhases,
@@ -204,6 +205,7 @@ export type SleepSummary = {
   window: SleepWindow | null; // coucher, lever, milieu de nuit
   napMinYesterday: number; // siestes de la veille (comptent dans la dette)
   deepRange: PersonalRange | null;
+  remRange: PersonalRange | null;
   awakeRange: PersonalRange | null;
   debt: SleepDebt;
   sri: number | null; // régularité 14 j (0-100)
@@ -741,6 +743,7 @@ function computeSleepSummary(
     window: night ? sleepWindow(night, tz) : null,
     napMinYesterday: yesterday ? napMinutes(yesterday as unknown as SleepRow) : 0,
     deepRange: deepRange(history),
+    remRange: remRange(history),
     awakeRange: awakeRange(history),
     debt: sleepDebt(nights, date, needMin),
     sri: sleepRegularityIndex(nights, date, tz),

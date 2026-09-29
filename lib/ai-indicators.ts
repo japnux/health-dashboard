@@ -27,7 +27,8 @@ export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement
   Phases : la montre sous-estime le sommeil profond (25 à 40 min) et n'en reconnaît qu'environ la moitié ; ses minutes ne
   dépendent presque pas de la durée de la nuit, donc son POURCENTAGE baisse mécaniquement sur une longue nuit.
   JAMAIS de jugement du profond en % ni face à une norme de laboratoire : seulement deepMin face à deepUsualRange
-  (plage de l'utilisateur). REM : repère 20 % de la nuit (norme 20-25 %), il se loge en fin de nuit (une nuit écourtée le coupe).
+  (plage de l'utilisateur). REM : repère 20 % de la nuit (norme 20-25 %) ; "plage habituelle" uniquement via remUsualRange.
+  Il se loge en fin de nuit (une nuit écourtée le coupe). N'invente jamais de plage : sans valeur fournie, pas de comparaison.
   Nuit "incomplete" (moins de 3 h enregistrées, montre retirée) : ne commente pas sa durée ni ses phases.
   Régularité : sri ≥ 81 bon (médiane de 61 000 personnes), < 72 irrégulier ; elle prédit la santé mieux que la durée.
 - Séances : indicators.todayWorkouts donne charge cardio, FC moyenne et hrDrop1min (baisse de FC 1 min après la fin de la
@@ -108,6 +109,7 @@ function sleepIndicators(snap: DashboardSnapshot) {
     deepMin: min(p?.deepMin),
     deepUsualRange: s.deepRange ? `${Math.round(s.deepRange.low)}-${Math.round(s.deepRange.high)} min` : null,
     remMin: min(p?.remMin),
+    remUsualRange: s.remRange ? `${Math.round(s.remRange.low)}-${Math.round(s.remRange.high)} min` : null,
     remPct: p?.remPct != null ? Math.round(p.remPct) : null,
     awakeMin: min(p?.awakeMin),
     napMinYesterday: s.napMinYesterday || null,

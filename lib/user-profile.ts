@@ -39,7 +39,7 @@ export function profileToPromptBlock(p: UserProfile): string {
   if (p.objective) lines.push(`Objectif : ${p.objective}`);
   if (p.activity) lines.push(`Activité principale : ${p.activity}`);
   if (p.goals) lines.push(`Objectifs : ${p.goals}`);
-  lines.push(`Objectif sommeil : ${Math.floor(p.sleepTargetMin / 60)}h${(p.sleepTargetMin % 60).toString().padStart(2, "0")}`);
+  lines.push(`Besoin de sommeil : ${Math.floor(p.sleepTargetMin / 60)}h${(p.sleepTargetMin % 60).toString().padStart(2, "0")}`);
   lines.push(`Objectif pas : ${p.stepsTarget}/jour`);
 
   if (lines.length === 0) return "";

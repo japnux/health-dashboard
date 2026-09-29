@@ -397,7 +397,9 @@ function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
   // Nuits incomplètes (moins de 3 h) exclues des moyennes
   const fullSleep = (rows: DailyMetric[]) => rows.map((d) => (isIncompleteNight(d.sleep_total_min) ? null : d.sleep_total_min));
   const sleep = avgOf(fullSleep(m));
-  const prevSleep = avgOf(fullSleep(pm));
+  // Score de sommeil moyen (/100, lib/sleep), comparé aux mêmes jours de la période précédente
+  const sleepScoreAvg = avgOf(data.sleep.scores.filter((p) => inPeriod(p.date, data.startDate, lastDay)).map((p) => p.score));
+  const prevSleepScoreAvg = avgOf(data.sleep.scores.filter((p) => inPeriod(p.date, data.previousPeriod.startDate, prevEnd)).map((p) => p.score));
   const hrv = avgOf(m.map((d) => d.hrv_ms));
   const prevHrv = avgOf(pm.map((d) => d.hrv_ms));
   const steps = avgOf(m.map((d) => d.steps));
@@ -472,9 +474,15 @@ function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
         />
         <KpiTile
           label="Sommeil"
-          value={sleep != null ? fmtHM(sleep) : "—"}
-          color={sleep == null ? VIVID.gray : sleepDurationColor(sleep, data.sleepTargetMin)}
-          sub={vs(diff(sleep, prevSleep), "up", (v) => `${Math.round(v)} min`)}
+          value={sleepScoreAvg != null ? String(Math.round(sleepScoreAvg)) : "—"}
+          unit="/100"
+          color={sleepScoreAvg == null ? VIVID.gray : sleepScoreBand(sleepScoreAvg).color}
+          sub={
+            <>
+              {sleep != null ? `${fmtHM(sleep)} · ` : ""}
+              {vs(diff(sleepScoreAvg, prevSleepScoreAvg), "up", (v) => String(Math.round(v)))}
+            </>
+          }
         />
         <KpiTile
           label="HRV"
