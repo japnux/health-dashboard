@@ -232,6 +232,16 @@ export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow
   return { ...result, hrSource: useSleepHr ? "sleeping" : "resting", incompleteNight };
 }
 
+// Libellé du niveau : "Excellente" dès 9 (environ une journée sur cinq),
+// même couleur verte que "Bonne". Source unique (accueil, détail, IA).
+export function recoveryLabel(score: number | null): string {
+  if (score == null) return "inconnue";
+  if (score >= 9) return "excellente";
+  if (score >= 7) return "bonne";
+  if (score >= 5) return "moyenne";
+  return "faible";
+}
+
 export function recoveryColor(score: number | null): "green" | "yellow" | "red" | "gray" {
   if (score == null) return "gray";
   if (score >= 7) return "green";

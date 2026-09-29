@@ -5,7 +5,7 @@ import { getDashboardSnapshot } from "@/lib/dashboard-data";
 import { recoveryValueColor } from "@/lib/stat-colors";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isoDaysAgo } from "@/lib/dates";
-import { recoveryColor } from "@/lib/recovery-score";
+import { recoveryColor, recoveryLabel } from "@/lib/recovery-score";
 import { ZonedLineChart } from "@/components/charts/ZonedLineChart";
 import {
   BackLink,
@@ -21,7 +21,6 @@ import {
 export const dynamic = "force-dynamic";
 
 const COLOR: Record<string, string> = { green: "#34c759", yellow: "#ffcc00", red: "#ff3b30", gray: "#8e8e93" };
-const LABEL: Record<string, string> = { green: "bonne", yellow: "moyenne", red: "faible", gray: "inconnue" };
 const ADVICE: Record<string, string> = {
   green: "Ton corps a bien récupéré cette nuit : bon jour pour une séance exigeante.",
   yellow: "Récupération correcte mais incomplète : une séance modérée passera bien, évite l'intensité maximale.",
@@ -118,7 +117,7 @@ export default async function RecuperationPage({
         unit="/10"
         status={{
           color: COLOR[color],
-          label: `récupération ${LABEL[color]}${snap.recovery.basis !== "full" ? ` · score ${snap.recovery.basis === "partial" ? "partiel" : "estimé"}` : ""}`,
+          label: `récupération ${recoveryLabel(snap.recovery.score)}${snap.recovery.basis !== "full" ? ` · score ${snap.recovery.basis === "partial" ? "partiel" : "estimé"}` : ""}`,
         }}
         date={t ? `Nuit du ${formatLongDate(t.date)} · figé au réveil` : null}
         advice={ADVICE[color]}
@@ -176,7 +175,7 @@ export default async function RecuperationPage({
           </p>
           <p>
             Il est calculé une fois la nuit terminée et ne bouge plus dans la journée : l&apos;effort du jour se lit dans le
-            Strain. 7 et plus : bonne récupération ; 5 à 7 : moyenne ; moins de 5 : faible.
+            Strain. 9 et plus : excellente récupération ; 7 à 9 : bonne ; 5 à 7 : moyenne ; moins de 5 : faible.
           </p>
         </div>
       </DetailCard>

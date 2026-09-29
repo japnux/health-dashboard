@@ -4,7 +4,9 @@
 import { formatDuration } from "@/lib/sleep";
 import Link from "next/link";
 import type { DashboardSnapshot } from "@/lib/dashboard-data";
-import { recoveryColor } from "@/lib/recovery-score";
+import { recoveryColor, recoveryLabel } from "@/lib/recovery-score";
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 import { strainColor } from "@/lib/strain-score";
 import { BALANCE_ZONES, balanceZone } from "@/lib/load-balance";
 import { FORM_ZONES, formZone } from "@/lib/form";
@@ -46,7 +48,6 @@ const RECOVERY_TITLE: Record<string, string> = {
   gray: "Récupération inconnue",
 };
 
-const RECOVERY_LEVEL: Record<string, string> = { green: "Bonne", yellow: "Moyenne", red: "Faible", gray: "—" };
 
 // Phrase du jour : bâtie sur le niveau du Strain (mêmes seuils que la tuile)
 // et sur la récupération, pour ne jamais contredire les libellés affichés
@@ -129,7 +130,9 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   return (
     <>
       {/* Même marge haute que les titres de section : rangées alignées */}
-      <p className="text-lg text-[var(--color-heading)] dark:text-white pt-2">{RECOVERY_TITLE[color]}</p>
+      <p className="text-lg text-[var(--color-heading)] dark:text-white pt-2">
+        {snap.recovery.score != null && snap.recovery.score >= 9 ? "Très bien récupéré" : RECOVERY_TITLE[color]}
+      </p>
       {/* Phrase du jour : sous le titre sur mobile, sous les tuiles sur grand
           écran (les tuiles démarrent alors à la hauteur de la carte voisine) */}
       <p className="text-sm text-[var(--color-body)] leading-relaxed -mt-2 md:mt-0 md:order-last">{heroText(color, strain, dayDone)}</p>
@@ -138,7 +141,7 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           href="/recuperation"
           title="Récupération"
           ring={<ScoreRing score={snap.recovery.score} color={RECOVERY_RING[color]} label="Récupération" size={76} />}
-          status={RECOVERY_LEVEL[color]}
+          status={snap.recovery.score != null ? capitalize(recoveryLabel(snap.recovery.score)) : "—"}
           statusColor={RECOVERY_RING[color]}
           sub={snap.recovery.basis !== "full" ? `score ${snap.recovery.basis === "partial" ? "partiel" : "estimé"}` : "nuit dernière"}
         />

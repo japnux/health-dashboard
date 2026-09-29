@@ -3,7 +3,7 @@
 // lieu de refaire ses propres calculs (et d'arriver à d'autres conclusions).
 
 import type { DashboardSnapshot } from "@/lib/dashboard-data";
-import { recoveryColor } from "@/lib/recovery-score";
+import { recoveryLabel } from "@/lib/recovery-score";
 import { BODY_METRICS_BY_KEY, SPO2_ALERT, SPO2_NORMAL_FROM, formatMetric, isFavorable } from "@/lib/body-metrics";
 import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
 import { normalizeWorkoutType } from "@/lib/workout-types";
@@ -35,7 +35,6 @@ export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement
   séance). Ne juge PAS hrDrop1min dans l'absolu : après un surf, l'utilisateur sort de l'eau en marchant, la baisse est
   faible par nature. Ne l'utilise que comparée à d'autres séances du même sport.`;
 
-const RECOVERY_LABEL = { green: "bonne", yellow: "moyenne", red: "faible", gray: "inconnue" } as const;
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
 /** Indicateurs tels qu'affichés sur l'accueil : l'IA ne doit pas les recalculer. */
@@ -46,7 +45,7 @@ export function dashboardIndicators(snap: DashboardSnapshot, workouts: { started
   return {
     recovery: {
       score: r.score,
-      level: RECOVERY_LABEL[recoveryColor(r.score)],
+      level: recoveryLabel(r.score),
       basis: r.basis,
       // Notes /10 de chaque composant (null = non mesuré)
       // Le composant FC porte le nom de la FC réellement utilisée
