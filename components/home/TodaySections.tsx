@@ -2,6 +2,7 @@
 // Composants serveur sans état.
 
 import { deepMinutesColor, formatClock, formatDuration } from "@/lib/sleep";
+import { remSleepColor } from "@/lib/stat-colors";
 import Link from "next/link";
 import type { DashboardSnapshot } from "@/lib/dashboard-data";
 import { recoveryColor, recoveryLabel } from "@/lib/recovery-score";
@@ -116,7 +117,10 @@ function ScoreTile({
             {details.map((d) => (
               <p key={d.label} className="flex items-center justify-between gap-1.5 text-[11px] xl:text-[10px] leading-tight">
                 <span className="flex items-center gap-1.5 text-[var(--color-body)] min-w-0">
-                  {d.color && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />}
+                  {/* Place de la pastille réservée sur toutes les lignes dès qu'une en a une : libellés alignés */}
+                  {details.some((x) => x.color) && (
+                    <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: d.color ?? "transparent" }} />
+                  )}
                   <span className="truncate">{d.label}</span>
                 </span>
                 <span className="text-[var(--color-heading)] dark:text-white tabular-nums whitespace-nowrap">{d.value}</span>
@@ -129,7 +133,16 @@ function ScoreTile({
   );
 }
 
+// color : pastille de verdict (vert bon, jaune/orange moyen, rouge mauvais) ;
+// sans couleur, ligne informative
 type TileDetail = { label: string; value: string; color?: string };
+
+// Coucher : même barème que la composante régularité du score de la nuit
+function regularityDot(r: { available: boolean; points: number; max: number } | undefined): string | undefined {
+  if (!r?.available) return undefined;
+  const share = r.points / r.max;
+  return share >= 0.8 ? "#34c759" : share >= 0.5 ? "#ffcc00" : "#ff9500";
+}
 
 // Mesures de la nuit pour la tuile Récupération : pastille verte dans la plage
 // ou hors plage dans le bon sens, orange sinon
@@ -205,7 +218,7 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           details={[
             ...(strain.mode === "hr" && strain.cardioLoad != null
               ? [
-                  { label: "Charge", value: String(Math.round(strain.cardioLoad)) },
+                  { label: "Charge", value: String(Math.round(strain.cardioLoad)), color: strainColor(strain.score) },
                   { label: "Moyenne", value: strain.hasBaseline ? String(strain.baselineAvg) : "—" },
                 ]
               : [{ label: "Kcal actives", value: String(strain.activeKcalToday) }]),
@@ -232,11 +245,15 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           statusColor={sleepColor}
           sub={sleepSub}
           details={[
-            ...(snap.sleep.window ? [{ label: "Coucher", value: formatClock(snap.sleep.window.bed) }] : []),
+            ...(snap.sleep.window
+              ? [{ label: "Coucher", value: formatClock(snap.sleep.window.bed), color: regularityDot(night?.regularity) }]
+              : []),
             ...(phases?.deepMin != null
               ? [{ label: "Profond", value: `${Math.round(phases.deepMin)} min`, color: deepMinutesColor(phases.deepMin, snap.sleep.deepRange) }]
               : []),
-            ...(phases?.remMin != null ? [{ label: "REM", value: formatDuration(phases.remMin) }] : []),
+            ...(phases?.remMin != null
+              ? [{ label: "REM", value: formatDuration(phases.remMin), color: phases.remPct != null ? remSleepColor(phases.remPct) : undefined }]
+              : []),
             ...(snap.sleep.suggestedBed != null ? [{ label: "Ce soir", value: formatClock(snap.sleep.suggestedBed) }] : []),
           ]}
         />
