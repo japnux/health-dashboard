@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { nightForAi } from "@/lib/sleep";
 import { isAuthenticated } from "@/lib/session";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -217,7 +218,7 @@ async function fetchHealthData(days: number) {
       supabase
         .from("daily_metrics")
         .select(
-          "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, recovery_score",
+          "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, naps, steps, active_kcal, cardio_load, recovery_score",
         )
         .gte("date", startDate)
         .lte("date", today)
@@ -401,14 +402,8 @@ async function fetchHealthData(days: number) {
       { calories: 0, proteines_g: 0, glucides_g: 0, lipides_g: 0 },
     );
 
-  // Sommeil lisible
-  const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => {
-    const sleepMin = m.sleep_total_min;
-    const sleepLabel = sleepMin != null
-      ? `${Math.floor(sleepMin / 60)}h${Math.round(sleepMin % 60).toString().padStart(2, "0")}`
-      : null;
-    return { ...m, sleep_readable: sleepLabel };
-  });
+  // Nuits : durée lisible, phases en minutes, nuits incomplètes signalées (lib/sleep)
+  const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => nightForAi(m));
 
   return {
     today,

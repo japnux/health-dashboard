@@ -2,14 +2,15 @@
 // Pondération : 35% HRV, 25% FC repos, 30% sommeil, 10% fréq. respiratoire.
 // Si un composant manque, son poids est redistribué proportionnellement.
 
+import { MIN_NIGHT_MIN, isIncompleteNight, sleepScore, type SleepRow } from "@/lib/sleep";
+
 export type RecoveryInput = {
   hrvMs?: number | null;
   hrv7dAvgMs?: number | null;
   restingHrBpm?: number | null;
   restingHr7dAvgBpm?: number | null;
-  sleepTotalMin?: number | null;
-  sleepRemPct?: number | null;
-  sleepDeepPct?: number | null;
+  // Score de la nuit /100 (lib/sleep : durée vs besoin, régularité, interruptions)
+  sleepScore100?: number | null;
   respiratoryRate?: number | null;
   respiratoryRate7dAvg?: number | null;
 };
@@ -82,36 +83,12 @@ function scoreRestingHr(
   return { score, available: true };
 }
 
-function scoreSleep(
-  totalMin?: number | null,
-  remPct?: number | null,
-  deepPct?: number | null,
-): RecoveryComponent {
-  if (totalMin == null) {
-    return { score: 0, available: false };
-  }
-  const totalH = totalMin / 60;
-
-  // Sans phases (sommeil saisi à la main, autre source) : on note la durée
-  // seule, sans prétendre juger la qualité. Avant, les phases absentes
-  // comptaient comme 0 % et plafonnaient une nuit de 8 h à 4/10.
-  if (remPct == null || deepPct == null) {
-    const byDuration = totalH >= 7 ? 7 : totalH >= 6 ? 4 : 1;
-    return { score: byDuration, available: true };
-  }
-
-  // Paliers selon le brief système
-  let score: number;
-  if (totalH >= 7.5 && remPct >= 20 && deepPct >= 15) {
-    score = 10;
-  } else if (totalH >= 7 && remPct >= 15 && deepPct >= 10) {
-    score = 7;
-  } else if (totalH >= 6) {
-    score = 4;
-  } else {
-    score = 1;
-  }
-  return { score, available: true };
+// Sommeil : score de la nuit /100 ramené sur 10 (continu). Les phases n'y
+// entrent plus : la montre mesure mal le profond, et ses minutes ne dépendent
+// presque pas de la durée de la nuit (voir lib/sleep).
+function scoreSleep(score100?: number | null): RecoveryComponent {
+  if (score100 == null) return { score: 0, available: false };
+  return { score: Math.max(1, score100 / 10), available: true };
 }
 
 // Fréq. respiratoire : plus basse pendant le sommeil = meilleure récupération.
@@ -139,7 +116,7 @@ function scoreRespiratory(
 export function computeRecoveryScore(input: RecoveryInput): RecoveryResult {
   const hrv = scoreHrv(input.hrvMs, input.hrv7dAvgMs);
   const restingHr = scoreRestingHr(input.restingHrBpm, input.restingHr7dAvgBpm);
-  const sleep = scoreSleep(input.sleepTotalMin, input.sleepRemPct, input.sleepDeepPct);
+  const sleep = scoreSleep(input.sleepScore100);
   const respiratory = scoreRespiratory(input.respiratoryRate, input.respiratoryRate7dAvg);
 
   const all = [hrv, restingHr, sleep, respiratory];
@@ -196,22 +173,24 @@ export function computeRecoveryScore(input: RecoveryInput): RecoveryResult {
 // qu'Apple réévalue toute la journée (63 → 70 après une séance), elle est
 // figée une fois la nuit terminée : le score ne bouge plus dans la journée.
 
-export type RecoveryDayInput = {
+export type RecoveryDayInput = SleepRow & {
   hrv_ms: number | null;
   resting_hr_bpm: number | null;
   sleeping_hr_bpm?: number | null;
   respiratory_rate: number | null;
-  sleep_total_min: number | null;
-  sleep_rem_pct: number | null;
-  sleep_deep_pct: number | null;
 };
 
-export type RecoveryHistoryRow = {
+// Jours précédents : mesures de référence, et nuits pour la régularité et
+// l'éveil habituel du score de sommeil
+export type RecoveryHistoryRow = Partial<SleepRow> & {
   hrv_ms: number | null;
   resting_hr_bpm: number | null;
   sleeping_hr_bpm?: number | null;
   respiratory_rate: number | null;
 };
+
+// Réglages du score de sommeil : besoin (min) et fuseau (heures de coucher)
+export type SleepSettings = { needMin: number; tz: string };
 
 function presentValues(rows: RecoveryHistoryRow[], key: keyof RecoveryHistoryRow): number[] {
   return rows.map((r) => r[key] ?? null).filter((v): v is number => v != null);
@@ -232,26 +211,21 @@ function medianOf(values: number[]): number | null {
 // past60 : les jours [J-60, J-1].
 const MIN_SLEEP_HR_NIGHTS = 7;
 
-// Nuit plus courte que ça : probablement incomplète (montre retirée ou en
-// charge). Elle est exclue du score et des moyennes de sommeil.
-export const MIN_NIGHT_MIN = 180;
+// Nuit incomplète (moins de 3 h) : définition dans lib/sleep
+export { MIN_NIGHT_MIN, isIncompleteNight };
 
-export function isIncompleteNight(sleepTotalMin: number | null | undefined): boolean {
-  return sleepTotalMin != null && sleepTotalMin < MIN_NIGHT_MIN;
-}
-
-export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow[]): RecoveryResult {
+export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow[], sleep: SleepSettings): RecoveryResult {
   const sleepHrPast = presentValues(past60, "sleeping_hr_bpm");
   const useSleepHr = day.sleeping_hr_bpm != null && sleepHrPast.length >= MIN_SLEEP_HR_NIGHTS;
   const incompleteNight = isIncompleteNight(day.sleep_total_min);
+  const sleepHistory = past60.filter((r): r is RecoveryHistoryRow & SleepRow => r.date != null && r.sleep_total_min !== undefined);
+  const night = sleepScore(day, sleepHistory, sleep.needMin, sleep.tz);
   const result = computeRecoveryScore({
     hrvMs: day.hrv_ms,
     hrv7dAvgMs: medianOf(presentValues(past60, "hrv_ms")),
     restingHrBpm: useSleepHr ? day.sleeping_hr_bpm! : day.resting_hr_bpm,
     restingHr7dAvgBpm: useSleepHr ? meanOf(sleepHrPast) : meanOf(presentValues(past60, "resting_hr_bpm")),
-    sleepTotalMin: incompleteNight ? null : day.sleep_total_min,
-    sleepRemPct: incompleteNight ? null : day.sleep_rem_pct,
-    sleepDeepPct: incompleteNight ? null : day.sleep_deep_pct,
+    sleepScore100: night?.score ?? null,
     respiratoryRate: day.respiratory_rate,
     respiratoryRate7dAvg: meanOf(presentValues(past60, "respiratory_rate")),
   });

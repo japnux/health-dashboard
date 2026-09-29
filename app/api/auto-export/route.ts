@@ -4,6 +4,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { isoDateMinusDays } from "@/lib/dates";
 import { normalizeWorkoutType } from "@/lib/workout-types";
 import { recoveryForDay } from "@/lib/recovery-score";
+import { getSleepSettings } from "@/lib/user-tz";
+import type { Nap } from "@/lib/sleep";
 import { extractWorkoutDetails, stripRoutesForLog } from "@/lib/workout-details";
 import {
   getHrMax,
@@ -122,7 +124,22 @@ type DayBucket = {
   cardio_recovery_bpm: number | null;
   hr_hourly: HrHourly | null; // FC moyenne horaire, pour la charge cardio hors séance
   sleeping_hr_bpm: number | null; // plus basse moyenne horaire pendant le sommeil
+  naps: Nap[] | null; // siestes : sessions hors nuit principale
+  _sleep_sessions: SleepSession[]; // sessions reçues, triées en fin de lecture
 };
+
+// Session de sommeil telle que reçue (nuit ou sieste), durées en minutes
+type SleepSession = {
+  totalMin: number;
+  remMin: number | null;
+  deepMin: number | null;
+  awakeMin: number | null;
+  start: string | null;
+  end: string | null;
+};
+
+// Sieste retenue à partir de 10 min (en dessous : bruit de détection)
+const MIN_NAP_MIN = 10;
 
 // Ligne existante de daily_metrics utilisée pour la fusion et la référence
 type HistoryRow = {
@@ -143,9 +160,10 @@ type HistoryRow = {
   hr_max_bpm: number | null;
   hr_min_bpm: number | null;
   hr_hourly: HrHourly | null;
+  naps: Nap[] | null;
 };
 const HISTORY_COLUMNS =
-  "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, hr_max_bpm, hr_min_bpm, hr_hourly";
+  "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, hr_max_bpm, hr_min_bpm, hr_hourly, naps";
 
 // Valeur reçue, sans jamais descendre sous celle déjà en base (cumul partiel)
 function keepMax(received: number | null, stored: number | null): number | null {
@@ -194,7 +212,41 @@ function emptyDay(): DayBucket {
     cardio_recovery_bpm: null,
     hr_hourly: null,
     sleeping_hr_bpm: null,
+    naps: null,
+    _sleep_sessions: [],
   };
+}
+
+// Sessions du jour : la plus longue est la nuit, les autres des siestes
+function applySleepSessions(day: DayBucket): string[] {
+  const unique = new Map<string, SleepSession>();
+  for (const s of day._sleep_sessions) unique.set(`${s.start}|${s.totalMin}`, s);
+  const sessions = [...unique.values()].sort((a, b) => b.totalMin - a.totalMin);
+  const night = sessions[0];
+  if (!night) return [];
+  const pct = (v: number | null) => (v != null && night.totalMin > 0 ? r1((v / night.totalMin) * 100) : null);
+  day.sleep_total_min = Math.round(night.totalMin);
+  // Les % se calculent sur le total exact ; remis à zéro à chaque nuit pour ne
+  // jamais hériter des phases d'une autre session
+  day.sleep_rem_pct = pct(night.remMin);
+  day.sleep_deep_pct = pct(night.deepMin);
+  day.sleep_awake_pct = pct(night.awakeMin);
+  day.sleep_start = night.start;
+  day.sleep_end = night.end;
+  const naps = sessions
+    .slice(1)
+    .filter((s) => s.totalMin >= MIN_NAP_MIN && s.start && s.end)
+    .map((s) => ({ start: s.start!, end: s.end!, min: Math.round(s.totalMin) }));
+  day.naps = naps.length > 0 ? naps : null;
+  return naps.map((n) => `sieste de ${n.min} min enregistrée`);
+}
+
+// Siestes connues + nouvelles, sans doublon (même début)
+function mergeNaps(a: Nap[] | null | undefined, b: Nap[] | null | undefined): Nap[] | null {
+  const byStart = new Map<string, Nap>();
+  for (const n of [...(a ?? []), ...(b ?? [])]) byStart.set(n.start, n);
+  const out = [...byStart.values()].sort((x, y) => x.start.localeCompare(y.start));
+  return out.length > 0 ? out : null;
 }
 
 function r1(n: number) {
@@ -309,43 +361,22 @@ export async function POST(request: Request) {
                   ? qty
                   : null;
 
-          // Plusieurs sessions le même jour (sieste) : la plus longue est la
-          // nuit ; une plus courte ne l'écrase pas, elle est signalée
-          if (rawTotal != null && day.sleep_total_min != null) {
-            const newMin = isHours ? rawTotal * 60 : rawTotal;
-            if (newMin <= day.sleep_total_min) {
-              skippedSleep.push(`sommeil ${date}: session de ${Math.round(newMin)} min ignorée (nuit de ${day.sleep_total_min} min conservée)`);
-              break;
-            }
-          }
-
+          // Chaque session est gardée ; la nuit et les siestes sont
+          // départagées une fois toutes les données lues (applySleepSessions)
           if (rawTotal != null) {
-            // Les pourcentages se calculent sur le total exact, pas sur le total
-            // arrondi à la minute (REM 32,2 % au lieu de 32,3 % sinon)
-            const totalMin = isHours ? rawTotal * 60 : rawTotal;
-            day.sleep_total_min = Math.round(totalMin);
-
-            const remRaw = Number(p.rem ?? p.sleepRem ?? p.sleepREM);
-            const deepRaw = Number(p.deep ?? p.sleepDeep ?? p.sleepDeepSleep);
-            const remMin = !isNaN(remRaw) && remRaw > 0 ? (isHours ? remRaw * 60 : remRaw) : null;
-            const deepMin = !isNaN(deepRaw) && deepRaw > 0 ? (isHours ? deepRaw * 60 : deepRaw) : null;
-
-            if (remMin != null && totalMin > 0) {
-              day.sleep_rem_pct = r1((remMin / totalMin) * 100);
-            }
-            if (deepMin != null && totalMin > 0) {
-              day.sleep_deep_pct = r1((deepMin / totalMin) * 100);
-            }
-
-            const awakeRaw = Number(p.awake ?? p.sleepAwake ?? p.sleepWake);
-            const awakeMin = !isNaN(awakeRaw) && awakeRaw > 0 ? (isHours ? awakeRaw * 60 : awakeRaw) : null;
-            if (awakeMin != null && totalMin > 0) {
-              day.sleep_awake_pct = r1((awakeMin / totalMin) * 100);
-            }
-
-            // Heures de coucher / lever pour la régularité du sommeil
-            day.sleep_start = toIso(p.sleepStart ?? p.inBedStart);
-            day.sleep_end = toIso(p.sleepEnd ?? p.inBedEnd);
+            const toMin = (v: unknown) => {
+              const n = Number(v);
+              return !isNaN(n) && n > 0 ? (isHours ? n * 60 : n) : null;
+            };
+            day._sleep_sessions.push({
+              totalMin: isHours ? rawTotal * 60 : rawTotal,
+              remMin: toMin(p.rem ?? p.sleepRem ?? p.sleepREM),
+              deepMin: toMin(p.deep ?? p.sleepDeep ?? p.sleepDeepSleep),
+              awakeMin: toMin(p.awake ?? p.sleepAwake ?? p.sleepWake),
+              // Heures de coucher / lever pour la régularité du sommeil
+              start: toIso(p.sleepStart ?? p.inBedStart),
+              end: toIso(p.sleepEnd ?? p.inBedEnd),
+            });
           }
           break;
         }
@@ -452,6 +483,10 @@ export async function POST(request: Request) {
     }
   }
 
+  for (const [date, day] of days) {
+    for (const line of applySleepSessions(day)) skippedSleep.push(`sommeil ${date}: ${line}`);
+  }
+
   // Fenêtre de sommeil réelle (coucher → lever) de chaque nuit reçue. Une mesure
   // prise dans cette fenêtre compte pour la nuit, même datée de la veille au
   // soir (23:50). Sans fenêtre connue pour ce jour, repli sur 00h–07h.
@@ -486,6 +521,8 @@ export async function POST(request: Request) {
   const results: string[] = [...skippedSleep];
   // FC max de référence pour la charge cardio des séances
   const hrMax = await getHrMax(supabase);
+  // Besoin de sommeil et fuseau, pour le score de la nuit (lib/sleep)
+  const sleepSettings = await getSleepSettings(supabase);
   // Jours dont la charge cardio doit être recalculée en fin de traitement
   const loadDates = new Set<string>();
 
@@ -550,12 +587,17 @@ export async function POST(request: Request) {
         day.hr_hourly = { start: day.hr_hourly.start, avg: day.hr_hourly.avg.map((v, h) => v ?? old[h] ?? null) };
       }
       // Une session nettement plus courte que la nuit déjà enregistrée est une
-      // sieste envoyée plus tard : elle ne remplace pas la nuit
+      // sieste envoyée plus tard : elle rejoint les siestes, la nuit reste
       if (day.sleep_total_min != null && existing.sleep_total_min != null && day.sleep_total_min < existing.sleep_total_min * 0.6) {
-        results.push(`sommeil ${date}: session de ${day.sleep_total_min} min ignorée (nuit de ${existing.sleep_total_min} min conservée)`);
+        if (day.sleep_start && day.sleep_end && day.sleep_total_min >= MIN_NAP_MIN) {
+          day.naps = mergeNaps(day.naps, [{ start: day.sleep_start, end: day.sleep_end, min: day.sleep_total_min }]);
+          results.push(`sommeil ${date}: sieste de ${day.sleep_total_min} min (nuit de ${existing.sleep_total_min} min conservée)`);
+        }
         day.sleep_total_min = day.sleep_rem_pct = day.sleep_deep_pct = day.sleep_awake_pct = null;
         day.sleep_start = day.sleep_end = null;
       }
+      // Siestes déjà connues conservées
+      if (day.naps) day.naps = mergeNaps(existing.naps, day.naps);
     }
 
     // FC de sommeil manquante : calculée avec la nuit et la FC horaire déjà
@@ -618,11 +660,16 @@ export async function POST(request: Request) {
         resting_hr_bpm: day.resting_hr_bpm ?? existing?.resting_hr_bpm ?? null,
         sleeping_hr_bpm: day.sleeping_hr_bpm ?? existing?.sleeping_hr_bpm ?? null,
         respiratory_rate: day.respiratory_rate ?? existing?.respiratory_rate ?? null,
+        date,
         sleep_total_min: day.sleep_total_min ?? existing?.sleep_total_min ?? null,
         sleep_rem_pct: day.sleep_rem_pct ?? existing?.sleep_rem_pct ?? null,
         sleep_deep_pct: day.sleep_deep_pct ?? existing?.sleep_deep_pct ?? null,
+        sleep_awake_pct: day.sleep_awake_pct ?? existing?.sleep_awake_pct ?? null,
+        sleep_start: day.sleep_start ?? existing?.sleep_start ?? null,
+        sleep_end: day.sleep_end ?? existing?.sleep_end ?? null,
       },
       past,
+      sleepSettings,
     );
 
     // Seuls les champs reçus sont écrits (pas d'écrasement par null)...

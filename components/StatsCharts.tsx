@@ -33,9 +33,18 @@ import { BodyTrendChart } from "@/components/charts/BodyTrendChart";
 import { CompositionBar } from "@/components/body/CompositionBits";
 import { FAT_COLOR, LEAN_COLOR, latestComposition } from "@/lib/body-composition";
 import {
+  debtColor,
+  deepMinutesColor,
+  nightPhases,
+  sleepScoreBand,
+  sriColor,
+  type PersonalRange,
+  type SleepDebt,
+  type SleepRow,
+} from "@/lib/sleep";
+import {
   DAYLIGHT_TARGET_MIN,
   daylightColor,
-  deepSleepColor,
   remSleepColor,
   shareColor,
   sleepDurationColor,
@@ -95,6 +104,14 @@ type NightMetric = {
 };
 
 type StatsPayload = {
+  // Sommeil (lib/sleep) : scores par nuit, régularité et plage sur la période
+  sleep: {
+    scores: { date: string; score: number }[];
+    sri: number | null;
+    bedtimeSpreadMin: number | null;
+    deepRange: PersonalRange | null;
+    debt: SleepDebt;
+  };
   period: string;
   offset: number;
   tz: string;
@@ -456,7 +473,7 @@ function SummaryTab({ data, period }: { data: StatsPayload; period: Period }) {
         <KpiTile
           label="Sommeil"
           value={sleep != null ? fmtHM(sleep) : "—"}
-          color={sleep == null ? VIVID.gray : sleep >= data.sleepTargetMin ? VIVID.green : sleep >= data.sleepTargetMin - 45 ? VIVID.yellow : VIVID.red}
+          color={sleep == null ? VIVID.gray : sleepDurationColor(sleep, data.sleepTargetMin)}
           sub={vs(diff(sleep, prevSleep), "up", (v) => `${Math.round(v)} min`)}
         />
         <KpiTile
@@ -839,9 +856,12 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
   const target = data.sleepTargetMin;
   const fullNights = nights.filter((n) => !isIncompleteNight(n.sleep_total_min));
   const durations = fullNights.map((n) => n.sleep_total_min!);
-  const deep = avgOf(fullNights.map((n) => n.sleep_deep_pct));
+  // Profond en minutes (jamais en % : voir lib/sleep), REM en %
+  const deep = avgOf(fullNights.map((n) => nightPhases(n as SleepRow)?.deepMin));
   const rem = avgOf(fullNights.map((n) => n.sleep_rem_pct));
   const onTarget = durations.filter((d) => d >= target).length;
+  const scores = data.sleep.scores.filter((p) => inPeriod(p.date, data.startDate, data.endDate));
+  const avgScore = avgOf(scores.map((p) => p.score));
 
   // Lumière du jour (minutes passées dehors, mesurées par la montre)
   const daylight = m.filter((d) => d.daylight_min != null && d.date <= data.today);
@@ -850,28 +870,6 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
   const daylightMax = daylight.length > 0 ? Math.max(...daylight.map((d) => d.daylight_min!)) : null;
   const prevEnd = comparableEnd(data, lastDayOf(data.endDate, data.today));
   const prevDaylightAvg = avgOf(data.previousPeriod.dailyMetrics.filter((d) => d.date <= prevEnd).map((d) => d.daylight_min));
-
-  // Régularité : écart-type de l'heure de coucher (23h et 1h restent voisins)
-  const bedMinutes = m
-    .map((d) => d.sleep_start)
-    .filter((s): s is string => s != null)
-    .map((iso) => {
-      const [h, min] = new Date(iso)
-        .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: data.tz, hour12: false })
-        .split(":")
-        .map(Number);
-      const v = h * 60 + min;
-      return v < 12 * 60 ? v + 24 * 60 : v;
-    });
-  const bedAvg = avgOf(bedMinutes);
-  const bedSd =
-    bedMinutes.length >= 3 && bedAvg != null
-      ? Math.sqrt(bedMinutes.reduce((a, v) => a + (v - bedAvg) ** 2, 0) / bedMinutes.length)
-      : null;
-  const clock = (v: number) => {
-    const x = Math.round(v) % (24 * 60);
-    return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`;
-  };
 
   return (
     <>
@@ -894,48 +892,72 @@ function RecoveryTab({ data }: { data: StatsPayload }) {
           <HistoryChart
             mode="bar"
             height={200}
-            points={nights.map((n) => ({ date: n.date, value: r1(n.sleep_total_min! / 60), color: sleepDurationColor(n.sleep_total_min!, target) }))}
+            points={nights.map((n) => ({
+              date: n.date,
+              value: r1(n.sleep_total_min! / 60),
+              color: isIncompleteNight(n.sleep_total_min) ? VIVID.gray : sleepDurationColor(n.sleep_total_min!, target),
+            }))}
             unit="h"
             decimals={1}
-            target={{ value: target / 60, label: `objectif ${fmtHM(target)}` }}
+            target={{ value: target / 60, label: `besoin ${fmtHM(target)}` }}
           />
-          <div className="mt-4">
+          <div className="mt-4 space-y-2 sm:space-y-3">
             <StatGrid
               cols={4}
               items={[
                 {
-                  label: "Moyenne",
+                  label: "Score moyen",
+                  value: avgScore != null ? `${Math.round(avgScore)}/100` : "—",
+                  sub: avgScore != null ? sleepScoreBand(avgScore).label : undefined,
+                  color: avgScore != null ? sleepScoreBand(avgScore).color : undefined,
+                },
+                {
+                  label: "Durée moyenne",
                   value: durations.length > 0 ? fmtHM(avgOf(durations)!) : "—",
+                  sub: `${onTarget}/${durations.length} nuits au besoin`,
                   color: durations.length > 0 ? sleepDurationColor(avgOf(durations)!, target) : undefined,
                 },
                 {
-                  label: "Objectif atteint",
-                  value: `${onTarget}/${durations.length}`,
-                  sub: `nuits à ${fmtHM(target)} ou plus`,
-                  color: durations.length > 0 ? shareColor(onTarget / durations.length) : undefined,
-                },
-                {
                   label: "Profond moy.",
-                  value: deep != null ? `${Math.round(deep)} %` : "—",
-                  sub: "vise ≥ 15 %",
-                  color: deep != null ? deepSleepColor(deep) : undefined,
+                  value: deep != null ? `${Math.round(deep)} min` : "—",
+                  sub: data.sleep.deepRange
+                    ? `ta plage : ${Math.round(data.sleep.deepRange.low)}–${Math.round(data.sleep.deepRange.high)} min`
+                    : undefined,
+                  color: deep != null ? deepMinutesColor(deep, data.sleep.deepRange) : undefined,
                 },
                 {
                   label: "REM moy.",
                   value: rem != null ? `${Math.round(rem)} %` : "—",
-                  sub: "vise ≥ 20 %",
+                  sub: "repère ≥ 20 %",
                   color: rem != null ? remSleepColor(rem) : undefined,
                 },
               ]}
             />
+            <StatGrid
+              items={[
+                {
+                  label: "Régularité",
+                  value: data.sleep.sri != null ? `${data.sleep.sri}/100` : "—",
+                  sub: data.sleep.sri != null ? "indice sur la période" : "7 nuits avec horaires minimum",
+                  color: data.sleep.sri != null ? sriColor(data.sleep.sri) : undefined,
+                },
+                {
+                  label: "Écart du coucher",
+                  value: data.sleep.bedtimeSpreadMin != null ? `±${data.sleep.bedtimeSpreadMin} min` : "—",
+                  sub: "écart-type",
+                },
+                {
+                  label: "Dette",
+                  value: data.sleep.debt.debtMin < 1 ? "aucune" : fmtHM(data.sleep.debt.debtMin),
+                  sub: "14 nuits en fin de période",
+                  color: debtColor(data.sleep.debt.debtMin),
+                },
+              ]}
+            />
           </div>
-          {bedAvg != null && (
-            <p className="text-xs text-[var(--color-body)] mt-3">
-              Coucher moyen {clock(bedAvg)}
-              {bedSd != null ? ` · régularité ±${Math.round(bedSd)} min (${bedSd < 30 ? "régulier" : "irrégulier"})` : ""} ·{" "}
-              {bedMinutes.length} nuit{bedMinutes.length > 1 ? "s" : ""} avec horaires
-            </p>
-          )}
+          <Link href="/sommeil" className="inline-block text-xs text-[var(--color-brand-purple)] mt-3">
+            Détail du sommeil ›
+          </Link>
         </ChartCard>
       )}
 

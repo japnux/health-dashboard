@@ -7,7 +7,28 @@ import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { balanceZone, loadBalanceSeries, type BalanceLevel } from "@/lib/load-balance";
 import { formSeries, formZone, type FormLevel } from "@/lib/form";
 import { BODY_METRICS, metricRange, metricStatus, type BodyMetricKey, type MetricRange, type MetricStatus } from "@/lib/body-metrics";
-import { isIncompleteNight, recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
+import { recoveryForDay, type RecoveryResult } from "@/lib/recovery-score";
+import {
+  SRI_DAYS,
+  awakeRange,
+  bedtimeSpread,
+  deepRange,
+  isCompleteNight,
+  napMinutes,
+  nightPhases,
+  sleepAdvice,
+  sleepDebt,
+  sleepRegularityIndex,
+  sleepScore,
+  sleepWindow,
+  suggestedBedtime,
+  type NightPhases,
+  type PersonalRange,
+  type SleepDebt,
+  type SleepRow,
+  type SleepScore,
+  type SleepWindow,
+} from "@/lib/sleep";
 import { normalizeWorkoutType, estimateKcal } from "@/lib/workout-types";
 import { computeJournalImpact, type ImpactFactor } from "@/lib/journal-impact";
 import { computeDayStrain, type StrainResult } from "@/lib/strain-score";
@@ -69,11 +90,11 @@ export type DashboardSnapshot = {
   adjustedTdee: number;
   adjustedTargets: { calories: number; glucides_g: number };
   estimatedRemainingKcal: number;
-  sleepTargetMin: number;
+  sleepTargetMin: number; // besoin de sommeil (Paramètres)
+  sleep: SleepSummary;
   stepsTarget: number;
   weekWorkoutCount: number;
   weekAvgSteps: number | null;
-  weekAvgSleep: number | null;
   plannedActivities: { type: string; count: number }[];
   journalImpact: ImpactFactor[];
   strain: StrainResult;
@@ -174,12 +195,24 @@ function computeLoadBalance(rows: { date: string; cardio_load: number | null }[]
   };
 }
 
-// Données Apple Watch complémentaires (sommeil, cardio, nuit).
+// Sommeil de la nuit dernière et des 14 dernières nuits (calculs : lib/sleep)
+export type SleepSummary = {
+  score: SleepScore | null; // null : pas de nuit ou nuit incomplète
+  advice: string | null;
+  phases: NightPhases | null;
+  incomplete: boolean;
+  window: SleepWindow | null; // coucher, lever, milieu de nuit
+  napMinYesterday: number; // siestes de la veille (comptent dans la dette)
+  deepRange: PersonalRange | null;
+  awakeRange: PersonalRange | null;
+  debt: SleepDebt;
+  sri: number | null; // régularité 14 j (0-100)
+  bedtimeSpreadMin: number | null; // écart-type du coucher, 14 nuits
+  suggestedBed: number | null; // minutes relatives à minuit
+};
+
+// Données Apple Watch complémentaires (cardio, nuit).
 export type WatchInsights = {
-  bedtime: string | null; // ISO, coucher de la nuit dernière
-  wakeTime: string | null; // ISO, lever
-  bedtimeSpreadMin: number | null; // écart-type de l'heure de coucher
-  bedtimeNights: number; // nuits réellement utilisées pour l'écart-type (max 8)
   wristTempDeltaC: number | null; // écart vs médiane 60j
   breathingDisturbances: number | null;
   // Alerte si la nuit dernière dépasse nettement la médiane des 30 nuits précédentes
@@ -255,7 +288,7 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, spo2_pct, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, spo2_pct, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, naps")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -328,6 +361,9 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
   const hrBaseline = hr60dAvg ?? avg(past7.map((r) => r.resting_hr_bpm));
   const respiBaseline = avg(baseline60.map((r) => r.respiratory_rate)) ?? avg(past7.map((r) => r.respiratory_rate));
 
+  // Besoin de sommeil (Paramètres) : score de la nuit, dette, coucher conseillé
+  const sleepNeedMin = (config.sleep_target_min as number | null) ?? DEFAULTS.sleep_target_min;
+
   // Score : FC repos du jour uniquement. Si elle manque, le composant est
   // absent (score "partiel") plutôt que remplacé par celle d'hier.
   const recovery = recoveryForDay(
@@ -336,11 +372,16 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       resting_hr_bpm: today?.resting_hr_bpm ?? null,
       sleeping_hr_bpm: today?.sleeping_hr_bpm ?? null,
       respiratory_rate: today?.respiratory_rate ?? null,
+      date,
       sleep_total_min: today?.sleep_total_min ?? null,
       sleep_rem_pct: today?.sleep_rem_pct ?? null,
       sleep_deep_pct: today?.sleep_deep_pct ?? null,
+      sleep_awake_pct: today?.sleep_awake_pct ?? null,
+      sleep_start: today?.sleep_start ?? null,
+      sleep_end: today?.sleep_end ?? null,
     },
     baseline60,
+    { needMin: sleepNeedMin, tz },
   );
 
   const recentWorkouts = workouts ?? [];
@@ -455,9 +496,6 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
   const weekWorkoutCount = recentWorkouts.length;
   const weekSteps = past7.map((r) => r.steps).filter((v): v is number => v != null);
   const weekAvgSteps = weekSteps.length > 0 ? Math.round(weekSteps.reduce((a, b) => a + b, 0) / weekSteps.length) : null;
-  // Nuits incomplètes (moins de 3 h) exclues de la moyenne
-  const weekSleep = past7.map((r) => r.sleep_total_min).filter((v): v is number => v != null && !isIncompleteNight(v));
-  const weekAvgSleep = weekSleep.length > 0 ? Math.round(weekSleep.reduce((a, b) => a + b, 0) / weekSleep.length) : null;
 
   // Impact analysis : corrélation journal → recovery J+1 (60j de données)
   const allMetricsForImpact = [
@@ -540,11 +578,11 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
     plannedActivities: (plannedRows ?? []).map((r) => ({ type: r.type, count: r.count })),
     journalImpact,
     strain,
-    sleepTargetMin: (config.sleep_target_min as number | null) ?? DEFAULTS.sleep_target_min,
+    sleepTargetMin: sleepNeedMin,
+    sleep: computeSleepSummary(today, yesterdayMetrics, baseline60, date, sleepNeedMin, tz),
     stepsTarget: (config.steps_target as number | null) ?? DEFAULTS.steps_target,
     weekWorkoutCount,
     weekAvgSteps,
-    weekAvgSleep,
     activeSlot,
     dayProfile,
     objective,
@@ -564,7 +602,7 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       ? diffDaysIso(date, bloodTests[0].test_date)
       : null,
     lastSyncAt: syncRows?.[0]?.created_at ?? null,
-    watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60, tz),
+    watch: computeWatchInsights(today, yesterdayMetrics, recentMetrics ?? [], baseline60),
     loadBalance: computeLoadBalance(sessionLoadByDay(loadRows ?? [], tz), date),
     form: computeForm(sessionLoadByDay(loadRows ?? [], tz), date),
     bodyMetrics: BODY_METRICS.map((def) => {
@@ -607,14 +645,7 @@ function computeWatchInsights(
   yesterdayMetrics: DailyMetricsRow | null,
   recent: DailyMetricsRow[],
   baseline60: BaselineRow[],
-  tz: string,
 ): WatchInsights {
-  // Régularité : écart-type de l'heure de coucher sur les 7 dernières nuits
-  const bedMinutes = recent
-    .map((r) => bedtimeMinutes(r.sleep_start, tz))
-    .filter((v): v is number => v != null);
-  const bedtimeSpreadMin = bedMinutes.length >= 3 ? Math.round(stdDev(bedMinutes)) : null;
-
   // Température : écart de la nuit vs médiane 60j (la valeur absolue parle peu).
   // Comme Apple, on attend 5 nuits de référence avant d'afficher un écart.
   const tempValues = baseline60.map((r) => r.wrist_temp_c).filter((v): v is number => v != null);
@@ -659,10 +690,6 @@ function computeWatchInsights(
     .filter((v): v is number => v != null);
 
   return {
-    bedtime: today?.sleep_start ?? null,
-    wakeTime: today?.sleep_end ?? null,
-    bedtimeSpreadMin,
-    bedtimeNights: bedMinutes.length,
     wristTempDeltaC,
     breathingDisturbances: breathingToday,
     breathingAlert,
@@ -679,31 +706,6 @@ function computeWatchInsights(
   };
 }
 
-// Heure de coucher en minutes, décalée pour que 23h et 1h restent voisins :
-// tout ce qui précède 18h compte comme "après minuit" (+24h).
-function bedtimeMinutes(iso: string | null, tz: string): number | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("fr-FR", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(d);
-  const h = Number(parts.find((p) => p.type === "hour")?.value);
-  const m = Number(parts.find((p) => p.type === "minute")?.value);
-  if (isNaN(h) || isNaN(m)) return null;
-  const minutes = h * 60 + m;
-  return minutes < 18 * 60 ? minutes + 24 * 60 : minutes;
-}
-
-function stdDev(values: number[]): number {
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
-  return Math.sqrt(variance);
-}
-
 function avg(values: (number | null)[]): number | null {
   const filtered = values.filter((v): v is number => v != null);
   if (filtered.length === 0) return null;
@@ -715,4 +717,34 @@ function med(values: (number | null)[]): number | null {
   if (sorted.length === 0) return null;
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+// Nuit dernière et 14 dernières nuits : score, phases, dette, régularité
+function computeSleepSummary(
+  today: DailyMetricsRow | null,
+  yesterday: DailyMetricsRow | null,
+  baseline60: SleepRow[],
+  date: string,
+  needMin: number,
+  tz: string,
+): SleepSummary {
+  const night: SleepRow | null = today ? { ...(today as unknown as SleepRow), date } : null;
+  const nights: SleepRow[] = [...(night ? [night] : []), ...baseline60];
+  const history = baseline60.filter(isCompleteNight);
+  const score = night ? sleepScore(night, history, needMin, tz) : null;
+  const suggestedBed = suggestedBedtime(nights, needMin, tz);
+  return {
+    score,
+    advice: score ? sleepAdvice(score, suggestedBed) : null,
+    phases: night ? nightPhases(night) : null,
+    incomplete: night != null && night.sleep_total_min != null && !isCompleteNight(night),
+    window: night ? sleepWindow(night, tz) : null,
+    napMinYesterday: yesterday ? napMinutes(yesterday as unknown as SleepRow) : 0,
+    deepRange: deepRange(history),
+    awakeRange: awakeRange(history),
+    debt: sleepDebt(nights, date, needMin),
+    sri: sleepRegularityIndex(nights, date, tz),
+    bedtimeSpreadMin: bedtimeSpread(nights.filter((r) => r.date > isoDaysAgo(SRI_DAYS, tz)), tz),
+    suggestedBed,
+  };
 }

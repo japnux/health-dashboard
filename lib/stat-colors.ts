@@ -5,24 +5,16 @@
 import { VIVID } from "@/lib/palette";
 import { isFavorable, metricStatus, type BodyMetricDef, type MetricRange } from "@/lib/body-metrics";
 
-// Durée de sommeil contre l'objectif (tolérance de 45 min pour le jaune)
+// Durée de sommeil contre le besoin (tolérance de 45 min pour le jaune)
 export function sleepDurationColor(min: number, targetMin: number): string {
   return min >= targetMin ? VIVID.green : min >= targetMin - 45 ? VIVID.yellow : VIVID.red;
 }
 
-// Sommeil profond : viser au moins 15 % de la nuit
-export function deepSleepColor(pct: number): string {
-  return pct >= 15 ? VIVID.green : pct >= 10 ? VIVID.yellow : VIVID.orange;
-}
-
-// Sommeil paradoxal (REM) : viser au moins 20 % de la nuit
+// Sommeil paradoxal (REM) : repère 20 % de la nuit (norme de laboratoire
+// 20-25 %) ; sous 15 %, associé à plus de risque (Leary 2020). Le profond,
+// lui, se juge en minutes face à ta plage (lib/sleep, deepMinutesColor).
 export function remSleepColor(pct: number): string {
   return pct >= 20 ? VIVID.green : pct >= 15 ? VIVID.yellow : VIVID.orange;
-}
-
-// Régularité de l'heure de coucher (écart-type en minutes)
-export function regularityColor(spreadMin: number): string {
-  return spreadMin < 30 ? VIVID.green : spreadMin < 60 ? VIVID.yellow : VIVID.orange;
 }
 
 // Part de jours où un objectif est atteint (nuits à l'objectif, jours à 10 000 pas...)

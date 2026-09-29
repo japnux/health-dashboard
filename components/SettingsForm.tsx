@@ -112,8 +112,11 @@ export function SettingsForm() {
       </Section>
       )}
 
-      <Section title="Objectif de sommeil">
-        <Field label="Durée visée" help="Sert à la qualité de la nuit, à la tuile Sommeil et aux statistiques.">
+      <Section title="Besoin de sommeil">
+        <Field
+          label="Par nuit"
+          help="Sert au score de la nuit (durée), à la dette de sommeil et à l'heure de coucher conseillée. Au moins 7 h pour un adulte ; 7h30 par défaut."
+        >
           <div className="flex items-center gap-2">
             <input
               type="number"

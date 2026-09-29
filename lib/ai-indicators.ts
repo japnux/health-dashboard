@@ -8,9 +8,10 @@ import { BODY_METRICS_BY_KEY, SPO2_ALERT, SPO2_NORMAL_FROM, formatMetric, isFavo
 import { heartRateRecoveryDrop, type RecoveryPoint } from "@/lib/workout-details";
 import { normalizeWorkoutType } from "@/lib/workout-types";
 import { dateInTz } from "@/lib/dates";
+import { formatClock } from "@/lib/sleep";
 
 export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement ce que l'utilisateur voit sur son tableau de bord (récupération, strain,
-  équilibre de charge, forme, mesures de la nuit, qualité du sommeil). C'est la vérité : NE recalcule RIEN, ne contredis
+  équilibre de charge, forme, mesures de la nuit, sommeil). C'est la vérité : NE recalcule RIEN, ne contredis
   JAMAIS un statut ou un libellé. Cite les valeurs telles quelles (ex : "ratio 1,45", "forme −19").
 - Mesures de la nuit (FC de sommeil, HRV, température, respiration, SpO2) : compare TOUJOURS à la plage habituelle
   fournie (moyenne ± écart-type sur 60 nuits), jamais à une moyenne 7 j que tu calculerais. Statut "dans la plage" = normal,
@@ -21,12 +22,19 @@ export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement
   NE recalcule JAMAIS de moyenne de charge depuis dailyMetrics.
 - FC : la récupération utilise la FC pendant le sommeil (bodyMetrics sleeping_hr), pas la FC repos Apple, qui monte après
   une séance. N'utilise pas resting_hr_bpm comme signal de fatigue.
+- SOMMEIL : indicators.sleep est la vérité (score /100 de la nuit : durée vs besoin 50, régularité du coucher 30,
+  interruptions 20 ; dette sur 14 nuits ; régularité "sri" 0-100). Cite ces valeurs, ne recalcule rien.
+  Phases : la montre sous-estime le sommeil profond (25 à 40 min) et n'en reconnaît qu'environ la moitié ; ses minutes ne
+  dépendent presque pas de la durée de la nuit, donc son POURCENTAGE baisse mécaniquement sur une longue nuit.
+  JAMAIS de jugement du profond en % ni face à une norme de laboratoire : seulement deepMin face à deepUsualRange
+  (plage de l'utilisateur). REM : repère 20 % de la nuit (norme 20-25 %), il se loge en fin de nuit (une nuit écourtée le coupe).
+  Nuit "incomplete" (moins de 3 h enregistrées, montre retirée) : ne commente pas sa durée ni ses phases.
+  Régularité : sri ≥ 81 bon (médiane de 61 000 personnes), < 72 irrégulier ; elle prédit la santé mieux que la durée.
 - Séances : indicators.todayWorkouts donne charge cardio, FC moyenne et hrDrop1min (baisse de FC 1 min après la fin de la
   séance). Ne juge PAS hrDrop1min dans l'absolu : après un surf, l'utilisateur sort de l'eau en marchant, la baisse est
   faible par nature. Ne l'utilise que comparée à d'autres séances du même sport.`;
 
 const RECOVERY_LABEL = { green: "bonne", yellow: "moyenne", red: "faible", gray: "inconnue" } as const;
-const SLEEP_QUALITY: Record<number, string> = { 10: "Excellent", 7: "Bon", 4: "Moyen", 1: "Insuffisant" };
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
 /** Indicateurs tels qu'affichés sur l'accueil : l'IA ne doit pas les recalculer. */
@@ -48,7 +56,7 @@ export function dashboardIndicators(snap: DashboardSnapshot, workouts: { started
         respiration: comp(c.respiratory),
       },
     },
-    sleepQuality: c.sleep.available ? SLEEP_QUALITY[c.sleep.score] ?? null : null,
+    sleep: sleepIndicators(snap),
     strain: { score: snap.strain.score, level: snap.strain.label },
     loadBalance: snap.loadBalance
       ? { ratio: Math.round(snap.loadBalance.ratio * 100) / 100, level: snap.loadBalance.level, label: snap.loadBalance.label }
@@ -81,3 +89,30 @@ export function dashboardIndicators(snap: DashboardSnapshot, workouts: { started
   };
 }
 
+
+// Sommeil tel qu'affiché (page Sommeil, tuile de l'accueil) : lib/sleep
+function sleepIndicators(snap: DashboardSnapshot) {
+  const s = snap.sleep;
+  const sc = s.score;
+  const p = s.phases;
+  const min = (v: number | null | undefined) => (v != null ? Math.round(v) : null);
+  return {
+    needMin: snap.sleepTargetMin,
+    incomplete: s.incomplete,
+    score: sc ? { value: sc.score, label: sc.label, weakest: sc.weakest } : null,
+    durationMin: p ? min(p.totalMin) : null,
+    bedtime: s.window ? formatClock(s.window.bed) : null,
+    wakeTime: s.window ? formatClock(s.window.wake) : null,
+    usualBedtime: sc?.regularity.usualBed != null ? formatClock(sc.regularity.usualBed) : null,
+    bedtimeDeviationMin: sc?.regularity.deviationMin ?? null,
+    deepMin: min(p?.deepMin),
+    deepUsualRange: s.deepRange ? `${Math.round(s.deepRange.low)}-${Math.round(s.deepRange.high)} min` : null,
+    remMin: min(p?.remMin),
+    remPct: p?.remPct != null ? Math.round(p.remPct) : null,
+    awakeMin: min(p?.awakeMin),
+    napMinYesterday: s.napMinYesterday || null,
+    debt14dMin: s.debt.debtMin,
+    sri14d: s.sri,
+    suggestedBedtime: s.suggestedBed != null ? formatClock(s.suggestedBed) : null,
+  };
+}

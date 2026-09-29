@@ -42,3 +42,12 @@ export async function getUserTz(supabase: Client): Promise<string> {
   const homeOffsetMin = Math.round(tzOffsetMs(new Date(), DEFAULT_TZ) / 60000);
   return offsetMin === homeOffsetMin ? DEFAULT_TZ : formatOffset(offsetMin);
 }
+
+// Réglages du score de sommeil : besoin (Paramètres, 7h30 par défaut) et fuseau
+export async function getSleepSettings(supabase: Client): Promise<{ needMin: number; tz: string }> {
+  const [tz, { data }] = await Promise.all([
+    getUserTz(supabase),
+    supabase.from("dashboard_config").select("sleep_target_min").eq("id", 1).maybeSingle(),
+  ]);
+  return { needMin: data?.sleep_target_min ?? 450, tz };
+}

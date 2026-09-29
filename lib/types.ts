@@ -36,6 +36,8 @@ export type Database = {
           hr_hourly: { start: string; avg: (number | null)[] } | null;
           cardio_load: number | null;
           sleeping_hr_bpm: number | null;
+          // Siestes du jour : sessions hors nuit principale (lib/sleep, type Nap)
+          naps: { start: string; end: string; min: number }[] | null;
           raw_payload: Record<string, unknown> | null;
           created_at: string;
           updated_at: string;
@@ -67,6 +69,7 @@ export type Database = {
           hr_hourly?: { start: string; avg: (number | null)[] } | null;
           cardio_load?: number | null;
           sleeping_hr_bpm?: number | null;
+          naps?: { start: string; end: string; min: number }[] | null;
           raw_payload?: Record<string, unknown> | null;
         };
         Update: Partial<Database["public"]["Tables"]["daily_metrics"]["Insert"]>;

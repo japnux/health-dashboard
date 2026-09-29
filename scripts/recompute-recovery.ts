@@ -11,6 +11,7 @@ import { join, resolve } from "path";
 import type { Database } from "@/lib/types";
 import { isoDateMinusDays } from "@/lib/dates";
 import { recoveryForDay } from "@/lib/recovery-score";
+import { getSleepSettings } from "@/lib/user-tz";
 
 // Charger .env.local manuellement (pas de dépendance dotenv)
 for (const line of readFileSync(resolve(__dirname, "../.env.local"), "utf-8").split("\n")) {
@@ -36,6 +37,9 @@ async function main() {
     sleep_total_min: number | null;
     sleep_rem_pct: number | null;
     sleep_deep_pct: number | null;
+    sleep_awake_pct: number | null;
+    sleep_start: string | null;
+    sleep_end: string | null;
     recovery_score: number | null;
     recovery_score_basis: string | null;
   }[] = [];
@@ -44,7 +48,7 @@ async function main() {
     const { data, error } = await supabase
       .from("daily_metrics")
       .select(
-        "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, recovery_score, recovery_score_basis",
+        "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, recovery_score, recovery_score_basis",
       )
       .order("date", { ascending: true })
       .range(from, from + PAGE - 1);
@@ -62,11 +66,14 @@ async function main() {
     );
   }
 
+  // Besoin de sommeil et fuseau pour le score de la nuit (lib/sleep)
+  const sleepSettings = await getSleepSettings(supabase);
+
   const changes: { date: string; before: string; after: string; score: number | null; basis: string }[] = [];
   for (const row of rows) {
     const from = isoDateMinusDays(row.date, 60);
     const past = rows.filter((r) => r.date >= from && r.date < row.date);
-    const result = recoveryForDay(row, past);
+    const result = recoveryForDay(row, past, sleepSettings);
     const same = result.score === row.recovery_score && result.basis === row.recovery_score_basis;
     if (!same) {
       changes.push({

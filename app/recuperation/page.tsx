@@ -31,6 +31,9 @@ const ADVICE: Record<string, string> = {
 
 const fmt1 = (v: number) => (Math.round(v * 10) / 10).toString().replace(".", ",");
 
+// Point faible de la nuit, en clair
+const WEAKEST = { duration: "nuit courte", regularity: "coucher décalé", interruptions: "nuit hachée" } as const;
+
 export default async function RecuperationPage({
   searchParams,
 }: {
@@ -86,10 +89,13 @@ export default async function RecuperationPage({
         t?.sleep_total_min != null
           ? `${Math.floor(t.sleep_total_min / 60)}h${String(Math.round(t.sleep_total_min % 60)).padStart(2, "0")}`
           : "—",
+      // Score de la nuit /100 (durée vs besoin, régularité, interruptions)
       ref: snap.recovery.incompleteNight
         ? "nuit incomplète (moins de 3 h enregistrées) : ignorée par le score"
-        : t?.sleep_rem_pct != null && t?.sleep_deep_pct != null
-          ? `REM ${Math.round(t.sleep_rem_pct)} %, profond ${Math.round(t.sleep_deep_pct)} %`
+        : snap.sleep.score
+          ? `score de la nuit ${snap.sleep.score.score}/100 (${snap.sleep.score.label.toLowerCase()})${
+              snap.sleep.score.weakest ? `, ${WEAKEST[snap.sleep.score.weakest]}` : ""
+            }`
           : "",
     },
     {
@@ -165,7 +171,7 @@ export default async function RecuperationPage({
           <p>
             Le score dit dans quel état ta nuit t&apos;a remis, sur 10. Il compare quatre mesures de la nuit à tes propres
             références des 60 derniers jours : HRV (35 %), fréquence cardiaque pendant le sommeil (25 %), sommeil
-            (30 %) et respiration (10 %). Si une mesure manque, son poids est réparti sur les autres et le score est
+            (30 %, le score /100 de la nuit : durée face à ton besoin, régularité, interruptions) et respiration (10 %). Si une mesure manque, son poids est réparti sur les autres et le score est
             marqué partiel.
           </p>
           <p>

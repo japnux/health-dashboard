@@ -1,5 +1,6 @@
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
 import { NextResponse } from "next/server";
+import { nightForAi } from "@/lib/sleep";
 import { isAuthenticated } from "@/lib/session";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -28,7 +29,10 @@ const CROSSINGS = [
 const SYSTEM_PROMPT = `Tu es un analyste de données santé. Tu cherches des corrélations significatives dans les données biologiques et comportementales de l'utilisateur.
 
 DONNÉES DISPONIBLES :
-- dailyMetrics : HRV, FC pendant le sommeil (sleeping_hr_bpm), respiration, SpO2, sommeil (total + phases + sleep_readable), pas, kcal actives, charge cardio, recovery score
+- dailyMetrics : HRV, FC pendant le sommeil (sleeping_hr_bpm), respiration, SpO2, sommeil (total, sleep_readable, phases en
+  minutes sleep_deep_min / sleep_rem_min / sleep_awake_min, sleep_rem_pct, siestes nap_min, sleep_incomplete), lumière du jour
+  (daylight_min, minutes dehors), pas, kcal actives, charge cardio, recovery score
+  Sommeil profond : la montre le sous-estime et ses minutes varient peu avec la durée de la nuit ; ne corrèle jamais un % de profond.
 - workouts : type normalisé, durée, kcal (inclut sauna comme modalité de récupération)
 ${SOURCES_EXTRA}
 - bodyComposition : poids, body fat %, masse maigre
@@ -132,7 +136,7 @@ export async function GET(request: Request) {
   const [metricsRes, workoutsRes, proteinRes, mealRes, journalRes, bodyRes, configRes, profile] = await Promise.all([
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, recovery_score")
+      .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, naps, steps, active_kcal, daylight_min, cardio_load, recovery_score")
       // 30 jours de plus : historique du strain des premiers jours de la fenêtre
       .gte("date", isoDateMinusDays(ninetyDaysAgo, 30))
       .lte("date", today)
@@ -218,14 +222,8 @@ export async function GET(request: Request) {
     steps: (config.steps_target ?? 10000) as number,
   };
 
-  // Sommeil lisible
-  const metricsWithReadableSleep = metrics90.map((m) => {
-    const sleepMin = m.sleep_total_min;
-    const sleepLabel = sleepMin != null
-      ? `${Math.floor(sleepMin / 60)}h${Math.round(sleepMin % 60).toString().padStart(2, "0")}`
-      : null;
-    return { ...m, sleep_readable: sleepLabel };
-  });
+  // Nuits : durée lisible, phases en minutes, nuits incomplètes signalées (lib/sleep)
+  const metricsWithReadableSleep = metrics90.map((m) => nightForAi(m));
 
   const contextData = {
     period: { start: ninetyDaysAgo, end: today, days: 90 },

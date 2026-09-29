@@ -1,6 +1,7 @@
 // Blocs de l'accueil : un résumé par sujet, le détail au clic.
 // Composants serveur sans état.
 
+import { formatDuration } from "@/lib/sleep";
 import Link from "next/link";
 import type { DashboardSnapshot } from "@/lib/dashboard-data";
 import { recoveryColor } from "@/lib/recovery-score";
@@ -108,8 +109,6 @@ function ScoreTile({
   );
 }
 
-const SLEEP_QUALITY: Record<number, string> = { 10: "Excellent", 7: "Bon", 4: "Moyen", 1: "Insuffisant" };
-const SLEEP_QUALITY_COLOR: Record<string, string> = { Excellent: "#34c759", Bon: "#34c759", Moyen: "#ffcc00", Insuffisant: "#ff3b30" };
 
 export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const color = recoveryColor(snap.recovery.score);
@@ -120,11 +119,12 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
 
   // Sommeil : anneau = durée rapportée à l'objectif, couleur = qualité
   const t = snap.today;
+  // Sommeil : anneau = score /100 (lib/sleep), durée au centre
   const sleepMin = t?.sleep_total_min ?? null;
-  const sleepScore = snap.recovery.components.sleep.available ? snap.recovery.components.sleep.score : null;
-  const quality = sleepScore != null ? SLEEP_QUALITY[sleepScore] ?? null : null;
-  const sleepColor = quality ? SLEEP_QUALITY_COLOR[quality] : "#8e8e93";
-  const sleepLabel = sleepMin != null ? `${Math.floor(sleepMin / 60)}h${String(Math.round(sleepMin % 60)).padStart(2, "0")}` : "—";
+  const night = snap.sleep.score;
+  const sleepColor = night?.color ?? "#8e8e93";
+  const sleepLabel = sleepMin != null ? formatDuration(sleepMin) : "—";
+  const debt = snap.sleep.debt.debtMin;
 
   return (
     <>
@@ -156,16 +156,16 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           ring={
             <ScoreRing
               score={null}
-              progress={sleepMin != null ? sleepMin / snap.sleepTargetMin : 0}
+              progress={night ? night.score / 100 : 0}
               center={sleepLabel}
               color={sleepColor}
               label="Sommeil"
               size={76}
             />
           }
-          status={quality ?? "—"}
+          status={night ? night.label : snap.sleep.incomplete ? "Incomplète" : "—"}
           statusColor={sleepColor}
-          sub={sleepMin != null ? `${Math.round((sleepMin / snap.sleepTargetMin) * 100)} % de l'objectif` : null}
+          sub={night ? `${night.score}/100${debt >= 60 ? ` · dette ${formatDuration(debt)}` : ""}` : null}
         />
       </div>
     </>

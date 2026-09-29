@@ -6,6 +6,7 @@ import { getUserTz } from "@/lib/user-tz";
 import { computeDayStrain } from "@/lib/strain-score";
 import { loadBalanceSeries } from "@/lib/load-balance";
 import { sessionLoadRows } from "@/lib/cardio-load";
+import { bedtimeSpread, deepRange, sleepDebt, sleepRegularityIndex, sleepScore, type SleepRow } from "@/lib/sleep";
 import { formSeries } from "@/lib/form";
 import { BODY_METRICS, metricRange, metricStatus } from "@/lib/body-metrics";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
@@ -68,7 +69,7 @@ function getPeriodRange(period: string, offset: number, tz: string) {
 
 // Colonnes de daily_metrics utilisées par les statistiques
 const METRIC_COLUMNS =
-  "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, wrist_temp_c, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, cardio_load, recovery_score";
+  "date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, wrist_temp_c, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, naps, steps, active_kcal, daylight_min, cardio_load, recovery_score";
 const WORKOUT_COLUMNS =
   "id, started_at, type, duration_min, kcal, avg_hr_bpm, cardio_load, hr_zone_min, distance_km, max_speed_kmh";
 
@@ -188,10 +189,31 @@ export async function GET(request: Request) {
       return { key: def.key, points };
     });
 
+    // Sommeil (lib/sleep) : score de chaque nuit, régularité, plage du profond
+    const sleepNeed = configRes.data?.sleep_target_min ?? 450;
+    const sleepRows = allMetrics as unknown as SleepRow[];
+    const sleepScores = sleepRows
+      .filter((r) => r.date >= prev.start && r.date <= lastDay)
+      .map((r) => {
+        const past = sleepRows.filter((p) => p.date < r.date && p.date >= isoDateMinusDays(r.date, 60));
+        const sc = sleepScore(r, past, sleepNeed, tz);
+        return sc ? { date: r.date, score: sc.score } : null;
+      })
+      .filter((v): v is { date: string; score: number } => v != null);
+    const periodDays = Math.max(1, Math.round((Date.parse(`${lastDay}T12:00:00Z`) - Date.parse(`${current.start}T12:00:00Z`)) / 86_400_000) + 1);
+    const sleep = {
+      scores: sleepScores,
+      sri: sleepRegularityIndex(sleepRows, lastDay, tz, periodDays),
+      bedtimeSpreadMin: bedtimeSpread(sleepRows.filter((r) => inRange(r.date, current)), tz),
+      deepRange: deepRange(sleepRows.filter((r) => r.date < current.start && r.date >= isoDateMinusDays(current.start, 60))),
+      debt: sleepDebt(sleepRows, lastDay, sleepNeed),
+    };
+
     return NextResponse.json({
       period,
       offset,
       tz,
+      sleep,
       startDate: current.start,
       endDate: current.end,
       label: current.label,

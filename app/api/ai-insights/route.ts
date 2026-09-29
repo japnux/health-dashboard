@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { nightForAi } from "@/lib/sleep";
 import { isAuthenticated } from "@/lib/session";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -108,7 +109,8 @@ INTERDICTIONS ABSOLUES (violation = réponse rejetée) :
 7. Le title DOIT être cohérent avec les bullets. AVANT d'écrire le title, VÉRIFIE chaque bullet :
    - Valeur ≥ target ou norme → NE PAS écrire "faible", "insuffisant", "bas" pour cette métrique.
    - Valeur < target → OK pour "faible", "bas".
-   Ex: REM 32% > norme 20-25% = REM élevé/bon, PAS "REM faible". Deep 5% < norme 15-20% = deep faible = OK.
+   Ex: REM 32% > repère 20 % = REM bon, PAS "REM faible". Sommeil profond : UNIQUEMENT deepMin face à deepUsualRange
+   (indicators.sleep), jamais en % : 55 min dans une plage de 34-64 min = normal, même si c'est 11 % d'une nuit de 8h19.
 
 FORMAT :
 1. TENDANCES (exactement 3) : observations sur données MESURÉES (sommeil, HRV, strain${N ? ", nutrition" : ""}). Pas de tendance sur le planning.
@@ -201,7 +203,7 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
     await Promise.all([
       supabase
         .from("daily_metrics")
-        .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, steps, active_kcal, cardio_load, recovery_score")
+        .select("date, hrv_ms, sleeping_hr_bpm, respiratory_rate, spo2_pct, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, naps, steps, active_kcal, cardio_load, recovery_score")
         .gte("date", sevenDaysAgo)
         .lte("date", today)
         .order("date", { ascending: true }),
@@ -317,14 +319,8 @@ async function fetchContextData(supabase: ReturnType<typeof createServiceClient>
   const strain = snap.strain;
   const activeKcalToday = strain.activeKcalToday;
 
-  // Sommeil lisible pour chaque jour
-  const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => {
-    const sleepMin = m.sleep_total_min;
-    const sleepLabel = sleepMin != null
-      ? `${Math.floor(sleepMin / 60)}h${Math.round(sleepMin % 60).toString().padStart(2, "0")}`
-      : null;
-    return { ...m, sleep_readable: sleepLabel };
-  });
+  // Nuits : durée lisible, phases en minutes, nuits incomplètes signalées (lib/sleep)
+  const metricsWithReadableSleep = (metricsRes.data ?? []).map((m) => nightForAi(m));
 
   // ─── Meal Slots du jour ──────────────────────────────────────
   const slotsConfig = (config as Record<string, unknown>).meal_slots_config as MealSlot[] | null ?? DEFAULT_SLOTS;
