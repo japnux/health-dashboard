@@ -1,7 +1,7 @@
 // Blocs de l'accueil : un résumé par sujet, le détail au clic.
 // Composants serveur sans état.
 
-import { formatDuration } from "@/lib/sleep";
+import { deepMinutesColor, formatClock, formatDuration } from "@/lib/sleep";
 import Link from "next/link";
 import type { DashboardSnapshot } from "@/lib/dashboard-data";
 import { recoveryColor, recoveryLabel } from "@/lib/recovery-score";
@@ -83,6 +83,7 @@ function ScoreTile({
   status,
   statusColor,
   sub,
+  details,
 }: {
   href: string;
   title: string;
@@ -90,9 +91,12 @@ function ScoreTile({
   status: string;
   statusColor: string;
   sub: string | null;
+  // Chiffres clés en bas de tuile, sur grand écran (la tuile s'étire à la
+  // hauteur de la carte voisine : on occupe la place)
+  details?: TileDetail[];
 }) {
   return (
-    <Link href={href} className={`${CARD} !p-3 sm:!p-5 flex flex-col`} style={tinted(statusColor)}>
+    <Link href={href} className={`${CARD} !p-3 sm:!p-5 xl:!p-3.5 flex flex-col`} style={tinted(statusColor)}>
       <div className="flex items-center justify-center sm:justify-between xl:justify-center gap-1">
         <p className="text-[10px] sm:text-xs uppercase sm:tracking-wide text-[var(--color-body)] truncate">{title}</p>
         {/* Chevron masqué sur mobile : place pour le titre, la tuile entière reste cliquable */}
@@ -106,8 +110,43 @@ function ScoreTile({
         {status}
       </p>
       {sub && <p className="text-[10px] sm:text-[11px] text-[var(--color-body)] mt-0.5 text-center leading-snug">{sub}</p>}
+      {details && details.length > 0 && (
+        <div className="hidden md:block mt-auto pt-4">
+          <div className="pt-3 border-t border-black/5 dark:border-white/10 space-y-1.5">
+            {details.map((d) => (
+              <p key={d.label} className="flex items-center justify-between gap-1.5 text-[11px] xl:text-[10px] leading-tight">
+                <span className="flex items-center gap-1.5 text-[var(--color-body)] min-w-0">
+                  {d.color && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />}
+                  <span className="truncate">{d.label}</span>
+                </span>
+                <span className="text-[var(--color-heading)] dark:text-white tabular-nums whitespace-nowrap">{d.value}</span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
     </Link>
   );
+}
+
+type TileDetail = { label: string; value: string; color?: string };
+
+// Mesures de la nuit pour la tuile Récupération : pastille verte dans la plage
+// ou hors plage dans le bon sens, orange sinon
+function nightMetricDetails(snap: DashboardSnapshot): TileDetail[] {
+  const keys = ["hrv", snap.recovery.hrSource === "sleeping" ? "sleeping_hr" : null, "respiration"].filter(Boolean);
+  return snap.bodyMetrics
+    .filter((m) => keys.includes(m.key) && m.value != null)
+    .map((m) => {
+      const def = BODY_METRICS_BY_KEY.get(m.key)!;
+      const favorable = m.status === "in" || isFavorable(def, m.status) === true;
+      return {
+        label: def.short,
+        // Unité collée pour "/min" : la tuile est étroite en trois colonnes
+        value: def.unit.startsWith("/") ? `${formatMetric(def, m.value!)}${def.unit}` : `${formatMetric(def, m.value!)} ${def.unit}`,
+        color: m.status == null ? "#8e8e93" : favorable ? "#34c759" : "#ff9500",
+      };
+    });
 }
 
 
@@ -118,7 +157,6 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: snap.tz }).format(new Date()));
   const dayDone = workoutsToday > 0 && hour >= 18;
 
-  // Sommeil : anneau = durée rapportée à l'objectif, couleur = qualité
   const t = snap.today;
   // Sommeil : anneau = score /100 (lib/sleep), durée au centre
   const sleepMin = t?.sleep_total_min ?? null;
@@ -126,6 +164,17 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
   const sleepColor = night?.color ?? "#8e8e93";
   const sleepLabel = sleepMin != null ? formatDuration(sleepMin) : "—";
   const debt = snap.sleep.debt.debtMin;
+  const phases = snap.sleep.phases;
+  const todayWorkouts = snap.recentWorkouts.filter((w) => dateInTz(w.started_at, snap.tz) === snap.date);
+  // Sous-titre du sommeil : le point faible, sinon la dette, sinon le score
+  const WEAK = { duration: "nuit courte", regularity: "coucher décalé", interruptions: "nuit hachée" } as const;
+  const sleepSub = night
+    ? night.weakest
+      ? WEAK[night.weakest]
+      : debt >= 60
+        ? `dette ${formatDuration(debt)}`
+        : `${night.score}/100`
+    : null;
 
   return (
     <>
@@ -144,6 +193,7 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           status={snap.recovery.score != null ? capitalize(recoveryLabel(snap.recovery.score)) : "—"}
           statusColor={RECOVERY_RING[color]}
           sub={snap.recovery.basis !== "full" ? `score ${snap.recovery.basis === "partial" ? "partiel" : "estimé"}` : "nuit dernière"}
+          details={nightMetricDetails(snap)}
         />
         <ScoreTile
           href="/strain"
@@ -152,6 +202,18 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           status={strain.label}
           statusColor={strainColor(strain.score)}
           sub={workoutsToday > 0 ? `${workoutsToday} séance${workoutsToday > 1 ? "s" : ""} aujourd'hui` : "aujourd'hui"}
+          details={[
+            ...(strain.mode === "hr" && strain.cardioLoad != null
+              ? [
+                  { label: "Charge", value: String(Math.round(strain.cardioLoad)) },
+                  { label: "Moyenne", value: strain.hasBaseline ? String(strain.baselineAvg) : "—" },
+                ]
+              : [{ label: "Kcal actives", value: String(strain.activeKcalToday) }]),
+            ...todayWorkouts.slice(0, 2).map((w) => ({
+              label: `${workoutEmoji(w.type ?? "")} ${workoutDisplayLabel(w.type ?? "")}`,
+              value: fmtDuration(w.duration_min),
+            })),
+          ]}
         />
         <ScoreTile
           href="/sommeil"
@@ -168,7 +230,15 @@ export function TodayHero({ snap }: { snap: DashboardSnapshot }) {
           }
           status={night ? night.label : snap.sleep.incomplete ? "Incomplète" : "—"}
           statusColor={sleepColor}
-          sub={night ? `${night.score}/100${debt >= 60 ? ` · dette ${formatDuration(debt)}` : ""}` : null}
+          sub={sleepSub}
+          details={[
+            ...(snap.sleep.window ? [{ label: "Coucher", value: formatClock(snap.sleep.window.bed) }] : []),
+            ...(phases?.deepMin != null
+              ? [{ label: "Profond", value: `${Math.round(phases.deepMin)} min`, color: deepMinutesColor(phases.deepMin, snap.sleep.deepRange) }]
+              : []),
+            ...(phases?.remMin != null ? [{ label: "REM", value: formatDuration(phases.remMin) }] : []),
+            ...(snap.sleep.suggestedBed != null ? [{ label: "Ce soir", value: formatClock(snap.sleep.suggestedBed) }] : []),
+          ]}
         />
       </div>
     </>

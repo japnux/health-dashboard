@@ -734,7 +734,8 @@ function computeSleepSummary(
   const nights: SleepRow[] = [...(night ? [night] : []), ...baseline60];
   const history = baseline60.filter(isCompleteNight);
   const score = night ? sleepScore(night, history, needMin, tz) : null;
-  const suggestedBed = suggestedBedtime(nights, needMin, tz);
+  const debt = sleepDebt(nights, date, needMin);
+  const suggestedBed = suggestedBedtime(nights, needMin, tz, debt.debtMin);
   return {
     score,
     advice: score ? sleepAdvice(score, suggestedBed) : null,
@@ -745,7 +746,7 @@ function computeSleepSummary(
     deepRange: deepRange(history),
     remRange: remRange(history),
     awakeRange: awakeRange(history),
-    debt: sleepDebt(nights, date, needMin),
+    debt,
     sri: sleepRegularityIndex(nights, date, tz),
     bedtimeSpreadMin: bedtimeSpread(nights.filter((r) => r.date > isoDaysAgo(SRI_DAYS, tz)), tz),
     suggestedBed,

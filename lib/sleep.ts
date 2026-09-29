@@ -254,14 +254,25 @@ export function sleepScore(night: SleepRow, history: SleepRow[], needMin: number
   return { score, label: band.label, color: band.color, duration, regularity, interruptions, weakest: losses[0]?.[0] ?? null };
 }
 
-// Heure de coucher conseillée : lever habituel − besoin − éveil habituel
-export function suggestedBedtime(history: SleepRow[], needMin: number, tz: string): number | null {
-  const recent = history.filter(isCompleteNight).sort((a, b) => a.date.localeCompare(b.date)).slice(-7);
+// Heure de coucher conseillée : ton heure habituelle (la régularité compte
+// autant que la durée), avancée seulement si ton lever habituel ne laisse pas
+// assez de temps pour ton besoin, et de 30 min de plus en cas de dette
+// d'1 h ou plus. Jamais plus tard que l'heure habituelle. Arrondie à 5 min.
+export function suggestedBedtime(history: SleepRow[], needMin: number, tz: string, debtMin = 0): number | null {
+  const complete = history.filter(isCompleteNight).sort((a, b) => a.date.localeCompare(b.date));
+  const beds = complete
+    .slice(-13)
+    .map((r) => sleepWindow(r, tz)?.bed)
+    .filter((v): v is number => v != null);
+  const recent = complete.slice(-7);
   const wakes = recent.map((r) => sleepWindow(r, tz)?.wake).filter((v): v is number => v != null);
   const awakes = recent.map((r) => nightPhases(r)?.awakeMin).filter((v): v is number => v != null);
+  const usual = beds.length >= 4 ? median(beds) : null;
   const wake = median(wakes);
-  if (wake == null) return null;
-  return wake - needMin - (median(awakes) ?? 0);
+  const forNeed = wake != null ? wake - needMin - (median(awakes) ?? 0) : null;
+  const base = usual != null && forNeed != null ? Math.min(usual, forNeed) : (usual ?? forNeed);
+  if (base == null) return null;
+  return Math.floor((base - (debtMin >= 60 ? 30 : 0)) / 5) * 5;
 }
 
 // Conseil du jour, tiré du point faible
