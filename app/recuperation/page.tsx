@@ -62,6 +62,7 @@ export default async function RecuperationPage({
   const weight = (k: keyof typeof BASE_WEIGHTS) =>
     c[k].available && availableWeight > 0 ? `${Math.round((BASE_WEIGHTS[k] / availableWeight) * 100)} %` : "—";
 
+  const hrvRange = snap.bodyMetrics.find((m) => m.key === "hrv")?.range ?? null;
   // Même FC que celle retenue par le score (sommeil dès 7 nuits de référence)
   const usesSleepHr = snap.recovery.hrSource === "sleeping" && snap.sleepHrBaselineAvg != null;
   const rows: { key: keyof typeof BASE_WEIGHTS; label: string; value: string; ref: string }[] = [
@@ -69,7 +70,12 @@ export default async function RecuperationPage({
       key: "hrv",
       label: "HRV",
       value: t?.hrv_ms != null ? `${Math.round(t.hrv_ms)} ms` : "—",
-      ref: snap.hrvBaselineAvg != null ? `médiane 60 j : ${Math.round(snap.hrvBaselineAvg)} ms (plus haut = mieux)` : "",
+      // Notée face à ta plage habituelle (moyenne ± écart-type sur 60 nuits)
+      ref: hrvRange
+        ? `ta plage : ${Math.round(hrvRange.low)}–${Math.round(hrvRange.high)} ms (au milieu = 7/10, en haut = 10/10)`
+        : snap.hrvBaselineAvg != null
+          ? `médiane 60 j : ${Math.round(snap.hrvBaselineAvg)} ms (plus haut = mieux)`
+          : "",
     },
     {
       key: "restingHr",
@@ -170,7 +176,9 @@ export default async function RecuperationPage({
           <p>
             Le score dit dans quel état ta nuit t&apos;a remis, sur 10. Il compare quatre mesures de la nuit à tes propres
             références des 60 derniers jours : HRV (35 %), fréquence cardiaque pendant le sommeil (25 %), sommeil
-            (30 %, le score /100 de la nuit : durée face à ton besoin, régularité, interruptions) et respiration (10 %). Si une mesure manque, son poids est réparti sur les autres et le score est
+            (30 %, le score /100 de la nuit : durée face à ton besoin, régularité, interruptions) et respiration (10 %).
+            Chaque mesure vaut 7/10 quand elle est dans ta norme : la HRV au milieu de ta plage, une nuit « Bonne » à
+            81/100. Le 10/10 demande une HRV en haut de ta plage ou une nuit « Excellente ». Si une mesure manque, son poids est réparti sur les autres et le score est
             marqué partiel.
           </p>
           <p>

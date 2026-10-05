@@ -3,10 +3,14 @@
 // Si un composant manque, son poids est redistribué proportionnellement.
 
 import { MIN_NIGHT_MIN, isIncompleteNight, sleepScore, type SleepRow } from "@/lib/sleep";
+import { metricRange } from "@/lib/body-metrics";
 
 export type RecoveryInput = {
   hrvMs?: number | null;
-  hrv7dAvgMs?: number | null;
+  hrv7dAvgMs?: number | null; // médiane 60 j : repli tant que la plage n'existe pas
+  // Plage habituelle de la HRV (moyenne et écart-type sur 60 nuits, 14 min.)
+  hrvMeanMs?: number | null;
+  hrvSdMs?: number | null;
   restingHrBpm?: number | null;
   restingHr7dAvgBpm?: number | null;
   // Score de la nuit /100 (lib/sleep : durée vs besoin, régularité, interruptions)
@@ -50,12 +54,24 @@ function interpolate(
   return outMin + t * (outMax - outMin);
 }
 
-function scoreHrv(hrvMs?: number | null, hrv7dAvgMs?: number | null): RecoveryComponent {
-  if (hrvMs == null || hrv7dAvgMs == null || hrv7dAvgMs <= 0) {
-    return { score: 0, available: false };
+// HRV : notée face à ta variabilité réelle, comme la "plage habituelle" des
+// mesures de la nuit. Ta moyenne → 7, +1 écart-type (haut de ta plage) → 10,
+// −1 écart-type → 4, −2 → 1. Avant : 10 dès +10 % au-dessus de la médiane,
+// seuil que la variation normale d'une nuit à l'autre franchissait sans cesse.
+function scoreHrv(
+  hrvMs?: number | null,
+  medianMs?: number | null,
+  meanMs?: number | null,
+  sdMs?: number | null,
+): RecoveryComponent {
+  if (hrvMs == null) return { score: 0, available: false };
+  if (meanMs != null && sdMs != null && sdMs > 0) {
+    const z = (hrvMs - meanMs) / sdMs;
+    return { score: Math.max(1, Math.min(10, 7 + 3 * z)), available: true };
   }
-  const ratio = hrvMs / hrv7dAvgMs; // 1.0 = égal à la moyenne 7j
-  // Paliers : 0.80→1, 0.90→4, 1.00→7, 1.10→10
+  // Moins de 14 nuits de référence : ratio à la médiane (0,80 → 1 … 1,10 → 10)
+  if (medianMs == null || medianMs <= 0) return { score: 0, available: false };
+  const ratio = hrvMs / medianMs;
   let score: number;
   if (ratio >= 1.1) score = 10;
   else if (ratio >= 1.0) score = interpolate(ratio, 1.0, 1.1, 7, 10);
@@ -83,12 +99,17 @@ function scoreRestingHr(
   return { score, available: true };
 }
 
-// Sommeil : score de la nuit /100 ramené sur 10 (continu). Les phases n'y
+// Sommeil : score de la nuit /100 converti en note /10 (continu). Les phases n'y
 // entrent plus : la montre mesure mal le profond, et ses minutes ne dépendent
 // presque pas de la durée de la nuit (voir lib/sleep).
+// Note alignée sur les libellés du score de sommeil, pour que 7 veuille dire
+// "bonne nuit" comme 7 veut dire "dans ta norme" ailleurs :
+// 40 (Insuffisant) → 1, 60 → 4, 80 (seuil de "Bon") → 7, 96 (Excellent) → 10.
 function scoreSleep(score100?: number | null): RecoveryComponent {
   if (score100 == null) return { score: 0, available: false };
-  return { score: Math.max(1, score100 / 10), available: true };
+  const s = score100;
+  const score = s >= 80 ? interpolate(s, 80, 96, 7, 10) : s >= 60 ? interpolate(s, 60, 80, 4, 7) : interpolate(s, 40, 60, 1, 4);
+  return { score, available: true };
 }
 
 // Fréq. respiratoire : plus basse pendant le sommeil = meilleure récupération.
@@ -114,7 +135,7 @@ function scoreRespiratory(
 }
 
 export function computeRecoveryScore(input: RecoveryInput): RecoveryResult {
-  const hrv = scoreHrv(input.hrvMs, input.hrv7dAvgMs);
+  const hrv = scoreHrv(input.hrvMs, input.hrv7dAvgMs, input.hrvMeanMs, input.hrvSdMs);
   const restingHr = scoreRestingHr(input.restingHrBpm, input.restingHr7dAvgBpm);
   const sleep = scoreSleep(input.sleepScore100);
   const respiratory = scoreRespiratory(input.respiratoryRate, input.respiratoryRate7dAvg);
@@ -210,6 +231,7 @@ function medianOf(values: number[]): number | null {
 // day : mesures de la journée uniquement (aucune valeur d'un autre jour).
 // past60 : les jours [J-60, J-1].
 const MIN_SLEEP_HR_NIGHTS = 7;
+const HRV_MIN_NIGHTS = 14;
 
 // Nuit incomplète (moins de 3 h) : définition dans lib/sleep
 export { MIN_NIGHT_MIN, isIncompleteNight };
@@ -220,9 +242,13 @@ export function recoveryForDay(day: RecoveryDayInput, past60: RecoveryHistoryRow
   const incompleteNight = isIncompleteNight(day.sleep_total_min);
   const sleepHistory = past60.filter((r): r is RecoveryHistoryRow & SleepRow => r.date != null && r.sleep_total_min !== undefined);
   const night = sleepScore(day, sleepHistory, sleep.needMin, sleep.tz);
+  // Même plage que la tuile HRV (moyenne ± écart-type, 14 nuits minimum)
+  const hrvRange = metricRange(presentValues(past60, "hrv_ms"), HRV_MIN_NIGHTS);
   const result = computeRecoveryScore({
     hrvMs: day.hrv_ms,
     hrv7dAvgMs: medianOf(presentValues(past60, "hrv_ms")),
+    hrvMeanMs: hrvRange?.mean ?? null,
+    hrvSdMs: hrvRange ? hrvRange.high - hrvRange.mean : null,
     restingHrBpm: useSleepHr ? day.sleeping_hr_bpm! : day.resting_hr_bpm,
     restingHr7dAvgBpm: useSleepHr ? meanOf(sleepHrPast) : meanOf(presentValues(past60, "resting_hr_bpm")),
     sleepScore100: night?.score ?? null,
