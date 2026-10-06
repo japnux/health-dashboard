@@ -37,6 +37,9 @@ export type SleepRow = {
   sleep_start?: string | null;
   sleep_end?: string | null;
   naps?: Nap[] | null;
+  // Décalage UTC du téléphone (minutes) quand la nuit a été reçue : le fuseau
+  // où elle a été dormie. Absent sur les anciennes nuits.
+  tz_offset_min?: number | null;
 };
 
 // ── Petits outils ────────────────────────────────────────────────────────
@@ -56,10 +59,15 @@ function median(values: number[]): number | null {
   return percentile([...values].sort((a, b) => a - b), 0.5);
 }
 
-// Minutes locales depuis minuit (0-1439)
-function localMinutes(iso: string, tz: string): number | null {
+// Minutes locales depuis minuit (0-1439). Avec un décalage UTC connu (fuseau
+// de la nuit), il prime sur le fuseau de repli.
+function localMinutes(iso: string, tz: string, offsetMin?: number | null): number | null {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
+  if (offsetMin != null) {
+    const m = Math.floor(d.getTime() / 60_000) + offsetMin;
+    return ((m % 1440) + 1440) % 1440;
+  }
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(d);
   const h = Number(parts.find((p) => p.type === "hour")?.value);
   const m = Number(parts.find((p) => p.type === "minute")?.value);
@@ -68,8 +76,8 @@ function localMinutes(iso: string, tz: string): number | null {
 
 // Heure en minutes par rapport à minuit du jour du lever. Pivot unique à 18h :
 // 23h37 → −23, 00h32 → 32 (un coucher avant et après minuit restent voisins).
-function relativeToWakeMidnight(iso: string, tz: string): number | null {
-  const m = localMinutes(iso, tz);
+function relativeToWakeMidnight(iso: string, tz: string, offsetMin?: number | null): number | null {
+  const m = localMinutes(iso, tz, offsetMin);
   if (m == null) return null;
   return m >= 18 * 60 ? m - 24 * 60 : m;
 }
@@ -123,11 +131,13 @@ export function napMinutes(row: SleepRow): number {
 
 export type SleepWindow = { bed: number; wake: number; mid: number };
 
-// Coucher, lever et milieu de nuit, en minutes par rapport à minuit du jour du lever
+// Coucher, lever et milieu de nuit, en minutes par rapport à minuit du jour du
+// lever. Chaque nuit est lue dans le fuseau où elle a été dormie (heure de la
+// montre ce jour-là) ; `tz` ne sert que de repli pour les nuits sans fuseau connu.
 export function sleepWindow(row: SleepRow, tz: string): SleepWindow | null {
   if (!row.sleep_start || !row.sleep_end) return null;
-  const bed = relativeToWakeMidnight(row.sleep_start, tz);
-  const wake = localMinutes(row.sleep_end, tz);
+  const bed = relativeToWakeMidnight(row.sleep_start, tz, row.tz_offset_min);
+  const wake = localMinutes(row.sleep_end, tz, row.tz_offset_min);
   if (bed == null || wake == null) return null;
   return { bed, wake, mid: (bed + wake) / 2 };
 }
@@ -350,8 +360,15 @@ export function sleepRegularityIndex(rows: SleepRow[], upTo: string, tz: string,
     }
     for (const n of r.naps ?? []) intervals.push([Date.parse(n.start), Date.parse(n.end)]);
   }
-  // Période du jour D : de midi la veille à midi le jour D (contient la nuit de D)
-  const periodStart = (date: string) => Date.parse(localMidnightUtcIso(isoDateMinusDays(date, 1), tz)) + 12 * 3_600_000;
+  // Période du jour D : de midi la veille à midi le jour D (contient la nuit de
+  // D), à l'heure locale de cette nuit : deux nuits aux mêmes heures de montre
+  // dans deux fuseaux comptent comme régulières
+  const offsets = new Map(inWindow.map((r) => [r.date, r.tz_offset_min ?? null]));
+  const periodStart = (date: string) => {
+    const offset = offsets.get(date);
+    const prev = isoDateMinusDays(date, 1);
+    return offset != null ? Date.parse(`${prev}T12:00:00Z`) - offset * 60_000 : Date.parse(localMidnightUtcIso(prev, tz)) + 12 * 3_600_000;
+  };
   const DAY_MS = 24 * 3_600_000;
   // Intervalles qui touchent une période donnée (évite de tout parcourir sur un an)
   const near = (start: number) => intervals.filter(([s, e]) => e > start && s < start + DAY_MS);
@@ -389,6 +406,40 @@ export function bedtimeSpread(rows: SleepRow[], tz: string): number | null {
   return Math.round(Math.sqrt(beds.reduce((a, v) => a + (v - mean) ** 2, 0) / beds.length));
 }
 
+// ── Changement de fuseau (décalage horaire) ─────────────────────────────
+// Signalé pendant les nuits qui suivent : le coucher est jugé à l'heure locale
+// alors que l'horloge interne se recale d'environ une heure par jour (repère
+// courant, un peu plus lent vers l'est).
+
+// shiftMin : décalage de l'heure locale (négatif = montre reculée, vers l'ouest)
+// nights : nuits dormies dans le nouveau fuseau
+export type TimeShift = { shiftMin: number; nights: number };
+
+const SHIFT_MIN_NIGHTS = 2;
+const SHIFT_MAX_NIGHTS = 7;
+
+export function timeShift(rows: SleepRow[], upTo: string): TimeShift | null {
+  const known = rows
+    .filter((r) => r.date <= upTo && r.date >= isoDateMinusDays(upTo, SHIFT_MAX_NIGHTS + 1) && r.tz_offset_min != null && r.sleep_start != null)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  if (known.length === 0) return null;
+  const current = known[0].tz_offset_min!;
+  const changedAt = known.findIndex((r) => r.tz_offset_min !== current);
+  if (changedAt === -1) return null;
+  const shiftMin = current - known[changedAt].tz_offset_min!;
+  // Affiché une nuit par heure de décalage (au moins 2, au plus 7)
+  const shownNights = Math.min(SHIFT_MAX_NIGHTS, Math.max(SHIFT_MIN_NIGHTS, Math.ceil(Math.abs(shiftMin) / 60)));
+  return changedAt <= shownNights ? { shiftMin, nights: changedAt } : null;
+}
+
+// "−2 h", "+1 h", "+5h30"
+export function formatShift(shiftMin: number): string {
+  const abs = Math.abs(shiftMin);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `${shiftMin < 0 ? "−" : "+"}${m === 0 ? `${h} h` : `${h}h${String(m).padStart(2, "0")}`}`;
+}
+
 // ── Couleurs ────────────────────────────────────────────────────────────
 
 export function sriColor(sri: number): string {
@@ -410,10 +461,11 @@ export function debtColor(min: number): string {
 // Phases en minutes (le profond n'est jamais envoyé en %), nuit incomplète
 // signalée : l'IA ne juge ni sa durée ni ses phases.
 export function nightForAi<T extends SleepRow>(row: T) {
-  const { sleep_deep_pct: _deepPct, sleep_awake_pct: _awakePct, naps: _naps, ...rest } = row;
+  const { sleep_deep_pct: _deepPct, sleep_awake_pct: _awakePct, naps: _naps, tz_offset_min: _tzOffset, ...rest } = row;
   void _deepPct;
   void _awakePct;
   void _naps;
+  void _tzOffset;
   const p = nightPhases(row);
   const r = (v: number | null | undefined) => (v != null ? Math.round(v) : null);
   return {

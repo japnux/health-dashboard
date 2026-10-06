@@ -3,7 +3,7 @@
 
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getUserTz } from "@/lib/user-tz";
+import { tzFromOffset } from "@/lib/user-tz";
 import { normalizeWorkoutType, workoutDisplayLabel } from "@/lib/workout-types";
 import { HR_ZONES } from "@/lib/hr-zones";
 import { getHrMax } from "@/lib/cardio-load";
@@ -47,12 +47,13 @@ export default async function SeancePage({
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
   const supabase = createServiceClient();
-  const [{ data: w }, tz, hrMax] = await Promise.all([
+  const [{ data: w }, hrMax] = await Promise.all([
     supabase.from("workouts").select("*").eq("id", id).maybeSingle(),
-    getUserTz(supabase),
     getHrMax(supabase),
   ]);
   if (!w) notFound();
+  // Heure affichée : celle du lieu où la séance a été faite
+  const tz = tzFromOffset(w.tz_offset_min);
 
   // Séances du même type sur les 30 jours précédents (hors celle-ci)
   const typeKey = normalizeWorkoutType(w.type ?? "");

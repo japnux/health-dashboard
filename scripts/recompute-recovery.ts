@@ -40,6 +40,7 @@ async function main() {
     sleep_awake_pct: number | null;
     sleep_start: string | null;
     sleep_end: string | null;
+    tz_offset_min: number | null;
     recovery_score: number | null;
     recovery_score_basis: string | null;
   }[] = [];
@@ -48,7 +49,7 @@ async function main() {
     const { data, error } = await supabase
       .from("daily_metrics")
       .select(
-        "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, recovery_score, recovery_score_basis",
+        "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, tz_offset_min, recovery_score, recovery_score_basis",
       )
       .order("date", { ascending: true })
       .range(from, from + PAGE - 1);

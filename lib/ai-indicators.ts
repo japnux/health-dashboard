@@ -31,6 +31,10 @@ export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement
   Il se loge en fin de nuit (une nuit écourtée le coupe). N'invente jamais de plage : sans valeur fournie, pas de comparaison.
   Nuit "incomplete" (moins de 3 h enregistrées, montre retirée) : ne commente pas sa durée ni ses phases.
   Régularité : sri ≥ 81 bon (médiane de 61 000 personnes), < 72 irrégulier ; elle prédit la santé mieux que la durée.
+  Toutes les heures (bedtime, wakeTime, usualBedtime, suggestedBedtime) sont à l'heure locale du lieu où la nuit a été
+  dormie. timeZoneShift non nul : changement de fuseau récent (shiftHours négatif = montre reculée, vers l'ouest). Dis-le
+  en une phrase si tu parles du coucher : l'horloge interne se recale d'environ une heure par jour, un coucher à l'heure
+  locale habituelle peut donc être tardif ou précoce pour le corps. Ne le présente pas comme une irrégularité.
 - Séances : indicators.todayWorkouts donne charge cardio, FC moyenne et hrDrop1min (baisse de FC 1 min après la fin de la
   séance). Ne juge PAS hrDrop1min dans l'absolu : après un surf, l'utilisateur sort de l'eau en marchant, la baisse est
   faible par nature. Ne l'utilise que comparée à d'autres séances du même sport.`;
@@ -115,5 +119,6 @@ function sleepIndicators(snap: DashboardSnapshot) {
     debt14dMin: s.debt.debtMin,
     sri14d: s.sri,
     suggestedBedtime: s.suggestedBed != null ? formatClock(s.suggestedBed) : null,
+    timeZoneShift: s.timeShift ? { shiftHours: Math.round((s.timeShift.shiftMin / 60) * 10) / 10, nightsSince: s.timeShift.nights } : null,
   };
 }

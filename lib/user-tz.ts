@@ -23,6 +23,12 @@ function formatOffset(minutes: number): string {
   return `${sign}${h}:${m}`;
 }
 
+// Fuseau d'une nuit ou d'une séance à partir de son décalage UTC enregistré.
+// Inconnu (anciennes données) : fuseau habituel, pas celui du voyage en cours.
+export function tzFromOffset(offsetMin: number | null | undefined): string {
+  return offsetMin != null ? formatOffset(offsetMin) : DEFAULT_TZ;
+}
+
 export async function getUserTz(supabase: Client): Promise<string> {
   const { data, error } = await supabase
     .from("daily_metrics")

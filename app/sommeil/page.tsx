@@ -23,6 +23,7 @@ import {
   deepMinutesColor,
   formatClock,
   formatDuration,
+  formatShift,
   isCompleteNight,
   napMinutes,
   nightPhases,
@@ -54,7 +55,7 @@ export default async function SommeilPage({
   const supabase = createServiceClient();
   const { data } = await supabase
     .from("daily_metrics")
-    .select("date, sleep_total_min, sleep_deep_pct, sleep_rem_pct, sleep_awake_pct, sleep_start, sleep_end, naps")
+    .select("date, sleep_total_min, sleep_deep_pct, sleep_rem_pct, sleep_awake_pct, sleep_start, sleep_end, naps, tz_offset_min")
     .gte("date", isoDaysAgo(period - 1 + 60, tz))
     .lte("date", snap.date)
     .order("date", { ascending: true });
@@ -133,6 +134,15 @@ export default async function SommeilPage({
               }
             />
           </div>
+          {s.timeShift && w && (
+            <p className="mt-4 rounded-[8px] bg-[#5856d6]/10 px-3 py-2 text-sm text-[var(--color-body)] leading-relaxed">
+              <Strong>
+                Décalage horaire : {formatShift(s.timeShift.shiftMin)} depuis {s.timeShift.nights} nuit{s.timeShift.nights > 1 ? "s" : ""}.
+              </Strong>{" "}
+              Tes horaires sont lus à l&apos;heure locale. À ton ancienne heure, ton coucher de {formatClock(w.bed)} tombe à{" "}
+              {formatClock(w.bed - s.timeShift.shiftMin)}. L&apos;horloge interne se recale d&apos;environ une heure par jour.
+            </p>
+          )}
           {w && (
             <div className="mt-5 pt-5 border-t border-black/5 dark:border-white/10">
               <StatGrid
@@ -318,6 +328,11 @@ export default async function SommeilPage({
             (50 points), <Strong>régularité</Strong> de ton coucher face à tes 13 nuits précédentes (30 points, plein jusqu&apos;à
             15 min d&apos;écart) et <Strong>interruptions</Strong> face à ton éveil habituel (20 points). Il entre pour 30 % dans
             ton score de récupération.
+          </p>
+          <p>
+            Chaque nuit est lue à l&apos;heure locale de l&apos;endroit où tu l&apos;as dormie : en voyage, ton coucher habituel
+            reste celui de ta montre. Après un changement de fuseau, une mention le rappelle pendant quelques nuits, le temps
+            que ton horloge interne se recale.
           </p>
           <p>
             Ce que la montre mesure bien : la durée, l&apos;heure de coucher et de lever. Moins bien : l&apos;éveil

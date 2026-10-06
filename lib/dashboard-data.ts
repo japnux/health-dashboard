@@ -23,6 +23,8 @@ import {
   sleepScore,
   sleepWindow,
   suggestedBedtime,
+  timeShift,
+  type TimeShift,
   type NightPhases,
   type PersonalRange,
   type SleepDebt,
@@ -211,6 +213,7 @@ export type SleepSummary = {
   sri: number | null; // régularité 14 j (0-100)
   bedtimeSpreadMin: number | null; // écart-type du coucher, 14 nuits
   suggestedBed: number | null; // minutes relatives à minuit
+  timeShift: TimeShift | null; // changement de fuseau récent
 };
 
 // Données Apple Watch complémentaires (cardio, nuit).
@@ -290,7 +293,7 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       .eq("date", date),
     supabase
       .from("daily_metrics")
-      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, spo2_pct, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, naps")
+      .select("date, hrv_ms, resting_hr_bpm, respiratory_rate, recovery_score, active_kcal, cardio_load, sleeping_hr_bpm, spo2_pct, wrist_temp_c, breathing_disturbances, vo2_max, cardio_recovery_bpm, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, naps, tz_offset_min")
       .gte("date", sixtyDaysAgo)
       .lt("date", date)
       .order("date", { ascending: false }),
@@ -381,6 +384,7 @@ async function loadDashboardSnapshot(): Promise<DashboardSnapshot> {
       sleep_awake_pct: today?.sleep_awake_pct ?? null,
       sleep_start: today?.sleep_start ?? null,
       sleep_end: today?.sleep_end ?? null,
+      tz_offset_min: today?.tz_offset_min ?? null,
     },
     baseline60,
     { needMin: sleepNeedMin, tz },
@@ -750,5 +754,6 @@ function computeSleepSummary(
     sri: sleepRegularityIndex(nights, date, tz),
     bedtimeSpreadMin: bedtimeSpread(nights.filter((r) => r.date > isoDaysAgo(SRI_DAYS, tz)), tz),
     suggestedBed,
+    timeShift: timeShift(nights, date),
   };
 }

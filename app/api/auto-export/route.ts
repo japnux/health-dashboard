@@ -27,6 +27,14 @@ function extractDate(dateStr: string): string {
   return dateStr.slice(0, 10);
 }
 
+// Décalage UTC en minutes d'une date Health Auto Export ("... +0200" → 120).
+// Toutes les dates d'un envoi portent le fuseau du téléphone à ce moment-là.
+function extractOffsetMin(dateStr: unknown): number | null {
+  const m = typeof dateStr === "string" ? dateStr.trim().match(/([+-])(\d{2}):?(\d{2})$/) : null;
+  if (!m) return null;
+  return (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
+}
+
 function extractHour(dateStr: string): number {
   const m = dateStr.match(/(\d{2}):\d{2}:\d{2}/);
   return m ? parseInt(m[1], 10) : -1;
@@ -125,6 +133,7 @@ type DayBucket = {
   hr_hourly: HrHourly | null; // FC moyenne horaire, pour la charge cardio hors séance
   sleeping_hr_bpm: number | null; // plus basse moyenne horaire pendant le sommeil
   naps: Nap[] | null; // siestes : sessions hors nuit principale
+  tz_offset_min: number | null; // fuseau du téléphone à la première réception de la nuit
   _sleep_sessions: SleepSession[]; // sessions reçues, triées en fin de lecture
 };
 
@@ -161,9 +170,10 @@ type HistoryRow = {
   hr_min_bpm: number | null;
   hr_hourly: HrHourly | null;
   naps: Nap[] | null;
+  tz_offset_min: number | null;
 };
 const HISTORY_COLUMNS =
-  "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, hr_max_bpm, hr_min_bpm, hr_hourly, naps";
+  "date, hrv_ms, resting_hr_bpm, sleeping_hr_bpm, respiratory_rate, sleep_total_min, sleep_rem_pct, sleep_deep_pct, sleep_awake_pct, sleep_start, sleep_end, steps, active_kcal, daylight_min, hr_max_bpm, hr_min_bpm, hr_hourly, naps, tz_offset_min";
 
 // Valeur reçue, sans jamais descendre sous celle déjà en base (cumul partiel)
 function keepMax(received: number | null, stored: number | null): number | null {
@@ -213,6 +223,7 @@ function emptyDay(): DayBucket {
     hr_hourly: null,
     sleeping_hr_bpm: null,
     naps: null,
+    tz_offset_min: null,
     _sleep_sessions: [],
   };
 }
@@ -547,6 +558,13 @@ export async function POST(request: Request) {
     for (const r of (rows ?? []) as unknown as HistoryRow[]) history.set(r.date, r);
   }
 
+  // Fuseau du téléphone au moment de l'envoi
+  let payloadOffsetMin: number | null = null;
+  for (const m of metrics as { data?: { date?: unknown }[] }[]) {
+    payloadOffsetMin = extractOffsetMin(m.data?.[0]?.date);
+    if (payloadOffsetMin != null) break;
+  }
+
   for (const date of historyOk ? dayDates : []) {
     const day = days.get(date)!;
     const existing = history.get(date) ?? null;
@@ -653,6 +671,12 @@ export async function POST(request: Request) {
       }
     }
 
+    // Fuseau de la nuit : fixé quand elle arrive pour la première fois (le matin,
+    // là où elle a été dormie). Les renvois faits plus tard depuis un autre
+    // fuseau ne le changent pas.
+    const firstNight = day.sleep_total_min != null && existing?.sleep_total_min == null;
+    if (payloadOffsetMin != null && (existing?.tz_offset_min == null || firstNight)) day.tz_offset_min = payloadOffsetMin;
+
     // Score sur la journée complète : valeurs reçues, sinon celles déjà en base
     const recovery = recoveryForDay(
       {
@@ -667,6 +691,7 @@ export async function POST(request: Request) {
         sleep_awake_pct: day.sleep_awake_pct ?? existing?.sleep_awake_pct ?? null,
         sleep_start: day.sleep_start ?? existing?.sleep_start ?? null,
         sleep_end: day.sleep_end ?? existing?.sleep_end ?? null,
+        tz_offset_min: day.tz_offset_min ?? existing?.tz_offset_min ?? null,
       },
       past,
       sleepSettings,
@@ -814,6 +839,12 @@ export async function POST(request: Request) {
     if (!error) {
       workoutCount++;
       loadDates.add(extractDate(startStr));
+      // Fuseau de la séance : celui du premier envoi, jamais remplacé par un
+      // renvoi fait plus tard depuis un autre fuseau
+      const woOffsetMin = extractOffsetMin(startStr);
+      if (woOffsetMin != null) {
+        await supabase.from("workouts").update({ tz_offset_min: woOffsetMin }).eq("started_at", startedAt).eq("type", name).is("tz_offset_min", null);
+      }
       // Détails (courbe FC, récupération, tracé GPS) : écrits à part pour qu'un
       // souci sur ces colonnes n'empêche jamais d'enregistrer la séance
       const details = extractWorkoutDetails(wo);

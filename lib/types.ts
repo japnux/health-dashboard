@@ -38,6 +38,7 @@ export type Database = {
           sleeping_hr_bpm: number | null;
           // Siestes du jour : sessions hors nuit principale (lib/sleep, type Nap)
           naps: { start: string; end: string; min: number }[] | null;
+          tz_offset_min: number | null;
           raw_payload: Record<string, unknown> | null;
           created_at: string;
           updated_at: string;
@@ -70,6 +71,7 @@ export type Database = {
           cardio_load?: number | null;
           sleeping_hr_bpm?: number | null;
           naps?: { start: string; end: string; min: number }[] | null;
+          tz_offset_min?: number | null;
           raw_payload?: Record<string, unknown> | null;
         };
         Update: Partial<Database["public"]["Tables"]["daily_metrics"]["Insert"]>;
@@ -113,6 +115,7 @@ export type Database = {
           distance_km: number | null;
           avg_speed_kmh: number | null;
           max_speed_kmh: number | null;
+          tz_offset_min: number | null;
           created_at: string;
         };
         Insert: {
@@ -132,6 +135,7 @@ export type Database = {
           distance_km?: number | null;
           avg_speed_kmh?: number | null;
           max_speed_kmh?: number | null;
+          tz_offset_min?: number | null;
         };
         Update: Partial<Database["public"]["Tables"]["workouts"]["Insert"]>;
         Relationships: [];
