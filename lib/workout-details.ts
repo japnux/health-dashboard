@@ -58,9 +58,24 @@ function speedKmh(obj: unknown): number | null {
   const q = Number(o?.qty);
   if (o?.qty == null || isNaN(q) || q < 0) return null;
   const units = String(o.units ?? "").toLowerCase();
-  // HAE indique "km" (km/h) ou "mi" (mph) ; m/s par sécurité
-  if (units.startsWith("mi")) return q * 1.609344;
+  // HAE indique la distance parcourue en une heure : "km" (km/h), "mi" (mph),
+  // et pour la natation "m" ou "m/hr" (mètres par heure), "yd" (yards par heure)
   if (units === "m/s") return q * 3.6;
+  if (units.startsWith("mi")) return q * 1.609344;
+  if (units.startsWith("yd")) return q * 0.0009144;
+  if (units === "m" || units.startsWith("m/h")) return q / 1000;
+  return q;
+}
+
+/** Distance Health Auto Export ({ qty, units }) → km. */
+function distanceKm(obj: unknown): number | null {
+  const o = obj as { qty?: unknown; units?: unknown } | undefined;
+  const q = Number(o?.qty);
+  if (o?.qty == null || isNaN(q) || q <= 0) return null;
+  const units = String(o.units ?? "").toLowerCase();
+  if (units.startsWith("mi")) return q * 1.609344;
+  if (units.startsWith("yd")) return q * 0.0009144;
+  if (units === "m") return q / 1000;
   return q;
 }
 
@@ -124,6 +139,11 @@ export function extractWorkoutDetails(wo: Record<string, unknown>): WorkoutDetai
       out.route = route;
     }
   }
+
+  // Distance mesurée par la montre quand elle est fournie : plus juste que le
+  // tracé GPS, qui décroche sous l'eau en natation
+  const measuredKm = distanceKm(wo.distance);
+  if (measuredKm != null) out.distance_km = round(measuredKm, 2);
 
   const avgSpeed = speedKmh(wo.avgSpeed);
   const maxSpeed = speedKmh(wo.maxSpeed);
