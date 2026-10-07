@@ -120,7 +120,9 @@ export default async function SommeilPage({
               c={score.regularity}
               detail={
                 score.regularity.available && w
-                  ? `couché à ${formatClock(w.bed)}, ${score.regularity.deviationMin} min d'écart avec ton heure habituelle (${formatClock(score.regularity.usualBed!)})`
+                  ? `couché à ${formatClock(w.bed)}, ${score.regularity.deviationMin} min plus ${score.regularity.early ? "tôt" : "tard"} que ton heure habituelle (${formatClock(score.regularity.usualBed!)})${
+                      score.regularity.shiftTolerated ? ", décalage horaire pris en compte" : ""
+                    }`
                   : "à partir de 4 nuits avec horaires"
               }
             />
@@ -325,14 +327,18 @@ export default async function SommeilPage({
         <div className="space-y-3 text-sm text-[var(--color-body)] leading-relaxed">
           <p>
             Le score /100 reprend la logique du score de sommeil d&apos;Apple : <Strong>durée</Strong> face à ton besoin
-            (50 points), <Strong>régularité</Strong> de ton coucher face à tes 13 nuits précédentes (30 points, plein jusqu&apos;à
-            15 min d&apos;écart) et <Strong>interruptions</Strong> face à ton éveil habituel (20 points). Il entre pour 30 % dans
-            ton score de récupération.
+            (50 points), <Strong>régularité</Strong> de ton coucher face à tes 13 nuits précédentes (30 points) et{" "}
+            <Strong>interruptions</Strong> face à ton éveil habituel (20 points). Il entre pour 30 % dans ton score de
+            récupération.
+          </p>
+          <p>
+            Le coucher n&apos;est pas jugé de la même façon dans les deux sens. Plus tard que d&apos;habitude : rien jusqu&apos;à
+            15 min, puis 1 point par 5 min. Plus tôt : rien jusqu&apos;à 60 min, puis 1 point par 30 min, 6 points au plus.
           </p>
           <p>
             Chaque nuit est lue à l&apos;heure locale de l&apos;endroit où tu l&apos;as dormie : en voyage, ton coucher habituel
-            reste celui de ta montre. Après un changement de fuseau, une mention le rappelle pendant quelques nuits, le temps
-            que ton horloge interne se recale.
+            reste celui de ta montre. Après un changement de fuseau, un coucher à l&apos;heure de ton ancien fuseau n&apos;est
+            pas pénalisé pendant quelques nuits, le temps que ton horloge interne se recale.
           </p>
           <p>
             Ce que la montre mesure bien : la durée, l&apos;heure de coucher et de lever. Moins bien : l&apos;éveil

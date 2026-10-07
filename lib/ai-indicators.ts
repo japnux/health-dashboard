@@ -31,6 +31,8 @@ export const INDICATOR_RULES = `- INDICATEURS : "indicators" contient exactement
   Il se loge en fin de nuit (une nuit écourtée le coupe). N'invente jamais de plage : sans valeur fournie, pas de comparaison.
   Nuit "incomplete" (moins de 3 h enregistrées, montre retirée) : ne commente pas sa durée ni ses phases.
   Régularité : sri ≥ 81 bon (médiane de 61 000 personnes), < 72 irrégulier ; elle prédit la santé mieux que la durée.
+  bedtimeDeviationMin : positif = couché plus tard que d'habitude, négatif = plus tôt. Un coucher plus tôt ne coûte
+  presque rien (rien jusqu'à 60 min, 6 points au plus) : ne le présente jamais comme un problème. bedtimePoints fait foi.
   Toutes les heures (bedtime, wakeTime, usualBedtime, suggestedBedtime) sont à l'heure locale du lieu où la nuit a été
   dormie. timeZoneShift non nul : changement de fuseau récent (shiftHours négatif = montre reculée, vers l'ouest). Dis-le
   en une phrase si tu parles du coucher : l'horloge interne se recale d'environ une heure par jour, un coucher à l'heure
@@ -108,7 +110,9 @@ function sleepIndicators(snap: DashboardSnapshot) {
     bedtime: s.window ? formatClock(s.window.bed) : null,
     wakeTime: s.window ? formatClock(s.window.wake) : null,
     usualBedtime: sc?.regularity.usualBed != null ? formatClock(sc.regularity.usualBed) : null,
-    bedtimeDeviationMin: sc?.regularity.deviationMin ?? null,
+    // positif = couché plus tard que d'habitude, négatif = plus tôt
+    bedtimeDeviationMin: sc?.regularity.deviationMin != null ? (sc.regularity.early ? -1 : 1) * sc.regularity.deviationMin : null,
+    bedtimePoints: sc?.regularity.available ? `${Math.round(sc.regularity.points)}/30` : null,
     deepMin: min(p?.deepMin),
     deepUsualRange: s.deepRange ? `${Math.round(s.deepRange.low)}-${Math.round(s.deepRange.high)} min` : null,
     remMin: min(p?.remMin),

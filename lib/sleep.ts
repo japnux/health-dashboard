@@ -8,6 +8,8 @@
 //
 // D'où le score /100, sur le modèle du Sleep Score d'Apple (watchOS 26) :
 //   durée vs besoin 50 pts, régularité du coucher 30 pts, interruptions 20 pts.
+// Le coucher suit les règles relevées sur le score d'Apple : un coucher tardif
+// coûte vite, un coucher plus tôt presque rien, le décalage horaire rien.
 // Les phases sont affichées en minutes, hors score. Le profond se compare à ta
 // plage habituelle, jamais à une norme de laboratoire en % (ses minutes ne
 // dépendent presque pas de la durée de la nuit ; Skorucak 2018).
@@ -176,7 +178,9 @@ export type SleepScore = {
   label: string;
   color: string;
   duration: ScoreComponent & { sleptMin: number; needMin: number };
-  regularity: ScoreComponent & { deviationMin: number | null; usualBed: number | null };
+  // deviationMin : écart avec l'heure habituelle ; early : couché plus tôt ;
+  // shiftTolerated : heure de l'ancien fuseau admise (décalage horaire récent)
+  regularity: ScoreComponent & { deviationMin: number | null; early: boolean; shiftTolerated: boolean; usualBed: number | null };
   interruptions: ScoreComponent & { awakeMin: number | null; usualMax: number | null };
   weakest: "duration" | "regularity" | "interruptions" | null;
 };
@@ -193,10 +197,19 @@ export function sleepScoreBand(score: number) {
   return BANDS.find((b) => score >= b.from) ?? BANDS[BANDS.length - 1];
 }
 
-// Régularité : plein jusqu'à 15 min d'écart avec ton coucher habituel
-// (médiane des 13 nuits précédentes), 0 à 150 min (logique d'Apple)
+// Régularité, face à ton coucher habituel (médiane des 13 nuits précédentes).
+// Plus tard : plein jusqu'à 15 min, puis 1 pt par 5 min, 0 à 150 min.
+// Plus tôt : plein jusqu'à 60 min, puis 1 pt par 30 min, 6 pts au plus.
 const REG_FREE_MIN = 15;
 const REG_ZERO_MIN = 150;
+const REG_EARLY_FREE_MIN = 60;
+const REG_EARLY_MIN_PER_POINT = 30;
+const REG_EARLY_MAX_LOSS = 6;
+
+function regularityPoints(lateMin: number, earlyMin: number): number {
+  if (lateMin > 0) return 30 * clamp01(1 - Math.max(0, lateMin - REG_FREE_MIN) / (REG_ZERO_MIN - REG_FREE_MIN));
+  return 30 - Math.min(REG_EARLY_MAX_LOSS, Math.max(0, earlyMin - REG_EARLY_FREE_MIN) / REG_EARLY_MIN_PER_POINT);
+}
 // Interruptions : plein jusqu'à ton éveil habituel (75e percentile, au moins
 // 10 min ; la montre sous-compte l'éveil), puis −1 pt par 3 min
 const AWAKE_FLOOR_MIN = 10;
@@ -224,12 +237,23 @@ export function sleepScore(night: SleepRow, history: SleepRow[], needMin: number
     .map((r) => sleepWindow(r, tz)?.bed)
     .filter((v): v is number => v != null);
   const usualBed = pastBeds.length >= 4 ? median(pastBeds) : null;
-  const deviation = bed != null && usualBed != null ? Math.abs(bed - usualBed) : null;
+  const deviation = bed != null && usualBed != null ? bed - usualBed : null;
+  // Décalage horaire récent : l'heure habituelle de l'ancien fuseau reste
+  // admise, comme tout ce qui se trouve entre elle et l'heure locale habituelle
+  const shift = timeShift([...prev, night], night.date);
+  const bandLow = usualBed != null ? usualBed + Math.min(0, shift?.shiftMin ?? 0) : null;
+  const bandHigh = usualBed != null ? usualBed + Math.max(0, shift?.shiftMin ?? 0) : null;
+  const lateMin = bed != null && bandHigh != null ? Math.max(0, bed - bandHigh) : 0;
+  const earlyMin = bed != null && bandLow != null ? Math.max(0, bandLow - bed) : 0;
+  const regPoints = deviation != null ? regularityPoints(lateMin, earlyMin) : 0;
   const regularity = {
-    points: deviation != null ? 30 * clamp01(1 - Math.max(0, deviation - REG_FREE_MIN) / (REG_ZERO_MIN - REG_FREE_MIN)) : 0,
+    points: regPoints,
     max: 30,
     available: deviation != null,
-    deviationMin: deviation != null ? Math.round(deviation) : null,
+    deviationMin: deviation != null ? Math.round(Math.abs(deviation)) : null,
+    early: deviation != null && deviation < 0,
+    // Vrai seulement si le décalage horaire a évité une perte de points
+    shiftTolerated: deviation != null && regPoints > regularityPoints(Math.max(0, deviation), Math.max(0, -deviation)) + 0.05,
     usualBed,
   };
 
@@ -293,7 +317,7 @@ export function sleepAdvice(s: SleepScore, bedtime: number | null): string {
         bedtime != null ? ` Vise un coucher vers ${formatClock(bedtime)}.` : ""
       }`;
     case "regularity":
-      return `Coucher décalé de ${s.regularity.deviationMin} min par rapport à ton heure habituelle${
+      return `Couché ${s.regularity.deviationMin} min plus ${s.regularity.early ? "tôt" : "tard"} que ton heure habituelle${
         s.regularity.usualBed != null ? ` (${formatClock(s.regularity.usualBed)})` : ""
       }. La régularité compte autant que la durée.`;
     case "interruptions":
