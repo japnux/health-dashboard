@@ -201,8 +201,8 @@ export type RecoveryDayInput = SleepRow & {
   respiratory_rate: number | null;
 };
 
-// Jours précédents : mesures de référence, et nuits pour la régularité et
-// l'éveil habituel du score de sommeil
+// Jours précédents : mesures de référence, et nuits pour la régularité du
+// score de sommeil
 export type RecoveryHistoryRow = Partial<SleepRow> & {
   hrv_ms: number | null;
   resting_hr_bpm: number | null;

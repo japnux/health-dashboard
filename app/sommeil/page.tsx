@@ -131,7 +131,7 @@ export default async function SommeilPage({
               c={score.interruptions}
               detail={
                 score.interruptions.awakeMin != null
-                  ? `${score.interruptions.awakeMin} min d'éveil, habituel jusqu'à ${score.interruptions.usualMax} min`
+                  ? `${score.interruptions.awakeMin} min d'éveil, sans effet jusqu'à ${score.interruptions.freeMin} min`
                   : "éveil non mesuré"
               }
             />
@@ -328,8 +328,9 @@ export default async function SommeilPage({
           <p>
             Le score /100 reprend la logique du score de sommeil d&apos;Apple : <Strong>durée</Strong> face à ton besoin
             (50 points), <Strong>régularité</Strong> de ton coucher face à tes 13 nuits précédentes (30 points) et{" "}
-            <Strong>interruptions</Strong> face à ton éveil habituel (20 points). Il entre pour 30 % dans ton score de
-            récupération.
+            <Strong>interruptions</Strong> selon ton temps d&apos;éveil (20 points : rien jusqu&apos;à 11 min, puis 1 point par
+            4 min). Il entre pour 30 % dans ton score de récupération. Apple retire aussi des points selon le nombre de
+            réveils, que l&apos;export de la montre ne donne pas : sa note d&apos;interruptions peut donc être plus basse.
           </p>
           <p>
             Le coucher n&apos;est pas jugé de la même façon dans les deux sens. Plus tard que d&apos;habitude : rien jusqu&apos;à

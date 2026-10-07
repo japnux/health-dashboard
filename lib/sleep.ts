@@ -181,7 +181,7 @@ export type SleepScore = {
   // deviationMin : écart avec l'heure habituelle ; early : couché plus tôt ;
   // shiftTolerated : heure de l'ancien fuseau admise (décalage horaire récent)
   regularity: ScoreComponent & { deviationMin: number | null; early: boolean; shiftTolerated: boolean; usualBed: number | null };
-  interruptions: ScoreComponent & { awakeMin: number | null; usualMax: number | null };
+  interruptions: ScoreComponent & { awakeMin: number | null; freeMin: number };
   weakest: "duration" | "regularity" | "interruptions" | null;
 };
 
@@ -210,10 +210,11 @@ function regularityPoints(lateMin: number, earlyMin: number): number {
   if (lateMin > 0) return 30 * clamp01(1 - Math.max(0, lateMin - REG_FREE_MIN) / (REG_ZERO_MIN - REG_FREE_MIN));
   return 30 - Math.min(REG_EARLY_MAX_LOSS, Math.max(0, earlyMin - REG_EARLY_FREE_MIN) / REG_EARLY_MIN_PER_POINT);
 }
-// Interruptions : plein jusqu'à ton éveil habituel (75e percentile, au moins
-// 10 min ; la montre sous-compte l'éveil), puis −1 pt par 3 min
-const AWAKE_FLOOR_MIN = 10;
-const AWAKE_ZERO_EXTRA_MIN = 60;
+// Interruptions : plein jusqu'à 11 min d'éveil, puis 1 pt par 4 min (règle
+// relevée sur le score d'Apple). Apple retire aussi des points selon le nombre
+// de réveils, que l'export ne fournit pas : cette part n'est pas comptée.
+const AWAKE_FREE_MIN = 11;
+const AWAKE_MIN_PER_POINT = 4;
 
 export function sleepScore(night: SleepRow, history: SleepRow[], needMin: number, tz: string): SleepScore | null {
   if (!isCompleteNight(night)) return null;
@@ -257,16 +258,14 @@ export function sleepScore(night: SleepRow, history: SleepRow[], needMin: number
     usualBed,
   };
 
-  // Interruptions : éveil de la nuit vs ton habitude
+  // Interruptions : temps d'éveil pendant la nuit
   const awake = phases.awakeMin;
-  const usual = awakeRange(prev.slice(-60));
-  const threshold = Math.max(AWAKE_FLOOR_MIN, usual?.q75 ?? 15);
   const interruptions = {
-    points: awake != null ? 20 * clamp01(1 - Math.max(0, awake - threshold) / AWAKE_ZERO_EXTRA_MIN) : 0,
+    points: awake != null ? Math.max(0, 20 - Math.max(0, awake - AWAKE_FREE_MIN) / AWAKE_MIN_PER_POINT) : 0,
     max: 20,
     available: awake != null,
     awakeMin: awake != null ? Math.round(awake) : null,
-    usualMax: Math.round(threshold),
+    freeMin: AWAKE_FREE_MIN,
   };
 
   // Composantes absentes : leur poids est redistribué
@@ -321,7 +320,7 @@ export function sleepAdvice(s: SleepScore, bedtime: number | null): string {
         s.regularity.usualBed != null ? ` (${formatClock(s.regularity.usualBed)})` : ""
       }. La régularité compte autant que la durée.`;
     case "interruptions":
-      return `Nuit plus hachée que d'habitude : ${s.interruptions.awakeMin} min d'éveil.`;
+      return `Nuit hachée : ${s.interruptions.awakeMin} min d'éveil.`;
   }
   return s.score >= 81 ? "Durée, régularité et continuité au rendez-vous." : "Nuit correcte, sans point faible marqué.";
 }
