@@ -90,12 +90,12 @@ export default async function Home() {
       {snap.watch.breathingAlert && (
         <AlertNotice
           tone="orange"
-          title="Troubles respiratoires élevés cette nuit"
+          title={`Troubles respiratoires élevés ${snap.watch.breathingAlert.nights} nuits sur 7`}
         >
-          {snap.watch.breathingAlert.value} contre{" "}
-          {snap.watch.breathingAlert.baseline} habituellement (médiane 30
-          nuits). Une nuit isolée n&apos;est pas inquiétante ; si ça se répète,
-          regarde Santé &gt; Sommeil ou parles-en à un médecin.
+          {String(snap.watch.breathingAlert.value).replace(".", ",")} cette nuit contre{" "}
+          {String(snap.watch.breathingAlert.baseline).replace(".", ",")} habituellement (médiane 30
+          nuits). Cherche « Troubles respiratoires » dans l&apos;app Santé : si elle les classe « élevés » ou si ça
+          continue, parles-en à un médecin.
         </AlertNotice>
       )}
       {showStaleScale && (

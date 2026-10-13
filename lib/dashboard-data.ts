@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { createServiceClient } from "@/lib/supabase/service";
-import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso } from "@/lib/dates";
+import { todayIso, isoDaysAgo, diffDaysIso, dateInTz, localMidnightUtcIso, isoDateMinusDays } from "@/lib/dates";
 import { sessionLoadByDay } from "@/lib/cardio-load";
 import { getUserTz } from "@/lib/user-tz";
 import { JOURNAL_ENABLED, NUTRITION_ENABLED } from "@/lib/features";
@@ -221,7 +221,8 @@ export type WatchInsights = {
   wristTempDeltaC: number | null; // écart vs médiane 60j
   breathingDisturbances: number | null;
   // Alerte si la nuit dernière dépasse nettement la médiane des 30 nuits précédentes
-  breathingAlert: { value: number; baseline: number } | null;
+  // nights : nuits au-dessus du seuil sur les 7 dernières (cette nuit comprise)
+  breathingAlert: { value: number; baseline: number; nights: number } | null;
   vo2Max: { value: number; date: string } | null; // dernière mesure connue
   cardioRecoveryBpm: { value: number; date: string } | null; // dernière mesure connue
   walkingHrBpm: number | null;
@@ -646,6 +647,10 @@ type BaselineRow = {
   cardio_recovery_bpm: number | null;
 };
 
+// Alerte troubles respiratoires : nuits élevées requises sur la fenêtre
+const BREATHING_WINDOW_NIGHTS = 7;
+const BREATHING_MIN_HIGH_NIGHTS = 3;
+
 function computeWatchInsights(
   today: DailyMetricsRow | null,
   yesterdayMetrics: DailyMetricsRow | null,
@@ -663,8 +668,10 @@ function computeWatchInsights(
 
   // Troubles respiratoires : donnée de surveillance (base de la détection
   // d'apnée d'Apple), pas de pilotage. Pas d'affichage au quotidien, seulement
-  // une alerte si la nuit dépasse 1.5x la médiane des 30 nuits précédentes,
-  // avec au moins 14 nuits d'historique pour éviter les fausses alertes.
+  // une alerte quand ça se répète, comme le fait Apple : cette nuit et au moins
+  // 2 autres des 7 dernières au-dessus de 1.5x la médiane des 30 nuits
+  // précédentes (14 nuits d'historique au moins). Une nuit isolée ne dit rien :
+  // avec une médiane basse, une nuit sur cinq dépasse ce seuil.
   const breathingHistory = [...baseline60]
     .sort((a, b) => b.date.localeCompare(a.date))
     .map((r) => r.breathing_disturbances)
@@ -672,10 +679,16 @@ function computeWatchInsights(
     .slice(0, 30);
   const breathingBaseline = breathingHistory.length >= 14 ? med(breathingHistory) : null;
   const breathingToday = today?.breathing_disturbances ?? null;
+  const breathingThreshold = breathingBaseline != null && breathingBaseline > 0 ? breathingBaseline * 1.5 : null;
+  const breathingWeekStart = today ? isoDateMinusDays(today.date, BREATHING_WINDOW_NIGHTS - 1) : null;
+  const breathingHighNights =
+    breathingThreshold != null && breathingWeekStart != null
+      ? baseline60.filter((r) => r.date >= breathingWeekStart && r.breathing_disturbances != null && r.breathing_disturbances >= breathingThreshold)
+          .length + (breathingToday != null && breathingToday >= breathingThreshold ? 1 : 0)
+      : 0;
   const breathingAlert =
-    breathingToday != null && breathingBaseline != null && breathingBaseline > 0 &&
-    breathingToday >= breathingBaseline * 1.5
-      ? { value: breathingToday, baseline: Math.round(breathingBaseline * 10) / 10 }
+    breathingToday != null && breathingThreshold != null && breathingToday >= breathingThreshold && breathingHighNights >= BREATHING_MIN_HIGH_NIGHTS
+      ? { value: breathingToday, baseline: Math.round(breathingBaseline! * 10) / 10, nights: breathingHighNights }
       : null;
 
   // VO2 max et récup cardio ne sont pas mesurés chaque jour : dernière valeur connue
